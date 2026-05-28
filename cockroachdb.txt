@@ -1,0 +1,120 @@
+CockroachDB
+Course Objectives
+Gain a comprehensive understanding of CockroachDB's distributed SQL architecture and how it achieves survivability, consistency, and scale.
+
+Master the deployment, configuration, and day-to-day operation of CockroachDB clusters.
+
+Confidently design schemas, optimize queries, and manage transactions in a distributed SQL environment.
+
+Implement multi-region topologies, geo-partitioning, and resilience strategies for production workloads.
+
+Apply security hardening, monitoring, and integration best practices for production-ready CockroachDB deployments.
+
+Course Length: 2 Days
+
+
+Course Structure
+Module 1: Architecture & Foundations
+
+Introduction to CockroachDB
+
+What CockroachDB is: a distributed SQL database built for survivability
+
+Comparison landscape: CockroachDB vs. PostgreSQL, Spanner, YugabyteDB, TiDB
+
+Use cases and when CockroachDB is the right fit
+
+Core Architecture
+
+Ranges, Raft consensus, leaseholders, and the distributed storage layer
+
+The KV layer and how SQL maps onto it
+
+Multi-active availability vs. traditional primary/replica models
+
+Node communication, gossip protocol, and cluster membership
+
+Installation, Configuration & Tooling
+
+Deploying a local multi-node cluster (cockroach start, cockroach demo)
+
+DB Console walkthrough: metrics, jobs, statements, sessions
+
+CockroachDB's PostgreSQL wire-protocol compatibility — what works, what doesn't
+
+SQL Dialect & Schema Design
+
+SQL dialect specifics: SERIAL vs. UUID, sequences, hash-sharded indexes
+
+Schema design fundamentals: choosing primary keys to avoid hotspots
+
+Data types, constraints, and indexing strategies
+
+
+Module 2: Distributed Operations & Data Engineering
+
+Transactions & Consistency
+
+Transaction model: serializable isolation by default
+
+MVCC, read/write intents, transaction contention and retries
+
+Follower reads, AS OF SYSTEM TIME, and stale read trade-offs
+
+Query Optimization
+
+EXPLAIN / EXPLAIN ANALYZE for query analysis
+
+Index selection, statistics collection, and cost-based optimization
+
+Common anti-patterns: sequential keys, cross-range transactions, implicit transactions
+
+Multi-Region Topologies & Resilience
+
+Replication zones and zone configurations
+
+Geo-partitioned tables, regional by row, global tables
+
+Multi-region cluster topologies: survival goals (zone vs. region)
+
+Node decommissioning, rebalancing, and recovery
+
+Backup, Restore & Change Data Capture
+
+Full, incremental, and scheduled backups (BACKUP/RESTORE, cloud storage)
+
+Restore strategies and point-in-time recovery
+
+Changefeeds for CDC (Kafka, webhook, cloud pub/sub sinks)
+
+
+Module 3: Security, Operations & Production Readiness
+
+Security & Access Control
+
+TLS/SSL configuration for node-to-node and client-to-node communication
+
+Authentication methods: password, certificate, SCRAM, SSO/OIDC
+
+Role-based access control (RBAC), grants, and audit logging
+
+Monitoring & Troubleshooting
+
+Key DB Console dashboards and metrics to monitor
+
+Prometheus/Grafana integration and alerting strategies
+
+Statement diagnostics, slow query identification, and contention dashboards
+
+Log analysis, debug zip, and support escalation
+
+Schema Migrations, Deployment Models & Application Integration
+
+Online schema changes and how they differ from PostgreSQL
+
+CockroachDB Serverless vs. Dedicated vs. Self-Hosted — when to use what
+
+CockroachDB with ORMs (SQLAlchemy, GORM, Prisma)
+
+Connection pooling, application-level retry logic, and CI/CD integration
+

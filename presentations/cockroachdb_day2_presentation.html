@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CockroachDB — Day 2: Operations, Resilience &amp; Production</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/white.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/monokai.min.css">
+
+    <style>
+        .reveal .slides > section > section,
+        .reveal .slides > section:not(:has(section)) {
+            overflow-y: auto;
+            max-height: 88vh;
+        }
+        .reveal .slides section pre {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        .reveal .slides section pre code {
+            font-size: 0.55em;
+            line-height: 1.18;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .reveal {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+            color: #1A3A5C;
+            text-transform: none;
+        }
+
+        .reveal h1 {
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .reveal .title-slide {
+            background: linear-gradient(135deg, #0F2540 0%, #1A3A5C 50%, #2E5C8A 100%);
+            color: white !important;
+            padding: 2em;
+            border-radius: 15px;
+        }
+
+        .reveal .title-slide h1,
+        .reveal .title-slide h2 {
+            color: white !important;
+        }
+
+        .reveal .section-title {
+            background: linear-gradient(135deg, #1A3A5C 0%, #2E5C8A 100%);
+            color: white !important;
+            padding: 1.5em;
+            border-radius: 10px;
+            margin-bottom: 0.5em;
+        }
+
+        .reveal .section-title h2 {
+            color: white !important;
+            margin: 0;
+        }
+
+        .reveal .duration {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em 1em;
+            border-radius: 20px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin: 0.5em 0;
+        }
+
+        .reveal .highlight-box {
+            background: linear-gradient(120deg, #DCE9F2 0%, #EEF4FA 100%);
+            padding: 0.8em;
+            border-radius: 8px;
+            border-left: 4px solid #2E5C8A;
+            margin: 0.5em 0;
+        }
+
+        .reveal .lab-slide .highlight-box {
+            padding: 0.4em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .info-box {
+            background: #EEF4FA;
+            border: 2px solid #2E5C8A;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .warning-box {
+            background: #FFF1E6;
+            border: 2px solid #FF6B35;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .lab-slide {
+            background: linear-gradient(135deg, #FFE3D1 0%, #FFC6A3 100%);
+            border: 3px solid #FF6B35;
+            border-radius: 15px;
+            padding: 0.6em;
+            font-size: 0.75em;
+            overflow-y: auto;
+            max-height: 90vh;
+            color: #1f2d24 !important;
+        }
+
+        .reveal .lab-slide h3,
+        .reveal .lab-slide h4,
+        .reveal .lab-slide p,
+        .reveal .lab-slide li,
+        .reveal .lab-slide strong,
+        .reveal .lab-slide em {
+            color: #2A1A0F !important;
+        }
+
+        .reveal .lab-slide h3 {
+            color: #B83C0C !important;
+            margin-top: 0;
+            margin-bottom: 0.5em;
+            font-size: 1.2em;
+        }
+
+        .reveal .lab-slide h4 {
+            margin-top: 0;
+            margin-bottom: 0.2em;
+            font-size: 0.95em;
+        }
+
+        .reveal .lab-slide ul {
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide li {
+            margin: 0.1em 0;
+            line-height: 1.2;
+        }
+
+        .reveal .lab-slide pre {
+            font-size: 0.8em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide pre code {
+            color: #1a1a1a !important;
+        }
+
+        .reveal .lab-slide .lab-duration {
+            display: inline-block;
+            background: rgba(184, 60, 12, 0.12);
+            color: #B83C0C !important;
+            padding: 0.15em 0.7em;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: bold;
+            margin-left: 0.6em;
+            vertical-align: middle;
+            border: 1px solid rgba(184, 60, 12, 0.35);
+        }
+
+        .reveal .lab-slide code {
+            font-size: 0.85em;
+            color: #1a1a1a !important;
+        }
+
+        .reveal .objectives {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+            padding: 0.8em;
+            margin: 0.5em 0;
+        }
+
+        .reveal table {
+            margin: auto;
+            border-collapse: collapse;
+            border-spacing: 0;
+            font-size: 0.8em;
+        }
+
+        .reveal table th {
+            background: #2E5C8A;
+            color: white;
+            font-weight: bold;
+        }
+
+        .reveal table th,
+        .reveal table td {
+            text-align: left;
+            padding: 0.5em;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .reveal table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .reveal pre code {
+            max-height: 500px;
+            font-size: 0.6em;
+            line-height: 1.2;
+        }
+
+        .reveal .slides section .fragment {
+            opacity: 0.3;
+        }
+
+        .reveal .slides section .fragment.visible {
+            opacity: 1;
+        }
+
+        .reveal .progress {
+            background: rgba(26, 58, 92, 0.2);
+        }
+
+        .reveal .progress span {
+            background: #2E5C8A;
+        }
+
+        .reveal .controls {
+            color: #2E5C8A;
+        }
+
+        .reveal .slide-number {
+            background-color: #1A3A5C;
+            color: white;
+        }
+
+        .reveal .two-column {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .reveal .two-column > div {
+            flex: 1;
+            margin: 0 0.5em;
+        }
+
+        .reveal .crdb-logo {
+            color: #FF6B35;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .reveal .small-text {
+            font-size: 0.7em;
+        }
+
+        .reveal .code-title {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em;
+            margin: 0;
+            border-radius: 5px 5px 0 0;
+            font-size: 0.8em;
+        }
+
+        .reveal .agenda-item {
+            padding: 0.5em;
+            margin: 0.3em 0;
+            background: #f8f9fa;
+            border-left: 4px solid #2E5C8A;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .reveal .schedule-slide .agenda-item {
+            padding: 0.25em 0.6em;
+            margin: 0.12em 0;
+            font-size: 0.78em;
+        }
+
+        .reveal .schedule-slide h2 {
+            font-size: 1.6em;
+            margin-bottom: 0.4em;
+        }
+
+        .reveal .schedule-slide .section-title {
+            padding: 0.6em;
+            margin-bottom: 0.3em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Title Slide -->
+            <section class="title-slide">
+                <h1>CockroachDB</h1>
+                <h2>Day 2: Distributed Operations &amp; Production Readiness</h2>
+                <p style="margin-top: 2em; font-size: 1.2em;">
+                    <span class="crdb-logo">🪳 Transactions · Multi-Region · Security · Operations</span>
+                </p>
+                <p style="margin-top: 1em; opacity: 0.9;">
+                    From "It Works" to "It Survives Production"
+                </p>
+            </section>
+
+            <!-- Day 2 Schedule -->
+            <section class="schedule-slide">
+                <h2>📅 Day 2 Schedule</h2>
+
+                <div class="section-title">
+                    <h2>Module 2: Distributed Operations</h2>
+                </div>
+                <div class="agenda-item">5. Transactions &amp; Consistency
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 5</span>
+                </div>
+                <div class="agenda-item">6. Query Optimization
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 6</span>
+                </div>
+                <div class="agenda-item">7. Multi-Region Topologies &amp; Resilience
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 7</span>
+                </div>
+                <div class="agenda-item">8. Backup, Restore &amp; CDC</div>
+
+                <div class="section-title">
+                    <h2>Module 3: Production Readiness</h2>
+                </div>
+                <div class="agenda-item">9. Security &amp; Access Control</div>
+                <div class="agenda-item">10. Monitoring &amp; Troubleshooting
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 8</span>
+                </div>
+                <div class="agenda-item">11. Schema Migrations &amp; Application Integration</div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 5: Transactions & Consistency -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🔄 5. Transactions &amp; Consistency</h2>
+                </section>
+
+                <section>
+                    <h3>SERIALIZABLE — Always, By Default</h3>
+                    <div class="highlight-box">
+                        <p>CockroachDB's default isolation level is <strong>SERIALIZABLE</strong>. There is no <code>READ COMMITTED</code> default and no setting to silently weaken it.</p>
+                    </div>
+                    <div class="info-box fragment">
+                        <p><strong>What this means in practice:</strong></p>
+                        <ul>
+                            <li>Concurrent transactions behave <em>as if</em> they ran one at a time</li>
+                            <li>No dirty reads, no non-repeatable reads, no phantom reads, no write skew</li>
+                            <li>You pay for it with <strong>transaction retries</strong> under contention</li>
+                            <li>Application code must handle retries gracefully</li>
+                        </ul>
+                    </div>
+                    <p class="fragment small-text">As of v23.2, <code>READ COMMITTED</code> is available opt-in — but the course defaults assume SERIALIZABLE.</p>
+                </section>
+
+                <section>
+                    <h3>MVCC — Many Versions, No Locks for Readers</h3>
+                    <p>Every key in CockroachDB is stored with a timestamp. A read at time <code>T</code> returns the most recent version at or before <code>T</code>.</p>
+                    <p class="code-title">MVCC key layout (simplified)</p>
+                    <pre><code class="language-text">
+/users/'abc'/email   @ T=1000  → "old@example.com"     (committed)
+/users/'abc'/email   @ T=2000  → "new@example.com"     (committed)
+/users/'abc'/email   @ T=2500  → "newer@example.com"   (write intent — uncommitted)
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li><strong>Readers don't block writers</strong> — a read at T=1500 sees the T=1000 version</li>
+                            <li><strong>Writers don't block readers</strong> — same reason</li>
+                            <li><strong>Write-write conflicts</strong> resolve via Raft and transaction ordering</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Write Intents &amp; Conflict Detection</h3>
+                    <p>When a transaction writes a key, it leaves a <strong>write intent</strong> — a provisional value tagged with the transaction's ID and timestamp.</p>
+                    <p class="code-title">Two transactions touching the same row</p>
+                    <pre><code class="language-text">
+Txn A:  BEGIN; UPDATE balance SET amt = amt - 100 WHERE id = 'x';   -- intent written
+Txn B:  BEGIN; UPDATE balance SET amt = amt + 50  WHERE id = 'x';
+
+    → Txn B sees A's intent. Txn B WAITS (or pushes A's timestamp).
+    → When A commits, its intent becomes a committed MVCC version.
+    → Txn B then re-reads and proceeds — possibly at a later timestamp.
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p>If serializability would be violated, the conflict is resolved by <strong>retrying</strong> one of the transactions with a fresh read timestamp. The client sees a retryable error.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Retryable Errors — Your App Must Handle Them</h3>
+                    <p class="code-title">SQLSTATE 40001 — serialization_failure</p>
+                    <pre><code class="language-text">
+ERROR: restart transaction: TransactionRetryWithProtoRefreshError:
+       WriteTooOldError: write at timestamp ... too old; wrote at ...
+       SQLSTATE: 40001
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>The retry rule:</strong> the client must run the entire transaction again, from <code>BEGIN</code> to <code>COMMIT</code>. Not just the last statement.</p>
+                        <ul class="small-text">
+                            <li>Most drivers ship a retry helper (e.g. <code>crdb.run_transaction()</code> in psycopg)</li>
+                            <li>Most ORMs need a wrapper — see the integrations section</li>
+                            <li>The cluster will also do <strong>internal retries</strong> for many short, single-statement transactions before surfacing an error</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Retry Loop — Pseudocode</h3>
+                    <p class="code-title">Application-side retry pattern</p>
+                    <pre><code class="language-python">
+import psycopg2
+from psycopg2 import errors
+
+MAX_RETRIES = 5
+
+def transfer(conn, src, dst, amount):
+    for attempt in range(MAX_RETRIES):
+        try:
+            with conn:                              # BEGIN
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE accounts SET balance = balance - %s WHERE id = %s",
+                        (amount, src))
+                    cur.execute(
+                        "UPDATE accounts SET balance = balance + %s WHERE id = %s",
+                        (amount, dst))
+            return                                  # COMMIT successful
+        except errors.SerializationFailure:
+            # 40001 — retry the entire transaction
+            continue
+    raise RuntimeError("transfer failed after retries")
+                    </code></pre>
+                    <div class="warning-box fragment small-text">
+                        <p><strong>Common mistake:</strong> catching and ignoring the error. The transaction is already aborted — the next statement on that connection will fail until you start fresh.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Follower Reads &amp; AS OF SYSTEM TIME</h3>
+                    <p>For read-only queries that can tolerate slightly stale data, you can read from <strong>any replica</strong>, not just the leaseholder:</p>
+                    <p class="code-title">Two flavors</p>
+                    <pre><code class="language-sql">
+-- Exact-time historical read (default ~4.8s in the past)
+SELECT * FROM orders AS OF SYSTEM TIME follower_read_timestamp();
+
+-- Read at a specific HLC timestamp
+SELECT * FROM orders AS OF SYSTEM TIME '2026-05-22 10:00:00';
+
+-- Whole transaction at a single past timestamp (useful for reporting)
+BEGIN;
+SET TRANSACTION AS OF SYSTEM TIME follower_read_timestamp();
+SELECT ... FROM big_table JOIN ...;
+COMMIT;
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li><strong>Cuts cross-region latency</strong> dramatically — read from the local replica</li>
+                            <li><strong>Skips contention</strong> with concurrent writes — historical reads can't conflict</li>
+                            <li><strong>Tradeoff:</strong> data is stale (typically by 4-5 seconds)</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Contention Anti-Patterns</h3>
+                    <table>
+                        <thead><tr><th>Anti-Pattern</th><th>Symptom</th><th>Fix</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td>Single-row counter (<code>UPDATE counters SET n = n + 1</code>)</td>
+                                <td>All writes contend</td>
+                                <td>Sharded counter or message queue</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Long-running read tx blocking writes</td>
+                                <td>Write intents pile up</td>
+                                <td>Use <code>AS OF SYSTEM TIME</code> for reports</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>SELECT * + UPDATE on same connection (no BEGIN)</td>
+                                <td>No atomicity, repeated retries</td>
+                                <td>Wrap in explicit <code>BEGIN ... COMMIT</code></td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Bulk insert through one connection</td>
+                                <td>Sequential commits, slow</td>
+                                <td>Parallelize across connections, use multi-row <code>INSERT</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <!-- Lab 5: Transactions & Contention -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 5: Transactions, Contention &amp; Retry Loops<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Trigger a 40001 retry from two concurrent sessions</li>
+                            <li>Implement a working retry loop in <code>cockroach sql</code> or psql</li>
+                            <li>Use <code>AS OF SYSTEM TIME</code> to bypass contention for a report</li>
+                            <li>Spot contention in the DB Console's <strong>Transactions</strong> dashboard</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <p style="font-size: 0.65em;">Lab walks you through opening <em>two</em> connected sessions side by side.</p>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Two-session contention demo — produce a 40001</li>
+                            <li><strong>Part B:</strong> Wrap the transaction in a retry loop</li>
+                            <li><strong>Part C:</strong> Switch the read to <code>AS OF SYSTEM TIME</code> and observe the contention disappear</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 6: Query Optimization -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🔍 6. Query Optimization</h2>
+                </section>
+
+                <section>
+                    <h3>Three Levels of EXPLAIN</h3>
+                    <table>
+                        <thead><tr><th>Command</th><th>What it shows</th><th>Runs the query?</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><code>EXPLAIN</code></td>
+                                <td>Plan tree + estimated row counts</td>
+                                <td>No</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>EXPLAIN ANALYZE</code></td>
+                                <td>Plan + actual times, rows, network I/O</td>
+                                <td>Yes</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>EXPLAIN ANALYZE (DEBUG)</code></td>
+                                <td>Produces a downloadable bundle for support</td>
+                                <td>Yes</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="info-box fragment">
+                        <p>Always start with <code>EXPLAIN ANALYZE</code> — estimated rows are useful, but actual rows tell you where the optimizer was wrong.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Reading an EXPLAIN ANALYZE</h3>
+                    <p class="code-title">Annotated output</p>
+                    <pre><code class="language-text">
+EXPLAIN ANALYZE SELECT name, total FROM orders
+WHERE customer_id = '550e8400-...' AND status = 'open';
+
+planning time: 0.4ms
+execution time: 2.1ms                        ← total wall-clock
+distribution: local
+vectorized: true
+
+• filter
+  estimated row count: 3
+  actual row count: 2                        ← matches estimate (good!)
+  filter: status = 'open'
+  │
+  └── • scan
+        nodes: n2                            ← where it ran
+        regions: us-east1
+        actual row count: 12
+        KV time: 1.4ms                       ← bulk of the cost
+        table: orders@orders_customer_id_idx
+        spans: [/'550e8400-...' - /'550e8400-...']   ← single-key span
+                    </code></pre>
+                </section>
+
+                <section>
+                    <h3>Statistics &amp; the Cost Model</h3>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment">CockroachDB collects table statistics <strong>automatically</strong> (sampled, periodic)</li>
+                            <li class="fragment">Stats include row count, distinct values per column, null %, histograms</li>
+                            <li class="fragment">The optimizer uses stats to estimate selectivity and pick the cheapest plan</li>
+                            <li class="fragment">After bulk loads or large schema changes, refresh stats manually:</li>
+                        </ul>
+                    </div>
+                    <p class="code-title">Refreshing &amp; inspecting stats</p>
+                    <pre><code class="language-sql">
+-- Force a refresh on one table
+CREATE STATISTICS my_stats FROM orders;
+
+-- See what's there
+SHOW STATISTICS FOR TABLE orders;
+
+-- Per-column histogram
+SHOW HISTOGRAM &lt;histogram_id&gt;;
+                    </code></pre>
+                </section>
+
+                <section>
+                    <h3>Index Hints &amp; Index Recommendations</h3>
+                    <p>Usually the optimizer picks well. When it doesn't, you have two levers:</p>
+                    <p class="code-title">Hint a specific index</p>
+                    <pre><code class="language-sql">
+SELECT * FROM orders@orders_customer_id_idx
+WHERE customer_id = 'abc';
+
+-- Force a full table scan (rarely useful, but available)
+SELECT * FROM orders@{NO_INDEX_JOIN}
+WHERE customer_id = 'abc';
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>CockroachDB will tell you when you're missing an index.</strong> Check the <strong>SQL Activity → Insights</strong> tab in the DB Console — it surfaces queries that would benefit from a new index, and even gives you the <code>CREATE INDEX</code> statement.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Common Slow-Query Patterns</h3>
+                    <table>
+                        <thead><tr><th>Symptom in EXPLAIN ANALYZE</th><th>Likely cause</th><th>Fix</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td>Full table scan, span <code>[ - ]</code></td>
+                                <td>Missing index for predicate</td>
+                                <td>Add covering index</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Index join shows ≫ rows than final result</td>
+                                <td>Index is too narrow</td>
+                                <td>Add <code>STORING</code> clause</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Estimated rows ≪ actual rows</td>
+                                <td>Stale statistics</td>
+                                <td><code>CREATE STATISTICS</code> manually</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>distribution: full</code> for a small query</td>
+                                <td>Cross-range scan</td>
+                                <td>Narrow predicate or co-locate via composite PK</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>High <code>KV time</code> vs <code>execution time</code></td>
+                                <td>Reading lots of keys to filter little</td>
+                                <td>Better index, partial index, or STORING</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <!-- Lab 6: EXPLAIN ANALYZE -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 6: EXPLAIN ANALYZE &amp; Query Tuning<span class="lab-duration">⏱ 70 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Read an EXPLAIN ANALYZE plan and identify the dominant cost</li>
+                            <li>Use the Insights page to find a missing-index recommendation</li>
+                            <li>Apply STORING, partial, and composite indexes to fix specific plans</li>
+                            <li>Watch the optimizer change its mind after <code>CREATE STATISTICS</code></li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty
+# Lab loads a ~100k-row orders dataset before tuning.</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Profile three queries with EXPLAIN ANALYZE; predict the bottleneck before reading the plan</li>
+                            <li><strong>Part B:</strong> Add indexes one by one; measure the change in actual time and KV time</li>
+                            <li><strong>Part C:</strong> Use the SQL Activity → Insights tab to find a recommendation</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 7: Multi-Region Topologies & Resilience -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🌍 7. Multi-Region Topologies &amp; Resilience</h2>
+                </section>
+
+                <section>
+                    <h3>Multi-Region — Three Building Blocks</h3>
+                    <div class="highlight-box">
+                        <ol>
+                            <li class="fragment"><strong>Localities</strong> — every node is tagged with <code>region</code>, <code>zone</code>, etc.</li>
+                            <li class="fragment"><strong>Survival goal</strong> — what level of failure should the database survive without going read/write unavailable?</li>
+                            <li class="fragment"><strong>Table locality</strong> — where do the rows of a table live, and where are their leaseholders?</li>
+                        </ol>
+                    </div>
+                    <p class="fragment small-text">Get these three right and CockroachDB does the heavy lifting (replica placement, leaseholder placement, follower reads) automatically.</p>
+                </section>
+
+                <section>
+                    <h3>Localities — Tagging Nodes</h3>
+                    <p class="code-title">Set at node startup</p>
+                    <pre><code class="language-bash">
+cockroach start \
+  --locality=region=us-east1,zone=us-east1-b,rack=r4 \
+  --join=...
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li>Localities are <strong>hierarchical</strong> — left-to-right, broadest to narrowest</li>
+                            <li>The cluster uses them to spread replicas across failure domains</li>
+                            <li>Most multi-region clusters use at least <code>region</code> and <code>zone</code></li>
+                            <li>Misconfigured localities = your "multi-region" cluster may have every replica in one region</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Defining the Cluster's Regions</h3>
+                    <p class="code-title">SQL setup</p>
+                    <pre><code class="language-sql">
+-- Tell the database which regions it's deployed in
+ALTER DATABASE bank SET PRIMARY REGION "us-east1";
+ALTER DATABASE bank ADD REGION "us-west1";
+ALTER DATABASE bank ADD REGION "europe-west1";
+
+-- Inspect
+SHOW REGIONS FROM DATABASE bank;
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p>The <strong>primary region</strong> is the default home for new tables. <code>ADD REGION</code> adds more — each region must already have nodes running with the matching locality tag.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Survival Goals — What Should the DB Survive?</h3>
+                    <table>
+                        <thead><tr><th>Goal</th><th>Tolerates</th><th>Replicas needed per range</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><code>ZONE FAILURE</code> (default)</td>
+                                <td>Loss of any 1 zone in the primary region</td>
+                                <td>3 (across 3 zones in 1 region)</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>REGION FAILURE</code></td>
+                                <td>Loss of any 1 entire region</td>
+                                <td>5 (across at least 3 regions)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="code-title">Setting the goal</p>
+                    <pre><code class="language-sql">
+ALTER DATABASE bank SURVIVE REGION FAILURE;
+                    </code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>Tradeoff:</strong> <code>REGION FAILURE</code> needs cross-region quorum on every write → write latency includes cross-region RTT. Always-on, but slower writes.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Table Locality — Where Do Rows Live?</h3>
+                    <table>
+                        <thead><tr><th>Locality</th><th>Best for</th><th>Read latency</th><th>Write latency</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><code>REGIONAL BY TABLE</code></td>
+                                <td>Single-region apps, reference data per region</td>
+                                <td>Local in primary region</td>
+                                <td>Local in primary region</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>REGIONAL BY ROW</code></td>
+                                <td>User data with home regions (multi-tenant SaaS)</td>
+                                <td>Local for that row's region</td>
+                                <td>Local for that row's region</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>GLOBAL</code></td>
+                                <td>Rarely-changing, read-anywhere reference data</td>
+                                <td>Local everywhere</td>
+                                <td>Cross-region (slow)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>REGIONAL BY ROW in Practice</h3>
+                    <p class="code-title">Per-row geo-partitioning</p>
+                    <pre><code class="language-sql">
+ALTER DATABASE bank PRIMARY REGION "us-east1";
+ALTER DATABASE bank ADD REGION "us-west1", "europe-west1";
+
+CREATE TABLE customers (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email     STRING UNIQUE,
+  region    crdb_internal_region NOT VISIBLE AS (
+              CASE
+                WHEN email LIKE '%@%.eu' THEN 'europe-west1'
+                ELSE 'us-east1'
+              END
+            ) STORED
+) LOCALITY REGIONAL BY ROW AS region;
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p>Each row's data and leaseholder live in the region named by its <code>region</code> column. A US-based customer's reads are local; an EU customer's reads are local. GDPR data-residency requirements become a schema decision, not a deployment puzzle.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>GLOBAL Tables — Read-Anywhere</h3>
+                    <p>For reference data (currency tables, product catalogs, country lists) that is read in every region but rarely written:</p>
+                    <p class="code-title">Global locality</p>
+                    <pre><code class="language-sql">
+CREATE TABLE country_codes (
+  code     STRING(2) PRIMARY KEY,
+  name     STRING NOT NULL
+) LOCALITY GLOBAL;
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p>CockroachDB uses <strong>non-blocking transactions</strong> to make these tables look like they have a leaseholder in <em>every</em> region. Reads are fast everywhere; writes are slow (they wait long enough that all regions can safely serve the new value).</p>
+                    </div>
+                    <p class="fragment small-text"><strong>Rule of thumb:</strong> if you write to it more than ~once an hour per row, GLOBAL is the wrong choice.</p>
+                </section>
+
+                <section>
+                    <h3>Node Decommissioning &amp; Recovery</h3>
+                    <p class="code-title">Removing a node cleanly</p>
+                    <pre><code class="language-bash">
+# Tell node 4 to drain — it stops being a leaseholder and rebalances replicas off
+cockroach node decommission 4 --host=&lt;node1&gt;:26257
+
+# Watch progress
+cockroach node status --host=&lt;node1&gt;:26257 --decommission
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li>Decommissioning is <strong>online</strong> — no downtime, no read/write interruption</li>
+                            <li>The cluster waits until <em>every</em> range has a replacement replica before marking the node decommissioned</li>
+                            <li>Use this for: scale-down, hardware retirement, planned maintenance, region evacuation</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Recovery From an Unplanned Loss</h3>
+                    <p class="code-title">What CockroachDB does automatically</p>
+                    <pre><code class="language-text">
+T+0     Node 3 disappears (kernel panic, network partition, ...)
+T+9s    Lease on Node 3's ranges expires; peers acquire new leases
+T+5min  Allocator decides: too few replicas, start re-replicating
+        Each affected range starts streaming a snapshot to a new node
+T+...   When every range is back to 3 replicas, the cluster is healthy again
+                    </code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>Operator response:</strong> usually none, unless the node was permanently lost. Use the DB Console's <strong>Replication</strong> dashboard to confirm under-replicated ranges return to zero.</p>
+                    </div>
+                </section>
+
+                <!-- Lab 7: Multi-Region -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 7: Multi-Region Topologies &amp; Survival Goals<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Spin up a simulated 3-region, 9-node cluster with <code>cockroach demo --global</code></li>
+                            <li>Toggle survival between <code>ZONE FAILURE</code> and <code>REGION FAILURE</code> and measure write latency</li>
+                            <li>Convert a table to <code>REGIONAL BY ROW</code> and verify local reads</li>
+                            <li>Take a region offline and confirm the cluster keeps serving</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --global --nodes 9 --no-example-database --empty</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Set primary region and survival goal; measure cross-region write latency</li>
+                            <li><strong>Part B:</strong> Apply REGIONAL BY ROW to a customers table; query from each region</li>
+                            <li><strong>Part C:</strong> Use <code>\demo shutdown</code> to kill a region; verify availability</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 8: Backup, Restore & CDC -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>💾 8. Backup, Restore &amp; Change Data Capture</h2>
+                </section>
+
+                <section>
+                    <h3>Backup Types</h3>
+                    <table>
+                        <thead><tr><th>Type</th><th>What it captures</th><th>Use for</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><strong>Full</strong></td>
+                                <td>Complete cluster/db/table at one timestamp</td>
+                                <td>Weekly anchor</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>Incremental</strong></td>
+                                <td>Changes since previous full or incremental</td>
+                                <td>Daily/hourly</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>Scheduled</strong></td>
+                                <td>Recurring full + incrementals on a cron</td>
+                                <td>Production default</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="info-box fragment">
+                        <p>Backups are <strong>online</strong> — they don't lock tables. They snapshot a consistent point-in-time view via MVCC.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Backup &amp; Restore Syntax</h3>
+                    <p class="code-title">Common backup commands</p>
+                    <pre><code class="language-sql">
+-- Full cluster backup to cloud storage
+BACKUP INTO 's3://my-bucket/backups?AWS_ACCESS_KEY_ID=...&amp;AWS_SECRET_ACCESS_KEY=...';
+
+-- Backup a single database
+BACKUP DATABASE bank INTO 's3://my-bucket/backups';
+
+-- Incremental — same destination, CockroachDB figures out the diff
+BACKUP INTO LATEST IN 's3://my-bucket/backups';
+
+-- Schedule (runs forever)
+CREATE SCHEDULE bank_daily
+  FOR BACKUP DATABASE bank INTO 's3://my-bucket/backups'
+  RECURRING '@daily'
+  FULL BACKUP '@weekly';
+                    </code></pre>
+                </section>
+
+                <section>
+                    <h3>Restore &amp; Point-in-Time Recovery</h3>
+                    <p class="code-title">Restore scenarios</p>
+                    <pre><code class="language-sql">
+-- Restore the latest backup of a database into a new name
+RESTORE DATABASE bank FROM LATEST IN 's3://my-bucket/backups'
+  WITH new_db_name = 'bank_restored';
+
+-- Restore a single table
+RESTORE TABLE bank.accounts FROM LATEST IN 's3://my-bucket/backups';
+
+-- Point-in-time restore (must have backup chain covering that time)
+RESTORE FROM LATEST IN 's3://my-bucket/backups'
+  AS OF SYSTEM TIME '2026-05-22 09:30:00';
+                    </code></pre>
+                    <div class="warning-box fragment small-text">
+                        <p>Point-in-time recovery requires both a backup chain that includes the target time AND that the cluster's <code>gc.ttlseconds</code> (default 25 hours) hasn't expired the relevant MVCC versions.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Changefeeds — CDC Built In</h3>
+                    <p>Stream every row change out to Kafka, a webhook, or cloud pub/sub:</p>
+                    <p class="code-title">Creating a changefeed</p>
+                    <pre><code class="language-sql">
+-- To Kafka
+CREATE CHANGEFEED FOR TABLE orders, customers
+  INTO 'kafka://kafka.example.com:9092'
+  WITH updated, resolved = '10s';
+
+-- To an HTTPS webhook
+CREATE CHANGEFEED FOR TABLE orders
+  INTO 'webhook-https://api.example.com/cdc'
+  WITH updated, resolved;
+
+-- To Google Pub/Sub
+CREATE CHANGEFEED FOR TABLE orders
+  INTO 'gcpubsub://my-project?topic_name=orders';
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li><strong>Exactly-once</strong> delivery semantics (with proper sink config)</li>
+                            <li>JSON or Avro payloads</li>
+                            <li><code>resolved</code> timestamps let downstream systems know "everything before T is final"</li>
+                            <li>Driven by jobs system — restartable, monitorable, pausable</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 9: Security & Access Control -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🔐 9. Security &amp; Access Control</h2>
+                </section>
+
+                <section>
+                    <h3>TLS Everywhere</h3>
+                    <p>Production CockroachDB clusters require TLS for <strong>both</strong> node-to-node and client-to-node communication. <code>--insecure</code> is for labs only.</p>
+                    <p class="code-title">Generating certs the easy way</p>
+                    <pre><code class="language-bash">
+mkdir certs my-safe-directory
+
+# CA — kept on a secure machine, not on the cluster nodes
+cockroach cert create-ca \
+  --certs-dir=certs --ca-key=my-safe-directory/ca.key
+
+# Per-node cert (one per IP/hostname the node serves on)
+cockroach cert create-node \
+  node1.example.com \
+  --certs-dir=certs --ca-key=my-safe-directory/ca.key
+
+# Client cert for the root user
+cockroach cert create-client root \
+  --certs-dir=certs --ca-key=my-safe-directory/ca.key
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p>For Kubernetes, <code>cockroach-operator</code> and <code>cert-manager</code> handle this. For VMs, distribute <code>ca.crt</code>, <code>node.crt</code>, <code>node.key</code> via your config-management tool.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Authentication Methods</h3>
+                    <table>
+                        <thead><tr><th>Method</th><th>Use for</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><strong>Certificate</strong></td>
+                                <td>Service-to-service; CI; root admin</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>Password</strong> (SCRAM-SHA-256)</td>
+                                <td>Humans without a cert; legacy app users</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>SSO (OIDC, SAML)</strong></td>
+                                <td>Centrally-managed human access via your IdP</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>GSSAPI / Kerberos</strong></td>
+                                <td>Existing Kerberos environments</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>RBAC — Roles, Users, Grants</h3>
+                    <p class="code-title">Setting up a least-privilege app user</p>
+                    <pre><code class="language-sql">
+-- Roles are reusable bundles of permissions
+CREATE ROLE app_readwrite;
+GRANT CONNECT ON DATABASE bank TO app_readwrite;
+GRANT USAGE  ON SCHEMA   bank.public TO app_readwrite;
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON ALL TABLES IN SCHEMA bank.public TO app_readwrite;
+
+-- Future tables auto-pick up the grant
+ALTER DEFAULT PRIVILEGES IN SCHEMA bank.public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_readwrite;
+
+-- A user is just a role with LOGIN
+CREATE USER bank_app WITH PASSWORD 's3cret-from-vault';
+GRANT app_readwrite TO bank_app;
+                    </code></pre>
+                </section>
+
+                <section>
+                    <h3>Audit Logging</h3>
+                    <p>Capture every DDL change, privilege change, and (optionally) every statement:</p>
+                    <p class="code-title">Enabling SQL audit</p>
+                    <pre><code class="language-sql">
+-- Per-table audit
+ALTER TABLE bank.accounts EXPERIMENTAL_AUDIT SET READ WRITE;
+
+-- Cluster-wide audit settings
+SET CLUSTER SETTING sql.log.user_audit.enabled = true;
+SET CLUSTER SETTING sql.log.all_statements.enabled = true;
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p>Output goes to the structured log streams (<code>SENSITIVE_ACCESS</code>, <code>USER_ADMIN</code>, <code>PRIVILEGES</code>). Pipe them into your SIEM with the logging sink config (<code>--log</code> YAML).</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 10: Monitoring & Troubleshooting -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>📈 10. Monitoring &amp; Troubleshooting</h2>
+                </section>
+
+                <section>
+                    <h3>The Four Numbers to Watch</h3>
+                    <div class="highlight-box">
+                        <ol>
+                            <li class="fragment"><strong>Liveness</strong> — number of <em>live</em> nodes</li>
+                            <li class="fragment"><strong>Under-replicated ranges</strong> — should be <code>0</code> in steady state</li>
+                            <li class="fragment"><strong>SQL p99 latency</strong> — for both reads and writes</li>
+                            <li class="fragment"><strong>Storage usage</strong> per node — alert at 80%</li>
+                        </ol>
+                    </div>
+                    <p class="fragment small-text">Everything else is a follow-up question once one of these is wrong.</p>
+                </section>
+
+                <section>
+                    <h3>Prometheus &amp; Grafana</h3>
+                    <p>Every CockroachDB node exposes Prometheus metrics on its HTTP port:</p>
+                    <p class="code-title">Scraping</p>
+                    <pre><code class="language-yaml">
+# prometheus.yml
+scrape_configs:
+  - job_name: 'cockroachdb'
+    metrics_path: /_status/vars
+    static_configs:
+      - targets: ['n1:8080', 'n2:8080', 'n3:8080']
+    scheme: https
+    tls_config:
+      ca_file: /etc/prom/ca.crt
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p>Cockroach Labs publishes ready-made Grafana dashboards (search "CockroachDB" on grafana.com). They cover overview, SQL, storage, replication, runtime, and changefeeds.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Alerting — Where to Start</h3>
+                    <table>
+                        <thead><tr><th>Alert</th><th>Severity</th><th>What it means</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><code>liveness_livenodes &lt; expected</code></td>
+                                <td>Page</td>
+                                <td>A node is dead</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>ranges_underreplicated &gt; 0</code> for 15 min</td>
+                                <td>Page</td>
+                                <td>Data at risk; rebalancing failing</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>capacity_available &lt; 20%</code></td>
+                                <td>Page</td>
+                                <td>Disk filling</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>sql_service_latency p99 &gt; SLO</code></td>
+                                <td>Ticket</td>
+                                <td>Tune queries / capacity</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>sql_distsql_exec_latency.high</code> spike</td>
+                                <td>Ticket</td>
+                                <td>Cross-region scan or hotspot</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>Statement Diagnostics</h3>
+                    <p>The DB Console can capture a full per-statement bundle including plan, traces, and stats:</p>
+                    <p class="code-title">Capturing</p>
+                    <pre><code class="language-text">
+DB Console → SQL Activity → Statements → click a statement → "Activate diagnostics"
+            → Run the query → "Download bundle"
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p>The bundle is a zip you can share with support or analyze locally. It's the single most useful artifact for any "why is this query slow" investigation.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Debug Zip — For Cluster-Wide Issues</h3>
+                    <p class="code-title">Collect everything</p>
+                    <pre><code class="language-bash">
+cockroach debug zip \
+  --host=&lt;node&gt;:26257 \
+  --certs-dir=certs \
+  cluster-debug.zip
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li>Pulls logs, goroutine dumps, range info, schemas, settings from every node</li>
+                            <li>Best practice: capture <em>during</em> the incident, not after</li>
+                            <li>Share with Cockroach Labs support for escalation</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Lab 8: Backup/CDC + Security -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 8: Backup, Restore, Changefeeds &amp; Security Hardening<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Take a full backup to local filesystem; restore into a new database</li>
+                            <li>Create a webhook changefeed and capture the JSON payloads</li>
+                            <li>Generate certs and start a secure 3-node cluster</li>
+                            <li>Create a read-only role and prove the privileges hold</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <p style="font-size: 0.65em;">Lab includes a tiny <code>nc</code>-based webhook sink so no external services are needed.</p>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> BACKUP / RESTORE round-trip; verify row counts</li>
+                            <li><strong>Part B:</strong> CHANGEFEED to a webhook; observe live row events</li>
+                            <li><strong>Part C:</strong> Generate certs, start a secure single-node cluster, create RBAC roles</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 11: Schema Migrations & App Integration -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🔗 11. Schema Migrations &amp; Application Integration</h2>
+                </section>
+
+                <section>
+                    <h3>Online Schema Changes</h3>
+                    <p>CockroachDB performs most DDL <strong>online and non-blocking</strong> using a background job:</p>
+                    <p class="code-title">Common online changes</p>
+                    <pre><code class="language-sql">
+-- Add a NOT NULL column with default — backfilled in the background
+ALTER TABLE orders ADD COLUMN total_with_tax DECIMAL(12,2) NOT NULL DEFAULT 0;
+
+-- Add an index — index builds online; queries keep running
+CREATE INDEX ON orders(customer_id, status);
+
+-- Drop an index — instant on the query plan, async cleanup
+DROP INDEX orders_customer_id_idx;
+
+-- Watch progress
+SHOW JOBS WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE');
+                    </code></pre>
+                </section>
+
+                <section>
+                    <h3>Differences From PostgreSQL Migrations</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>🆗 Easier on CockroachDB</h4>
+                                <ul>
+                                    <li>No <code>ACCESS EXCLUSIVE</code> lock for ADD COLUMN with DEFAULT</li>
+                                    <li>No table rewrite for adding nullable columns</li>
+                                    <li>Index builds don't block reads or writes</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>⚠️ Watch out</h4>
+                                <ul>
+                                    <li>Some PG migration tools assume <code>BEGIN; ALTER ...; COMMIT</code> — that's fine, but they may also assume <code>CREATE INDEX CONCURRENTLY</code> syntax (use plain <code>CREATE INDEX</code>)</li>
+                                    <li>Schema changes in an explicit txn are limited</li>
+                                    <li>Long-running migrations show up as jobs, not session activity — watch them via <code>SHOW JOBS</code></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Deployment Models</h3>
+                    <table>
+                        <thead><tr><th>Model</th><th>Operated by</th><th>Best for</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><strong>CockroachDB Serverless</strong></td>
+                                <td>Cockroach Labs</td>
+                                <td>Dev/test, low-traffic apps, free tier</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>CockroachDB Dedicated</strong></td>
+                                <td>Cockroach Labs</td>
+                                <td>Production with managed infra (AWS, GCP, Azure)</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>Self-Hosted (Core/Enterprise)</strong></td>
+                                <td>You</td>
+                                <td>Regulated environments, on-prem, custom topology</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="fragment small-text">Same engine across all three. Migrating between them is supported (BACKUP/RESTORE).</p>
+                </section>
+
+                <section>
+                    <h3>ORMs &amp; Drivers</h3>
+                    <table>
+                        <thead><tr><th>Language</th><th>Driver / ORM</th><th>Notes</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td>Python</td>
+                                <td>psycopg, psycopg2, SQLAlchemy</td>
+                                <td><code>sqlalchemy-cockroachdb</code> dialect; retry helper available</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Go</td>
+                                <td>pgx, GORM, sqlx</td>
+                                <td><code>crdb-go</code> retry helper</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Node.js</td>
+                                <td>node-postgres, Prisma, Knex</td>
+                                <td>Prisma supports CRDB as a provider</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Java/Kotlin</td>
+                                <td>pgjdbc, Hibernate, jOOQ</td>
+                                <td>Hibernate CRDB dialect; configure retry interceptor</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Rust</td>
+                                <td>tokio-postgres, sqlx</td>
+                                <td>Write your own retry loop</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>Connection Pooling — Mandatory at Scale</h3>
+                    <p>CockroachDB doesn't pool connections internally — each connection is a goroutine on the server. Use a pooler in front:</p>
+                    <p class="code-title">Practical guidance</p>
+                    <pre><code class="language-text">
+• PgBouncer / Odyssey       — same as PostgreSQL; pool mode "transaction" works
+• Cloud-managed pools       — CockroachDB Cloud includes a built-in pooler
+• App-side pools (HikariCP, sqlx::Pool, etc.) — fine for moderate scale
+
+Rules of thumb
+  - 4-8 active connections per CPU core, cluster-wide
+  - Don't run "thousands of clients with one connection each" — pool them
+  - Long-running idle connections still cost — set max idle low
+                    </code></pre>
+                </section>
+
+                <section>
+                    <h3>Application-Side Retry — Recap</h3>
+                    <div class="highlight-box">
+                        <p>Every CockroachDB-aware app needs a retry path. The pattern is the same in every language:</p>
+                        <ol>
+                            <li class="fragment">Open a transaction</li>
+                            <li class="fragment">Run statements</li>
+                            <li class="fragment">If COMMIT (or any statement) returns SQLSTATE 40001, <em>restart from step 1</em></li>
+                            <li class="fragment">Cap retries (e.g. 5) and surface failure if exhausted</li>
+                            <li class="fragment">Log the retry count — high counts indicate a contention hotspot to investigate</li>
+                        </ol>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>CI/CD Integration Tips</h3>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment">Use <strong>migration tools</strong> (Flyway, Liquibase, Atlas, golang-migrate, Alembic) — all work with the PG driver</li>
+                            <li class="fragment">Run migrations from <strong>one place</strong> — don't race multiple CI jobs against the same DDL</li>
+                            <li class="fragment">For ephemeral integration tests, <strong><code>cockroach demo</code></strong> is faster than spinning up a real cluster</li>
+                            <li class="fragment">Test against the <em>same major version</em> as production — feature differences exist between releases</li>
+                            <li class="fragment">Pre-deploy: take a backup, even on small migrations — undo is trivial then</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Course Wrap-Up</h3>
+                    <div class="highlight-box">
+                        <h4>You can now:</h4>
+                        <ul>
+                            <li class="fragment">Reason about Raft, ranges, leaseholders, and survivability tradeoffs</li>
+                            <li class="fragment">Design schemas that scale — primary keys, indexes, hash sharding</li>
+                            <li class="fragment">Diagnose contention and tune queries with EXPLAIN ANALYZE</li>
+                            <li class="fragment">Stand up a multi-region cluster with the right survival goal</li>
+                            <li class="fragment">Back up, restore, and emit CDC events</li>
+                            <li class="fragment">Harden security with TLS, RBAC, and audit logging</li>
+                            <li class="fragment">Wire CockroachDB into a production app stack with retries and pooling</li>
+                        </ul>
+                    </div>
+                    <div class="info-box fragment">
+                        <p><strong>Where to next?</strong></p>
+                        <ul>
+                            <li>Docs: <code>cockroachlabs.com/docs/</code></li>
+                            <li>Free training: <code>university.cockroachlabs.com</code></li>
+                            <li>Forum &amp; community Slack for live questions</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/notes/notes.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/zoom/zoom.min.js"></script>
+
+    <script>
+        Reveal.initialize({
+            hash: true,
+            controls: true,
+            progress: true,
+            center: true,
+            transition: 'slide',
+            transitionSpeed: 'default',
+            backgroundTransition: 'fade',
+
+            plugins: [ RevealMarkdown, RevealHighlight, RevealNotes, RevealSearch, RevealZoom ],
+
+            width: 1280,
+            height: 900,
+            margin: 0.06,
+            minScale: 0.2,
+            maxScale: 1.5,
+
+            keyboard: {
+                13: 'next',
+                27: function() {
+                    if (Reveal.isOverview()) {
+                        Reveal.toggleOverview();
+                    }
+                }
+            },
+
+            touch: true,
+            loop: false,
+            rtl: false,
+
+            fragments: true,
+            fragmentInURL: true,
+
+            autoSlide: 0,
+            autoSlideStoppable: true,
+
+            mouseWheel: false,
+            rollingLinks: false,
+            hideAddressBar: true,
+
+            highlight: {
+                highlightOnLoad: true,
+                beforeHighlight: function(hljs) {}
+            }
+        });
+
+        Reveal.addKeyBinding({keyCode: 79, key: 'O', description: 'Toggle overview'}, function() {
+            Reveal.toggleOverview();
+        });
+
+        if (window.location.search.match(/print-pdf/gi)) {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.type = 'text/css';
+            link.href = 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/css/print/pdf.min.css';
+            document.getElementsByTagName('head')[0].appendChild(link);
+        }
+
+        Reveal.configure({
+            slideNumber: 'c/t',
+            showSlideNumber: 'all'
+        });
+    </script>
+</body>
+</html>

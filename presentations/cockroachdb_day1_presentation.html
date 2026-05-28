@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CockroachDB — Day 1: Architecture &amp; Foundations</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/white.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/monokai.min.css">
+
+    <style>
+        /* Overflow safety: keep slide content visible when it exceeds the
+           1280x900 viewport. Without this rule, content past the bottom edge
+           silently disappears in present mode. */
+        .reveal .slides > section > section,
+        .reveal .slides > section:not(:has(section)) {
+            overflow-y: auto;
+            max-height: 88vh;
+        }
+        .reveal .slides section pre {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        .reveal .slides section pre code {
+            font-size: 0.55em;
+            line-height: 1.18;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .reveal {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+            color: #1A3A5C;
+            text-transform: none;
+        }
+
+        .reveal h1 {
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .reveal .title-slide {
+            background: linear-gradient(135deg, #0F2540 0%, #1A3A5C 50%, #2E5C8A 100%);
+            color: white !important;
+            padding: 2em;
+            border-radius: 15px;
+        }
+
+        .reveal .title-slide h1,
+        .reveal .title-slide h2 {
+            color: white !important;
+        }
+
+        .reveal .section-title {
+            background: linear-gradient(135deg, #1A3A5C 0%, #2E5C8A 100%);
+            color: white !important;
+            padding: 1.5em;
+            border-radius: 10px;
+            margin-bottom: 0.5em;
+        }
+
+        .reveal .section-title h2 {
+            color: white !important;
+            margin: 0;
+        }
+
+        .reveal .duration {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em 1em;
+            border-radius: 20px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin: 0.5em 0;
+        }
+
+        .reveal .highlight-box {
+            background: linear-gradient(120deg, #DCE9F2 0%, #EEF4FA 100%);
+            padding: 0.8em;
+            border-radius: 8px;
+            border-left: 4px solid #2E5C8A;
+            margin: 0.5em 0;
+        }
+
+        .reveal .lab-slide .highlight-box {
+            padding: 0.4em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .info-box {
+            background: #EEF4FA;
+            border: 2px solid #2E5C8A;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .warning-box {
+            background: #FFF1E6;
+            border: 2px solid #FF6B35;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .lab-slide {
+            background: linear-gradient(135deg, #FFE3D1 0%, #FFC6A3 100%);
+            border: 3px solid #FF6B35;
+            border-radius: 15px;
+            padding: 0.6em;
+            font-size: 0.75em;
+            overflow-y: auto;
+            max-height: 90vh;
+            color: #1f2d24 !important;
+        }
+
+        .reveal .lab-slide h3,
+        .reveal .lab-slide h4,
+        .reveal .lab-slide p,
+        .reveal .lab-slide li,
+        .reveal .lab-slide strong,
+        .reveal .lab-slide em {
+            color: #2A1A0F !important;
+        }
+
+        .reveal .lab-slide h3 {
+            color: #B83C0C !important;
+            margin-top: 0;
+            margin-bottom: 0.5em;
+            font-size: 1.2em;
+        }
+
+        .reveal .lab-slide h4 {
+            margin-top: 0;
+            margin-bottom: 0.2em;
+            font-size: 0.95em;
+        }
+
+        .reveal .lab-slide ul {
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide li {
+            margin: 0.1em 0;
+            line-height: 1.2;
+        }
+
+        .reveal .lab-slide pre {
+            font-size: 0.8em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide pre code {
+            color: #1a1a1a !important;
+        }
+
+        .reveal .lab-slide .lab-duration {
+            display: inline-block;
+            background: rgba(184, 60, 12, 0.12);
+            color: #B83C0C !important;
+            padding: 0.15em 0.7em;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: bold;
+            margin-left: 0.6em;
+            vertical-align: middle;
+            border: 1px solid rgba(184, 60, 12, 0.35);
+        }
+
+        .reveal .lab-slide code {
+            font-size: 0.85em;
+            color: #1a1a1a !important;
+        }
+
+        .reveal .objectives {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+            padding: 0.8em;
+            margin: 0.5em 0;
+        }
+
+        .reveal table {
+            margin: auto;
+            border-collapse: collapse;
+            border-spacing: 0;
+            font-size: 0.8em;
+        }
+
+        .reveal table th {
+            background: #2E5C8A;
+            color: white;
+            font-weight: bold;
+        }
+
+        .reveal table th,
+        .reveal table td {
+            text-align: left;
+            padding: 0.5em;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .reveal table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .reveal pre code {
+            max-height: 500px;
+            font-size: 0.6em;
+            line-height: 1.2;
+        }
+
+        .reveal .slides section .fragment {
+            opacity: 0.3;
+        }
+
+        .reveal .slides section .fragment.visible {
+            opacity: 1;
+        }
+
+        .reveal .progress {
+            background: rgba(26, 58, 92, 0.2);
+        }
+
+        .reveal .progress span {
+            background: #2E5C8A;
+        }
+
+        .reveal .controls {
+            color: #2E5C8A;
+        }
+
+        .reveal .slide-number {
+            background-color: #1A3A5C;
+            color: white;
+        }
+
+        .reveal .two-column {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .reveal .two-column > div {
+            flex: 1;
+            margin: 0 0.5em;
+        }
+
+        .reveal .crdb-logo {
+            color: #FF6B35;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .reveal .small-text {
+            font-size: 0.7em;
+        }
+
+        .reveal .code-title {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em;
+            margin: 0;
+            border-radius: 5px 5px 0 0;
+            font-size: 0.8em;
+        }
+
+        .reveal .agenda-item {
+            padding: 0.5em;
+            margin: 0.3em 0;
+            background: #f8f9fa;
+            border-left: 4px solid #2E5C8A;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .reveal .schedule-slide .agenda-item {
+            padding: 0.25em 0.6em;
+            margin: 0.12em 0;
+            font-size: 0.78em;
+        }
+
+        .reveal .schedule-slide h2 {
+            font-size: 1.6em;
+            margin-bottom: 0.4em;
+        }
+
+        .reveal .schedule-slide .section-title {
+            padding: 0.6em;
+            margin-bottom: 0.3em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Title Slide -->
+            <section class="title-slide">
+                <h1>CockroachDB</h1>
+                <h2>Day 1: Architecture &amp; Foundations</h2>
+                <p style="margin-top: 2em; font-size: 1.2em;">
+                    <span class="crdb-logo">🪳 Distributed SQL</span> — survive anything, scale anywhere
+                </p>
+                <p style="margin-top: 1em; opacity: 0.9;">
+                    From Single Node to Multi-Region in Two Days
+                </p>
+            </section>
+
+            <!-- Course Overview -->
+            <section>
+                <div class="section-title">
+                    <h2>🎯 Course Overview — 2 Days</h2>
+                </div>
+
+                <div class="agenda-item fragment">
+                    <strong>Day 1 — Architecture &amp; Foundations</strong><br>
+                    <span class="small-text">Distributed SQL, Raft &amp; ranges, install &amp; tooling, schema design</span>
+                </div>
+                <div class="agenda-item fragment">
+                    <strong>Day 2 — Distributed Operations &amp; Production Readiness</strong><br>
+                    <span class="small-text">Transactions, query tuning, multi-region, backup/CDC, security, monitoring</span>
+                </div>
+
+                <div class="info-box fragment">
+                    <strong>Hands-on:</strong> 8 labs across 2 days. Every lab runs against a local
+                    <code>cockroach demo</code> cluster — no Docker, no cloud account required.
+                </div>
+            </section>
+
+            <!-- Day 1 Schedule -->
+            <section class="schedule-slide">
+                <h2>📅 Day 1 Schedule</h2>
+
+                <div class="section-title">
+                    <h2>Module 1: Architecture &amp; Foundations</h2>
+                </div>
+
+                <div class="agenda-item">1. Introduction to CockroachDB</div>
+                <div class="agenda-item">2. Core Architecture: Ranges, Raft, Leaseholders</div>
+                <div class="agenda-item">3. Installation, Configuration &amp; Tooling
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 1, Lab 2</span>
+                </div>
+                <div class="agenda-item">4. SQL Dialect &amp; Schema Design
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 3, Lab 4</span>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 1: Introduction -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🪳 1. Introduction to CockroachDB</h2>
+                </section>
+
+                <section>
+                    <h3>What Is CockroachDB?</h3>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment"><strong>Distributed SQL</strong> — a single logical SQL database spread across many nodes</li>
+                            <li class="fragment"><strong>Strongly consistent</strong> by default (serializable isolation)</li>
+                            <li class="fragment"><strong>Horizontally scalable</strong> — add nodes, get more capacity, no resharding</li>
+                            <li class="fragment"><strong>PostgreSQL wire-compatible</strong> — drivers, ORMs, and most tools just work</li>
+                            <li class="fragment"><strong>Survives</strong> disk, machine, rack, datacenter, and region failures</li>
+                        </ul>
+                    </div>
+                    <p class="fragment small-text" style="margin-top: 0.5em;">
+                        Built by ex-Googlers inspired by Google Spanner — but open source and self-hostable.
+                    </p>
+                </section>
+
+                <section>
+                    <h3>Why the Name?</h3>
+                    <div class="info-box">
+                        <p>Cockroaches are famous for surviving anything — nuclear winter, earthquakes, dropped boots.</p>
+                        <p><strong>CockroachDB is named for the same property:</strong> kill any node, any zone, any region, and the database keeps serving reads and writes.</p>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <p>This isn't a marketing claim — it's an architectural <em>invariant</em>. Every range of data is replicated to 3 (or 5, or 7) nodes by default, and writes only commit when a quorum of replicas has acknowledged them. Survivability is built into the storage layer, not bolted on as a failover script.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>The Distributed SQL Landscape</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>System</th>
+                                <th>Model</th>
+                                <th>Wire Protocol</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><strong>PostgreSQL</strong></td>
+                                <td>Single primary + read replicas</td>
+                                <td>PG</td>
+                                <td>Vertical scale; failover is operational</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>Google Spanner</strong></td>
+                                <td>Distributed SQL</td>
+                                <td>gRPC / Spanner SQL</td>
+                                <td>Managed-only; needs TrueTime atomic clocks</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>CockroachDB</strong></td>
+                                <td>Distributed SQL</td>
+                                <td>PG</td>
+                                <td>Self-hostable; HLC-based consistency</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>YugabyteDB</strong></td>
+                                <td>Distributed SQL</td>
+                                <td>PG &amp; Cassandra</td>
+                                <td>Reuses PG query layer; different storage layer</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><strong>TiDB</strong></td>
+                                <td>Distributed SQL</td>
+                                <td>MySQL</td>
+                                <td>HTAP-focused; TiKV + TiFlash</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>CockroachDB vs PostgreSQL</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>👍 What's the Same</h4>
+                                <ul>
+                                    <li class="fragment">SQL syntax (SELECT, JOIN, CTEs, window functions)</li>
+                                    <li class="fragment">PostgreSQL wire protocol</li>
+                                    <li class="fragment">Most drivers and ORMs</li>
+                                    <li class="fragment">Transactions, foreign keys, indexes</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>⚠️ What's Different</h4>
+                                <ul>
+                                    <li class="fragment">No stored procedures (functions only)</li>
+                                    <li class="fragment">Limited trigger support</li>
+                                    <li class="fragment">No extensions (no PostGIS, but spatial is built in)</li>
+                                    <li class="fragment">Always SERIALIZABLE — not READ COMMITTED by default</li>
+                                    <li class="fragment">Sequences are slower than UUID</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>When Is CockroachDB the Right Fit?</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>✅ Great Fit</h4>
+                                <ul>
+                                    <li class="fragment">Always-on systems (no maintenance windows)</li>
+                                    <li class="fragment">Multi-region or global apps</li>
+                                    <li class="fragment">Outgrew a single PostgreSQL primary</li>
+                                    <li class="fragment">Regulated data with locality requirements (GDPR, data residency)</li>
+                                    <li class="fragment">Financial &amp; transactional systems needing strong consistency</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>🤔 Probably Not</h4>
+                                <ul>
+                                    <li class="fragment">Heavy OLAP / data-warehouse workloads (use a warehouse)</li>
+                                    <li class="fragment">Apps deeply dependent on PG extensions</li>
+                                    <li class="fragment">Very low concurrency, single-region, small data — PG is simpler</li>
+                                    <li class="fragment">Workloads dominated by long-running analytic queries</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Real-World Use Cases</h3>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment"><strong>Financial services</strong> — payments, ledgers, fraud (DoorDash, Bose, Lush)</li>
+                            <li class="fragment"><strong>Retail &amp; commerce</strong> — inventory, order management, carts</li>
+                            <li class="fragment"><strong>Gaming</strong> — player state, leaderboards, in-game economies</li>
+                            <li class="fragment"><strong>SaaS multi-tenant platforms</strong> — per-region tenant data residency</li>
+                            <li class="fragment"><strong>Identity &amp; authorization</strong> — globally-consistent session state</li>
+                        </ul>
+                    </div>
+                    <p class="fragment small-text" style="margin-top: 0.5em;">
+                        Common thread: <em>strong consistency + survivability + scale</em>. Any two are easy. All three is hard — and that's CockroachDB's niche.
+                    </p>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 2: Core Architecture -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🏗️ 2. Core Architecture</h2>
+                </section>
+
+                <section>
+                    <h3>The Big Picture</h3>
+                    <div class="highlight-box">
+                        <p>From the top down, CockroachDB is a stack of layers — each one solves a specific problem:</p>
+                    </div>
+                    <p class="code-title">Layers (top to bottom)</p>
+                    <pre><code class="language-text">
+SQL                ← parser, planner, executor, optimizer
+  ↓
+Transaction        ← serializable isolation, 2-phase commit
+  ↓
+Distribution       ← splits, merges, routing
+  ↓
+Replication        ← Raft consensus, leaseholders
+  ↓
+Storage (Pebble)   ← LSM-tree, MVCC key-value store
+                    </code></pre>
+                    <p class="fragment small-text">Each node runs <em>all layers</em>. There is no separate "router" or "coordinator" tier.</p>
+                </section>
+
+                <section>
+                    <h3>It's All Key-Value Underneath</h3>
+                    <p>Every SQL row, every index entry, every system metadata record is stored as a key-value pair in Pebble (CockroachDB's LSM-tree storage engine).</p>
+                    <p class="code-title">SQL → KV Example</p>
+                    <pre><code class="language-sql">
+-- Logical SQL:
+CREATE TABLE users (id UUID PRIMARY KEY, email STRING, name STRING);
+INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
+
+-- Physical KV (simplified):
+/Table/users/primary/'abc-123'/email  →  'jane@example.com'
+/Table/users/primary/'abc-123'/name   →  'Jane'
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p><strong>Why this matters:</strong> the layout of your primary key directly determines how rows are distributed across the cluster. Sequential keys = hotspots. Random keys = balanced load. We'll dig into this in Module 1 Section 4.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Ranges — The Unit of Distribution</h3>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment">The KV keyspace is sorted and divided into contiguous <strong>ranges</strong></li>
+                            <li class="fragment">Default range target size: <strong>~512 MiB</strong></li>
+                            <li class="fragment">When a range grows past the target, it <strong>splits</strong> automatically</li>
+                            <li class="fragment">When ranges shrink, they can <strong>merge</strong></li>
+                            <li class="fragment">Each range is independently replicated and routed</li>
+                        </ul>
+                    </div>
+                    <p class="fragment small-text">
+                        A table doesn't live "on a node" — it lives across however many ranges its data fills, and each range can be on a different set of nodes.
+                    </p>
+                </section>
+
+                <section>
+                    <h3>Replication — 3 Copies by Default</h3>
+                    <p>Every range is replicated to N nodes (default <code>N=3</code>). The replicas form a <strong>Raft group</strong>.</p>
+                    <p class="code-title">Range r42 spread across a 5-node cluster</p>
+                    <pre><code class="language-text">
+       ┌───────┐   ┌───────┐   ┌───────┐   ┌───────┐   ┌───────┐
+       │ Node1 │   │ Node2 │   │ Node3 │   │ Node4 │   │ Node5 │
+       └───────┘   └───────┘   └───────┘   └───────┘   └───────┘
+        r42 ▲      r42         r42
+        leader     follower    follower
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p>The 3 replicas of r42 elect a <strong>leader</strong> via Raft. The leader proposes writes; followers ack. A write commits when <strong>a majority (2 of 3)</strong> acknowledges — so the cluster tolerates losing 1 replica per range with zero data loss and no manual failover.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Raft Consensus in 60 Seconds</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="info-box">
+                                <h4>📜 What Raft guarantees</h4>
+                                <ul>
+                                    <li class="fragment">All replicas agree on the <em>order</em> of writes</li>
+                                    <li class="fragment">A committed write is durable as long as a majority of replicas survive</li>
+                                    <li class="fragment">If the leader dies, followers elect a new one</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4>🔢 Quorum math</h4>
+                                <ul>
+                                    <li class="fragment"><strong>3 replicas</strong> → tolerate 1 loss</li>
+                                    <li class="fragment"><strong>5 replicas</strong> → tolerate 2 losses</li>
+                                    <li class="fragment"><strong>7 replicas</strong> → tolerate 3 losses</li>
+                                </ul>
+                                <p class="small-text fragment">Odd numbers because majority = ⌊N/2⌋ + 1.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Leaseholder — Single Source of Truth for Reads</h3>
+                    <p>One of the replicas in each Raft group is also designated the <strong>leaseholder</strong>. The leaseholder serves all reads for its range without needing to talk to the other replicas.</p>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment"><strong>Leader (Raft):</strong> proposes writes; usually same node as leaseholder</li>
+                            <li class="fragment"><strong>Leaseholder:</strong> serves reads; coordinates writes</li>
+                            <li class="fragment"><strong>Followers:</strong> apply Raft log; can serve <em>follower reads</em> (stale snapshots)</li>
+                        </ul>
+                    </div>
+                    <div class="info-box fragment">
+                        <p>Reads from a leaseholder are <strong>strongly consistent</strong> — they reflect every committed write. The leaseholder's lease is time-bounded (~9s), so a dead leaseholder is replaced quickly by a peer.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Multi-Active Availability</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="warning-box">
+                                <h4>🐘 Traditional Primary/Replica</h4>
+                                <ul>
+                                    <li>One writable primary at a time</li>
+                                    <li>Failover takes seconds to minutes</li>
+                                    <li>Risk of split-brain &amp; data loss</li>
+                                    <li>Replicas are read-only</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4>🪳 CockroachDB Multi-Active</h4>
+                                <ul>
+                                    <li>Every node accepts reads &amp; writes</li>
+                                    <li>No failover — quorum carries on</li>
+                                    <li>No split-brain (Raft prevents it)</li>
+                                    <li>No "follower" lag for writes</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text" style="margin-top: 0.5em;">
+                        Apps point at any node — typically through a load balancer — and the cluster routes the request to the right leaseholder internally.
+                    </p>
+                </section>
+
+                <section>
+                    <h3>Node Communication &amp; Gossip</h3>
+                    <p>Every node maintains a cluster-wide view of <em>metadata</em> via a <strong>gossip protocol</strong>:</p>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment"><strong>Liveness</strong> — which nodes are alive (heartbeats)</li>
+                            <li class="fragment"><strong>Range descriptors</strong> — where each range's replicas live</li>
+                            <li class="fragment"><strong>Capacity &amp; load</strong> — used by the rebalancer</li>
+                            <li class="fragment"><strong>Node attributes &amp; locality</strong> — region, zone, rack</li>
+                        </ul>
+                    </div>
+                    <div class="info-box fragment">
+                        <p>Gossip is <em>eventually consistent</em> — but the actual data and Raft log are <em>strongly consistent</em>. The distinction matters: gossip just tells nodes where to look; consistency comes from Raft.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Cluster Membership &amp; Join Flow</h3>
+                    <p class="code-title">Bringing a new node online</p>
+                    <pre><code class="language-text">
+1.  Operator runs:   cockroach start --join=<existing-node>:26257
+2.  New node connects to one or more existing nodes (the "join list")
+3.  Gossip propagates the new node's address &amp; locality
+4.  The allocator decides which ranges should add this node as a replica
+5.  Raft snapshots stream existing data to the new node
+6.  New node is now a full participant — no manual intervention required
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p><strong>Decommissioning</strong> is the reverse: a single command (<code>cockroach node decommission &lt;id&gt;</code>) removes a node, and the allocator drains its replicas to remaining nodes before it shuts down.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Architecture Quick Quiz</h3>
+                    <div class="info-box">
+                        <p><strong>Q1.</strong> Range r42 has 3 replicas. Two nodes hosting those replicas go down at the same time. What happens?</p>
+                        <p class="fragment small-text"><em>A:</em> The remaining replica cannot achieve quorum, so r42 becomes <strong>unavailable</strong> for reads and writes until a peer comes back online. Other ranges with surviving quorum keep serving.</p>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <p><strong>Q2.</strong> An application connects to Node 3 and runs <code>SELECT * FROM users WHERE id = 'abc'</code>. The leaseholder for that row is on Node 1. What does Node 3 do?</p>
+                        <p class="fragment small-text"><em>A:</em> Node 3 routes the request to Node 1's leaseholder via internal RPC and returns the result. The client never sees the redirect.</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 3: Installation, Configuration & Tooling -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🛠️ 3. Installation, Configuration &amp; Tooling</h2>
+                </section>
+
+                <section>
+                    <h3>One Binary, No Dependencies</h3>
+                    <div class="highlight-box">
+                        <p>CockroachDB ships as a <strong>single statically-linked binary</strong> called <code>cockroach</code>. It contains:</p>
+                        <ul>
+                            <li class="fragment">The server (every node, every role)</li>
+                            <li class="fragment">The SQL client (<code>cockroach sql</code>)</li>
+                            <li class="fragment">The demo cluster runner (<code>cockroach demo</code>)</li>
+                            <li class="fragment">Backup/restore, debug, decommission, and admin tooling</li>
+                        </ul>
+                    </div>
+                    <p class="fragment small-text">No JVM. No Python runtime. No package manager dependencies. <code>scp</code> the binary, run it, done.</p>
+                </section>
+
+                <section>
+                    <h3>Installing</h3>
+                    <div class="two-column">
+                        <div>
+                            <p class="code-title">macOS (Homebrew)</p>
+                            <pre><code class="language-bash">
+brew install \
+  cockroachdb/tap/cockroach
+
+cockroach version
+                            </code></pre>
+                        </div>
+                        <div>
+                            <p class="code-title">Linux / macOS (manual)</p>
+                            <pre><code class="language-bash">
+curl https://binaries.cockroachdb.com/\
+cockroach-latest.linux-amd64.tgz | tar -xz
+
+sudo mv cockroach-*/cockroach \
+  /usr/local/bin/
+
+cockroach version
+                            </code></pre>
+                        </div>
+                    </div>
+                    <div class="info-box fragment">
+                        <p><strong>Windows:</strong> download the ZIP from the
+                        <a href="https://www.cockroachlabs.com/docs/releases/">releases page</a>,
+                        extract, and add the folder to <code>PATH</code>.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Three Ways to Run a Cluster</h3>
+                    <table>
+                        <thead>
+                            <tr><th>Command</th><th>What you get</th><th>Use for</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td><code>cockroach demo</code></td>
+                                <td>In-memory multi-node cluster</td>
+                                <td>Learning, demos, this course</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>cockroach start-single-node</code></td>
+                                <td>One persistent node, no replication</td>
+                                <td>Dev workstation</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>cockroach start</code></td>
+                                <td>Real cluster node, joins via <code>--join</code></td>
+                                <td>Staging &amp; production</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3><code>cockroach demo</code> — Your Classroom Cluster</h3>
+                    <p class="code-title">Spinning up a 3-node demo</p>
+                    <pre><code class="language-bash">
+# Default: 1 node, in-memory, with a sample dataset (movr)
+cockroach demo
+
+# 3-node empty cluster — what we'll use in labs
+cockroach demo --nodes 3 --no-example-database --empty
+
+# 9-node, 3-region cluster with simulated WAN latencies
+cockroach demo --global --nodes 9 --no-example-database --empty
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li>Drops you straight into a SQL shell connected to the first node</li>
+                            <li>DB Console URL is printed at startup</li>
+                            <li>Everything is in memory — <code>Ctrl+D</code> or <code>\q</code> destroys the cluster</li>
+                            <li>Survives kills inside the demo (<code>cockroach node decommission</code>, etc.)</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3><code>cockroach start</code> — Real Cluster Nodes</h3>
+                    <p class="code-title">Three-node insecure cluster on one machine</p>
+                    <pre><code class="language-bash">
+cockroach start --insecure --store=node1 --listen-addr=localhost:26257 \
+  --http-addr=localhost:8080 --join=localhost:26257,localhost:26258,localhost:26259 \
+  --background
+
+cockroach start --insecure --store=node2 --listen-addr=localhost:26258 \
+  --http-addr=localhost:8081 --join=localhost:26257,localhost:26258,localhost:26259 \
+  --background
+
+cockroach start --insecure --store=node3 --listen-addr=localhost:26259 \
+  --http-addr=localhost:8082 --join=localhost:26257,localhost:26258,localhost:26259 \
+  --background
+
+# One-time cluster bootstrap (do this exactly once)
+cockroach init --insecure --host=localhost:26257
+                    </code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>Heads up:</strong> <code>--insecure</code> is for labs only. Production clusters use TLS — we'll cover that on Day 2.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>The SQL Shell</h3>
+                    <p class="code-title">Connecting to a running cluster</p>
+                    <pre><code class="language-bash">
+# Built-in client (ships with the cockroach binary)
+cockroach sql --insecure --host=localhost:26257
+
+# Using a PostgreSQL client (psql, pgcli, DBeaver, etc.)
+psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable"
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p>Inside the shell, common helpers:</p>
+                        <ul>
+                            <li><code>SHOW DATABASES;</code> — list databases</li>
+                            <li><code>SHOW TABLES;</code> — list tables in current db</li>
+                            <li><code>SHOW CREATE TABLE foo;</code> — show DDL</li>
+                            <li><code>\?</code> — list shell commands</li>
+                            <li><code>\q</code> — quit</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>DB Console — The Web UI</h3>
+                    <div class="highlight-box">
+                        <p>Every node exposes a built-in web console on port <strong>8080</strong> (configurable). It is read-mostly: metrics, jobs, statements, schema, and cluster topology.</p>
+                    </div>
+                    <p class="code-title">Where to find it</p>
+                    <pre><code class="language-text">
+cockroach demo    →  prints "DB Console: http://127.0.0.1:8080/..."
+cockroach start   →  --http-addr=<host>:<port>  (default 8080)
+                    </code></pre>
+                    <p class="fragment">Key tabs we'll tour in <strong>Lab 2</strong>:</p>
+                    <ul class="fragment small-text">
+                        <li><strong>Overview</strong> — nodes, ranges, capacity at a glance</li>
+                        <li><strong>Metrics</strong> — built-in dashboards (Overview, Hardware, Runtime, SQL, Replication, Storage)</li>
+                        <li><strong>SQL Activity</strong> — top statements, recent statements, sessions, transactions</li>
+                        <li><strong>Jobs</strong> — long-running things like BACKUP, RESTORE, CHANGEFEED, schema changes</li>
+                        <li><strong>Databases</strong> — schema browser with per-table stats</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3>PostgreSQL Wire-Protocol Compatibility</h3>
+                    <p>CockroachDB speaks the PostgreSQL <strong>wire protocol</strong>, so most PG-aware tooling works out of the box:</p>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>✅ Works</h4>
+                                <ul>
+                                    <li>psql, pgcli, DBeaver, JetBrains DataGrip</li>
+                                    <li>JDBC, psycopg, pgx, node-postgres, asyncpg</li>
+                                    <li>SQLAlchemy, GORM, Prisma, Hibernate (with CRDB dialect)</li>
+                                    <li>Most BI tools (Metabase, Superset, Tableau)</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>⚠️ Caveats</h4>
+                                <ul>
+                                    <li>No stored procedures (functions only)</li>
+                                    <li>No PG extensions (PostGIS-style features are built in)</li>
+                                    <li>Some system catalog rows differ — tools doing deep introspection may need a CRDB-aware adapter</li>
+                                    <li><code>SERIAL</code> behaves differently — see Section 4</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Lab 1: Cluster Bootstrap -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 1: Cluster Bootstrap &amp; Lifecycle<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Spin up a 3-node demo cluster and confirm it is healthy</li>
+                            <li>Inspect node liveness, ranges, and replica placement</li>
+                            <li>Kill a node and observe Raft's automatic recovery</li>
+                            <li>Connect with both <code>cockroach sql</code> and <code>psql</code></li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Quick Start</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <p style="font-size: 0.65em; margin: 0.2em 0;">When you see the <code>defaultdb&gt;</code> prompt, note the DB Console URL printed above it.</p>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Start the cluster, list nodes, find leaseholders</li>
+                            <li><strong>Part B:</strong> Kill node 2, watch replication self-heal</li>
+                            <li><strong>Part C:</strong> Connect with <code>psql</code> and verify wire compatibility</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Continued teaching: DB Console deep dive -->
+                <section>
+                    <h3>Reading the DB Console — Cluster Health</h3>
+                    <p>After Lab 1, you've seen the console. Here's what to look at <em>first</em> when something feels wrong:</p>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment"><strong>Overview → Node list</strong>: are all nodes <em>live</em>? Any in "suspect" or "decommissioning"?</li>
+                            <li class="fragment"><strong>Overview → Capacity</strong>: storage usage per node — imbalance is a red flag</li>
+                            <li class="fragment"><strong>Metrics → Replication</strong>: under-replicated ranges &gt; 0 means data is at risk</li>
+                            <li class="fragment"><strong>Metrics → SQL</strong>: connection count, statement latency, error rate</li>
+                            <li class="fragment"><strong>Hot Ranges</strong>: top ranges by QPS — your hotspot suspects live here</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>System Tables You'll Use</h3>
+                    <p class="code-title">Useful built-in views</p>
+                    <pre><code class="language-sql">
+-- All nodes in the cluster
+SELECT node_id, address, locality, is_live FROM crdb_internal.gossip_nodes;
+
+-- All ranges and where their leaseholders live
+SELECT range_id, table_name, lease_holder, replicas
+FROM crdb_internal.ranges_no_leases LIMIT 20;
+
+-- Top statements by total runtime
+SELECT key, statistics->'statistics'->'cnt' AS executions,
+       statistics->'statistics'->'svcLat'->'mean' AS mean_latency_s
+FROM crdb_internal.statement_statistics
+ORDER BY (statistics->'statistics'->'cnt')::INT DESC LIMIT 10;
+
+-- Current sessions and what they're doing
+SELECT node_id, session_id, application_name, active_queries
+FROM crdb_internal.cluster_sessions;
+                    </code></pre>
+                </section>
+
+                <!-- Lab 2: DB Console & SQL Tour -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 2: DB Console &amp; SQL Operational Tour<span class="lab-duration">⏱ 70 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Tour every major DB Console tab against live traffic</li>
+                            <li>Generate load with the built-in <code>workload</code> tool</li>
+                            <li>Read <code>crdb_internal</code> tables to answer operational questions</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash"># Lab 1 cluster still running? Good. Otherwise:
+cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Tour Overview, Metrics, Databases, Jobs tabs</li>
+                            <li><strong>Part B:</strong> Run <code>cockroach workload run kv</code> to generate load and watch the dashboards react</li>
+                            <li><strong>Part C:</strong> Query <code>crdb_internal</code> to find the hottest ranges and slowest statements</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 4: SQL Dialect & Schema Design -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🗂️ 4. SQL Dialect &amp; Schema Design</h2>
+                </section>
+
+                <section>
+                    <h3>The Most Important Decision: Primary Keys</h3>
+                    <div class="highlight-box">
+                        <p>The primary key is the <strong>physical sort order</strong> of a table's KV data. Choose it badly and you create a hotspot; choose it well and the cluster spreads load evenly.</p>
+                    </div>
+                    <div class="warning-box fragment">
+                        <h4>❌ Classic Anti-Pattern</h4>
+                        <pre style="font-size: 0.7em;"><code class="language-sql">
+CREATE TABLE events (
+  id        SERIAL PRIMARY KEY,
+  payload   JSONB,
+  created   TIMESTAMP DEFAULT now()
+);
+                        </code></pre>
+                        <p class="small-text">Sequential <code>id</code> values → every insert lands on the rightmost range → one leaseholder is hammered while others idle.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>SERIAL Is Not What You Think</h3>
+                    <p>In PostgreSQL, <code>SERIAL</code> is a sequence-backed counter (1, 2, 3, ...). In CockroachDB, <code>SERIAL</code> is <strong>not</strong> sequential — by default it's <code>unique_rowid()</code>:</p>
+                    <p class="code-title">unique_rowid() — 64-bit integers, time-prefixed</p>
+                    <pre><code class="language-text">
+| 48 bits HLC timestamp | 16 bits node ID + counter |
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p><strong>Better than PG's SERIAL</strong> — values are roughly time-ordered but each node carves out its own counter space, so writes spread across the cluster.</p>
+                        <p><strong>Still not random</strong> — values are <em>monotonic</em>, so all inserts cluster on the latest range. For high-throughput inserts, prefer <code>UUID</code>.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>UUID — The Default Choice</h3>
+                    <p class="code-title">Recommended pattern for high-write tables</p>
+                    <pre><code class="language-sql">
+CREATE TABLE events (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payload   JSONB,
+  created   TIMESTAMPTZ DEFAULT now()
+);
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li><strong>gen_random_uuid()</strong> produces 128 random bits — writes scatter across all ranges</li>
+                            <li>No "rightmost range" hotspot</li>
+                            <li>Tradeoff: bigger keys (16 bytes vs 8) and no natural ordering</li>
+                        </ul>
+                    </div>
+                    <div class="warning-box fragment small-text">
+                        <p><strong>Watch out:</strong> if you need <em>ordered</em> iteration by insert time, add a <code>created_at</code> index — don't try to encode ordering into the primary key.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Sequences — Use Sparingly</h3>
+                    <p class="code-title">When you really need gapless integers</p>
+                    <pre><code class="language-sql">
+CREATE SEQUENCE invoice_seq;
+
+CREATE TABLE invoices (
+  id    INT8 PRIMARY KEY DEFAULT nextval('invoice_seq'),
+  ...
+);
+                    </code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>Performance trap:</strong> every <code>nextval()</code> is a distributed transaction — it must atomically increment a shared counter range. High-volume inserts on a sequence-PK table will <em>not</em> scale.</p>
+                        <p>Use sequences when business logic <em>requires</em> monotonic integers (e.g. invoice numbers for accounting). Otherwise, use UUID.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Hash-Sharded Indexes — Spread Sequential Keys</h3>
+                    <p>Sometimes you genuinely need a monotonic key (e.g. an <code>(account_id, created_at)</code> index for time-range queries). Hash sharding spreads it across N virtual buckets:</p>
+                    <p class="code-title">Hash-sharded primary key</p>
+                    <pre><code class="language-sql">
+CREATE TABLE events (
+  account_id  UUID,
+  created     TIMESTAMPTZ DEFAULT now(),
+  payload     JSONB,
+  PRIMARY KEY (account_id, created) USING HASH WITH (bucket_count = 16)
+);
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p>Under the hood, CockroachDB prepends a hidden <code>crdb_internal_account_id_created_shard_16</code> column (a hash bucket 0–15) to the key, so writes for similar timestamps land on different ranges.</p>
+                        <p class="small-text">Range queries by exact <code>(account_id, created)</code> still work via index lookup. Open-ended scans on <code>created</code> alone may need a separate non-sharded secondary index.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Composite Primary Keys</h3>
+                    <p class="code-title">Common multi-tenant pattern</p>
+                    <pre><code class="language-sql">
+CREATE TABLE orders (
+  tenant_id  UUID,
+  order_id   UUID DEFAULT gen_random_uuid(),
+  customer   STRING,
+  total      DECIMAL(12,2),
+  PRIMARY KEY (tenant_id, order_id)
+);
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li><strong>(tenant_id, order_id)</strong> co-locates one tenant's data in a contiguous key range</li>
+                            <li>Queries filtering by tenant become single-range scans (fast)</li>
+                            <li>Sets up cleanly for <strong>geo-partitioning</strong> later (Day 2 — REGIONAL BY ROW)</li>
+                            <li>Hot tenants can still cause a hotspot — be aware</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Data Types — PG-Compatible, with Care</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>👍 Use freely</h4>
+                                <ul>
+                                    <li><code>UUID</code></li>
+                                    <li><code>INT8</code> (always 64-bit)</li>
+                                    <li><code>STRING</code> (variable)</li>
+                                    <li><code>BYTES</code></li>
+                                    <li><code>TIMESTAMPTZ</code> (TZ-aware)</li>
+                                    <li><code>DECIMAL</code> (exact)</li>
+                                    <li><code>JSONB</code></li>
+                                    <li><code>BOOL</code></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>⚠️ Watch out</h4>
+                                <ul>
+                                    <li><code>INT</code> = <code>INT8</code> (PG defaults to <code>INT4</code>!)</li>
+                                    <li><code>FLOAT</code> = <code>FLOAT8</code></li>
+                                    <li><code>SERIAL</code> ≠ PostgreSQL SERIAL</li>
+                                    <li><code>TIMESTAMP</code> is TZ-naive — prefer <code>TIMESTAMPTZ</code></li>
+                                    <li><code>NUMERIC</code> = <code>DECIMAL</code></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Constraints &amp; Foreign Keys</h3>
+                    <p class="code-title">Standard SQL, with one wrinkle</p>
+                    <pre><code class="language-sql">
+CREATE TABLE customers (
+  id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email STRING UNIQUE NOT NULL CHECK (length(email) &lt; 256)
+);
+
+CREATE TABLE orders (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  total       DECIMAL(12,2) NOT NULL CHECK (total &gt;= 0)
+);
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p><strong>Foreign keys are real and enforced</strong> — they require a unique index on the parent column. CockroachDB will warn (or fail) if you try to add an FK without one. Cascading actions work the same way as PG.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Indexes — Same Idea, Slightly Different Costs</h3>
+                    <div class="highlight-box">
+                        <ul>
+                            <li class="fragment"><strong>Secondary indexes are themselves ranges</strong> — they replicate just like data</li>
+                            <li class="fragment">Each write to an indexed table writes to <em>every</em> covering index</li>
+                            <li class="fragment">Indexes can be <strong>partial</strong> (<code>WHERE</code> predicate), <strong>covering</strong> (<code>STORING</code> clause), or <strong>hash-sharded</strong></li>
+                            <li class="fragment">CockroachDB collects table statistics automatically; the cost-based optimizer uses them</li>
+                        </ul>
+                    </div>
+                    <p class="code-title">Common patterns</p>
+                    <pre><code class="language-sql">
+-- Plain index
+CREATE INDEX ON orders(customer_id);
+
+-- Covering / "storing" index — extra columns travel with the key
+CREATE INDEX ON orders(customer_id) STORING (total, status);
+
+-- Partial index — only index "open" orders
+CREATE INDEX ON orders(customer_id) WHERE status = 'open';
+
+-- Hash-sharded index — avoid hotspots on time-series patterns
+CREATE INDEX ON events(account_id, created)
+  USING HASH WITH (bucket_count = 8);
+                    </code></pre>
+                </section>
+
+                <!-- Schema Patterns Playbook overview -->
+                <section>
+                    <h3>📚 Schema Patterns Playbook</h3>
+                    <p class="small-text">A take-home catalog of named patterns for high-volume, heavy-throughput workloads. We'll exercise these across Labs 3, 4, and 5.</p>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>🟢 Patterns to reach for</h4>
+                                <ul class="small-text">
+                                    <li class="fragment"><strong>#1 Hash-Sharded Time-Series PK</strong> — writes don't pile on the right edge</li>
+                                    <li class="fragment"><strong>#2 Append-Only Event Log</strong> — UUID PK + TTL</li>
+                                    <li class="fragment"><strong>#3 Per-Tenant Co-located PK</strong> — single-range scans per tenant</li>
+                                    <li class="fragment"><strong>#4 Time-Bucketed Composite PK</strong> — fast time-range queries</li>
+                                    <li class="fragment"><strong>#5 Sharded Counter</strong> — no more 40001 retry storms</li>
+                                    <li class="fragment"><strong>#6 Hot/Cold Split</strong> — partial index over hot rows</li>
+                                    <li class="fragment"><strong>#7 GLOBAL Reference Table</strong> — read-anywhere lookup</li>
+                                    <li class="fragment"><strong>#8 Outbox + CDC</strong> — atomic publish</li>
+                                    <li class="fragment"><strong>#9 TTL Table</strong> — automatic expiry</li>
+                                    <li class="fragment"><strong>#10 Pre-Split + Bulk Import</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>🔴 Anti-patterns to catch in review</h4>
+                                <ul class="small-text">
+                                    <li class="fragment"><code>SERIAL</code> on hot paths</li>
+                                    <li class="fragment">Single-row <code>UPDATE counter SET n = n + 1</code></li>
+                                    <li class="fragment">Low-cardinality lead column in PK</li>
+                                    <li class="fragment">Indexes on every column</li>
+                                    <li class="fragment"><code>DELETE</code>-as-you-go cleanup</li>
+                                    <li class="fragment">App writes to DB <em>and</em> Kafka</li>
+                                    <li class="fragment"><code>LOCALITY GLOBAL</code> on a write-heavy table</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text" style="margin-top:0.5em;">
+                        Full catalog with canonical schemas: <code>labs/SCHEMA_PATTERNS_PLAYBOOK.md</code>.
+                    </p>
+                </section>
+
+                <section>
+                    <h3>Patterns You Already Know</h3>
+                    <p>Several patterns map directly onto things we've covered in this section:</p>
+                    <table>
+                        <thead><tr><th>Pattern</th><th>What you've seen</th><th>Lab</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td>#1 Hash-Sharded Time-Series PK</td>
+                                <td><code>USING HASH WITH (bucket_count = ...)</code></td>
+                                <td>Lab 3 Part D</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>#3 Per-Tenant Co-located PK</td>
+                                <td><code>PRIMARY KEY (tenant_id, ...)</code></td>
+                                <td>Lab 3 Part C</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>#6 Hot/Cold Split</td>
+                                <td><code>CREATE INDEX ... WHERE status = 'open'</code></td>
+                                <td>Lab 4 Part C</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>#10 Pre-Split + Bulk Import</td>
+                                <td><code>ALTER TABLE ... SPLIT AT VALUES (...)</code></td>
+                                <td>Lab 3 Part E</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="fragment small-text" style="margin-top:0.5em;">
+                        Lab 3 also builds #2 (Append-Only Event Log), #8 (Outbox + CDC), and #9 (TTL Table) from scratch.
+                    </p>
+                </section>
+
+                <!-- Lab 3: Schema Design — High-Volume Patterns -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 3: Schema Design — High-Volume Patterns &amp; Hotspot Avoidance<span class="lab-duration">⏱ 90 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Observe a hotspot live with <code>SERIAL</code>; fix with UUID, composite, hash-sharded PKs</li>
+                            <li>Pre-split a table and bulk-load without rightmost-range pile-up</li>
+                            <li>Build an <strong>Append-Only Event Log</strong> with TTL for automatic expiry</li>
+                            <li>Build the <strong>Outbox Pattern</strong> and verify atomic business-write + event publish</li>
+                            <li>Apply a code-review checklist to 5 PK shapes</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Create <code>events_serial</code>; observe hotspot</li>
+                            <li><strong>Part B:</strong> Re-create with <code>UUID</code> PK; compare distribution</li>
+                            <li><strong>Part C:</strong> Composite PK <code>(tenant, id)</code> for co-location</li>
+                            <li><strong>Part D:</strong> Hash-sharded composite for a hot tenant</li>
+                            <li><strong>Part E:</strong> Pre-splits + bulk insert</li>
+                            <li><strong>Part F:</strong> PK code-review checklist</li>
+                            <li><strong>Part G:</strong> Append-Only Event Log + TTL job</li>
+                            <li><strong>Part H:</strong> Outbox Pattern + Core changefeed</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- More teaching: query planner intro -->
+                <section>
+                    <h3>Index Picking — A Mental Model</h3>
+                    <p>The optimizer picks an index by estimating how many rows it will read. The fastest plan is the one that <em>scans the fewest keys</em>.</p>
+                    <p class="code-title">Reading a plan</p>
+                    <pre><code class="language-sql">
+EXPLAIN SELECT * FROM orders WHERE customer_id = 'abc';
+
+  • scan
+    table: orders@orders_customer_id_idx       ← used the secondary index
+    spans: [/'abc' - /'abc']                    ← single-key span = great
+                    </code></pre>
+                    <div class="info-box fragment">
+                        <p><strong>Anti-pattern signals:</strong> <code>full table scan</code> on a large table, span of <code>[ - ]</code> (the whole keyspace), or an estimated row count near the table cardinality.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Storing Clause — "Index-Only" Reads</h3>
+                    <p>If a query reads columns not in the indexed key, CockroachDB does an extra primary-key lookup per row. <code>STORING</code> avoids that:</p>
+                    <p class="code-title">Without vs with STORING</p>
+                    <pre><code class="language-sql">
+-- Without STORING: index lookup, then PK lookup per row
+CREATE INDEX ON orders(customer_id);
+SELECT customer_id, total FROM orders WHERE customer_id = 'abc';
+
+-- With STORING: index alone has everything we need
+CREATE INDEX ON orders(customer_id) STORING (total, status);
+SELECT customer_id, total, status FROM orders WHERE customer_id = 'abc';
+                    </code></pre>
+                    <div class="warning-box fragment small-text">
+                        <p><strong>Cost:</strong> every <code>UPDATE</code> to a stored column must also update the index. Don't blindly add every column to STORING — pick the ones that benefit the hot read path.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Anti-Patterns Cheat-Sheet</h3>
+                    <table>
+                        <thead><tr><th>Pattern</th><th>Why It Hurts</th><th>Fix</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td>Sequential PK (<code>SERIAL</code>, sequence)</td>
+                                <td>Rightmost-range hotspot</td>
+                                <td>UUID or hash-sharded composite</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>(timestamp)</code> as PK / index lead</td>
+                                <td>Same — all writes on latest range</td>
+                                <td>Hash-sharded index</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Big tables, no FK index</td>
+                                <td>FK checks become full scans</td>
+                                <td>Index every FK column</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>SELECT * everywhere</td>
+                                <td>Forces PK lookup, defeats covering indexes</td>
+                                <td>List columns; add STORING</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Implicit transactions for chained statements</td>
+                                <td>Lock contention, retries</td>
+                                <td>Explicit <code>BEGIN ... COMMIT</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <!-- Lab 4: Indexing -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 4: Indexing Strategies — Every Index Type That Matters<span class="lab-duration">⏱ 70 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Build secondary, partial, covering, and hash-sharded indexes</li>
+                            <li>Use <code>EXPLAIN</code> to confirm which index a query uses</li>
+                            <li>Quantify the cost of an unused index on writes</li>
+                            <li>Apply <code>STORING</code> to eliminate a per-row PK lookup</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>Part A:</strong> Create the orders schema; observe full-scan plans without indexes</li>
+                            <li><strong>Part B:</strong> Add secondary, partial, and STORING indexes; verify plans</li>
+                            <li><strong>Part C:</strong> Build a hash-sharded time-series index and run a range-by-time query</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Day 1 Wrap-Up</h3>
+                    <div class="highlight-box">
+                        <h4>What you can now do</h4>
+                        <ul>
+                            <li class="fragment">Explain ranges, Raft, leaseholders, and multi-active availability</li>
+                            <li class="fragment">Start, connect to, and inspect a CockroachDB cluster</li>
+                            <li class="fragment">Read the DB Console for cluster health and hot ranges</li>
+                            <li class="fragment">Choose primary keys that <em>don't</em> create hotspots</li>
+                            <li class="fragment">Apply hash sharding, STORING, and partial indexes appropriately</li>
+                        </ul>
+                    </div>
+                    <div class="info-box fragment">
+                        <h4>Day 2 preview</h4>
+                        <ul>
+                            <li>Transactions, contention, retries, and EXPLAIN ANALYZE</li>
+                            <li>Multi-region topologies and survival goals</li>
+                            <li>Backup, restore, changefeeds, security, and monitoring</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/notes/notes.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/zoom/zoom.min.js"></script>
+
+    <script>
+        Reveal.initialize({
+            hash: true,
+            controls: true,
+            progress: true,
+            center: true,
+            transition: 'slide',
+            transitionSpeed: 'default',
+            backgroundTransition: 'fade',
+
+            plugins: [ RevealMarkdown, RevealHighlight, RevealNotes, RevealSearch, RevealZoom ],
+
+            width: 1280,
+            height: 900,
+            margin: 0.06,
+            minScale: 0.2,
+            maxScale: 1.5,
+
+            keyboard: {
+                13: 'next',
+                27: function() {
+                    if (Reveal.isOverview()) {
+                        Reveal.toggleOverview();
+                    }
+                }
+            },
+
+            touch: true,
+            loop: false,
+            rtl: false,
+
+            fragments: true,
+            fragmentInURL: true,
+
+            autoSlide: 0,
+            autoSlideStoppable: true,
+
+            mouseWheel: false,
+            rollingLinks: false,
+            hideAddressBar: true,
+
+            highlight: {
+                highlightOnLoad: true,
+                beforeHighlight: function(hljs) {}
+            }
+        });
+
+        Reveal.addKeyBinding({keyCode: 79, key: 'O', description: 'Toggle overview'}, function() {
+            Reveal.toggleOverview();
+        });
+
+        if (window.location.search.match(/print-pdf/gi)) {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.type = 'text/css';
+            link.href = 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/css/print/pdf.min.css';
+            document.getElementsByTagName('head')[0].appendChild(link);
+        }
+
+        Reveal.configure({
+            slideNumber: 'c/t',
+            showSlideNumber: 'all'
+        });
+    </script>
+</body>
+</html>

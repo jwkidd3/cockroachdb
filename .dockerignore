@@ -1,0 +1,14 @@
+# Speed up image builds by excluding files the tests don't need.
+.git
+.gitignore
+*.DS_Store
+.idea
+.vscode
+
+# Per-run test artifacts (the container regenerates them at /tmp/)
+tests/scratch
+/tmp
+
+# Anything large that creeps in
+*.tgz
+*.zip

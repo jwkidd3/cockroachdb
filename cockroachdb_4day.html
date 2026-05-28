@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>CockroachDB — 4-Day Course Outline</title>
+  <style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+  <style type="text/css">
+@page {
+size: letter;
+margin: 0.75in 0.85in 0.85in 0.85in;
+}
+html {
+font-size: 11pt;
+}
+body {
+font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+line-height: 1.45;
+color: #1f2d3d;
+max-width: none;
+margin: 0;
+}
+
+h1.title {
+font-size: 28pt;
+color: #1A3A5C;
+margin: 0 0 0.1em 0;
+padding-bottom: 0.3em;
+border-bottom: 4px solid #FF6B35;
+}
+p.subtitle {
+font-size: 14pt;
+color: #4a5e7a;
+margin: 0.2em 0 0.4em 0;
+font-style: italic;
+}
+.date, p.date {
+font-size: 10pt;
+color: #6b7a90;
+margin-bottom: 1.4em;
+}
+
+h1, h2, h3, h4 {
+color: #1A3A5C;
+page-break-after: avoid;
+}
+h2 {
+font-size: 18pt;
+margin-top: 1.3em;
+margin-bottom: 0.4em;
+padding: 0.35em 0.55em;
+background: linear-gradient(90deg, #DCE9F2 0%, transparent 80%);
+border-left: 5px solid #2E5C8A;
+}
+h3 {
+font-size: 13pt;
+margin-top: 1em;
+margin-bottom: 0.25em;
+color: #2E5C8A;
+}
+h4 {
+font-size: 11.5pt;
+margin-top: 0.7em;
+margin-bottom: 0.2em;
+}
+
+ul, ol {
+margin: 0.35em 0 0.5em 1.6em;
+padding: 0;
+}
+li {
+margin: 0.12em 0;
+}
+
+code {
+font-family: "SF Mono", "Menlo", "Consolas", monospace;
+background: #f0f4f8;
+padding: 0.05em 0.35em;
+border-radius: 3px;
+font-size: 0.88em;
+color: #1A3A5C;
+}
+
+table {
+border-collapse: collapse;
+width: 100%;
+margin: 0.7em 0 0.9em 0;
+font-size: 10pt;
+page-break-inside: avoid;
+}
+thead th {
+background: #2E5C8A;
+color: white;
+padding: 0.45em 0.6em;
+text-align: left;
+}
+tbody td {
+padding: 0.35em 0.6em;
+border-bottom: 1px solid #d8e0e8;
+}
+tbody tr:nth-child(even) td {
+background: #f6f9fc;
+}
+tbody td:first-child {
+width: 2.5em;
+color: #6b7a90;
+font-variant-numeric: tabular-nums;
+}
+
+hr {
+border: 0;
+border-top: 1px dashed #c5d0de;
+margin: 1.4em 0;
+}
+
+strong { color: #1A3A5C; }
+em { color: #4a5e7a; }
+
+h2 { page-break-before: auto; break-before: auto; }
+h2[id^="day-"] {
+page-break-before: always;
+break-before: page;
+}
+
+li, tr, p { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">CockroachDB — 4-Day Course Outline</h1>
+<p class="subtitle">Distributed SQL in Practice</p>
+<p class="date">Course Outline</p>
+</header>
+<h2 id="course-objectives">Course Objectives</h2>
+<p>By the end of the course, attendees will be able to:</p>
+<ul>
+<li><strong>Explain</strong> CockroachDB’s distributed SQL architecture
+and how it achieves survivability, consistency, and scale.</li>
+<li><strong>Master</strong> the deployment, configuration, and day-2
+operations of CockroachDB clusters from a single node to
+multi-region.</li>
+<li><strong>Design</strong> schemas, optimize queries, and manage
+transactions in a distributed SQL environment.</li>
+<li><strong>Implement</strong> multi-region topologies,
+geo-partitioning, and resilience strategies for production
+workloads.</li>
+<li><strong>Apply</strong> security hardening, observability, capacity
+planning, and disaster recovery practices for production-ready
+deployments.</li>
+<li><strong>Integrate</strong> CockroachDB with application stacks: ORMs
+with retry handling, outbox patterns, connection pooling at scale.</li>
+<li><strong>Migrate</strong> from PostgreSQL using MOLT and
+zero-downtime cutover techniques.</li>
+<li><strong>Operate</strong> CockroachDB on Kubernetes with the official
+<code>cockroach-operator</code>.</li>
+</ul>
+<p><strong>Course Length:</strong> 4 Days</p>
+<hr />
+<h2 id="day-1-module-1-architecture-foundations">Day 1 — Module 1:
+Architecture &amp; Foundations</h2>
+<h3 id="introduction-to-cockroachdb">Introduction to CockroachDB</h3>
+<ul>
+<li>What CockroachDB is: a distributed SQL database built for
+survivability</li>
+<li>Comparison landscape: CockroachDB vs. PostgreSQL, Spanner,
+YugabyteDB, TiDB</li>
+<li>Use cases and when CockroachDB is the right fit</li>
+</ul>
+<h3 id="core-architecture">Core Architecture</h3>
+<ul>
+<li>Ranges, Raft consensus, leaseholders, and the distributed storage
+layer</li>
+<li>The KV layer and how SQL maps onto it</li>
+<li>Multi-active availability vs. traditional primary/replica
+models</li>
+<li>Node communication, gossip protocol, and cluster membership</li>
+</ul>
+<h3 id="installation-configuration-tooling">Installation, Configuration
+&amp; Tooling</h3>
+<ul>
+<li>Deploying a local multi-node cluster (<code>cockroach start</code>,
+<code>cockroach demo</code>)</li>
+<li>DB Console walkthrough: metrics, jobs, statements, sessions</li>
+<li>CockroachDB’s PostgreSQL wire-protocol compatibility — what works,
+what doesn’t</li>
+</ul>
+<h3 id="sql-dialect-schema-design-emphasis-patterns-for-high-volume-workloads">SQL
+Dialect &amp; Schema Design <em>(emphasis: patterns for high-volume
+workloads)</em></h3>
+<ul>
+<li>SQL dialect specifics: <code>SERIAL</code> vs. <code>UUID</code>,
+sequences, hash-sharded indexes</li>
+<li>Primary key choice as a <strong>distribution decision</strong>, not
+a uniqueness decision</li>
+<li>Data types, constraints, and indexing strategies</li>
+<li>Introducing the <strong>Schema Patterns Playbook</strong> that runs
+through Days 2-4:
+<ul>
+<li>Hash-Sharded Time-Series PK</li>
+<li>Append-Only Event Log</li>
+<li>Per-Tenant Co-located PK</li>
+<li>Sharded Counter</li>
+<li>Time-Bucketed Composite PK</li>
+<li>Hot/Cold Split via Partial Index</li>
+<li>GLOBAL Reference Table</li>
+<li>Outbox Pattern + CDC</li>
+<li>TTL Table for Automatic Expiry</li>
+<li>Pre-Split + Bulk Import</li>
+</ul></li>
+</ul>
+<h3 id="day-1-labs">Day 1 Labs</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Lab</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Cluster Bootstrap &amp; Lifecycle</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>2</td>
+<td>DB Console &amp; SQL Operational Tour</td>
+<td>70 min</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Schema Design — Hotspots &amp; Distribution Strategies</td>
+<td>70 min</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Indexing Strategies — Every Index Type That Matters</td>
+<td>70 min</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="day-2-module-2-distributed-operations-resilience">Day 2 — Module
+2: Distributed Operations &amp; Resilience</h2>
+<h3 id="transactions-consistency">Transactions &amp; Consistency</h3>
+<ul>
+<li>Transaction model: serializable isolation by default</li>
+<li>MVCC, read/write intents, transaction contention and retries</li>
+<li>Follower reads, <code>AS OF SYSTEM TIME</code>, and stale-read
+trade-offs</li>
+<li><code>SELECT FOR UPDATE</code> and pessimistic locking patterns</li>
+</ul>
+<h3 id="query-optimization">Query Optimization</h3>
+<ul>
+<li><code>EXPLAIN</code> / <code>EXPLAIN ANALYZE</code> for query
+analysis</li>
+<li>Index selection, statistics collection, cost-based optimization</li>
+<li>DistSQL plans, vectorized execution, statement diagnostics
+bundles</li>
+<li>Common anti-patterns: sequential keys, cross-range transactions,
+implicit transactions</li>
+</ul>
+<h3 id="multi-region-topologies-resilience">Multi-Region Topologies
+&amp; Resilience</h3>
+<ul>
+<li>Replication zones and zone configurations</li>
+<li>Geo-partitioned tables: <code>REGIONAL BY ROW</code>,
+<code>REGIONAL BY TABLE</code>, <code>GLOBAL</code></li>
+<li>Multi-region cluster topologies: survival goals (zone
+vs. region)</li>
+<li>Failure-domain math: replicas, quorum, and what survives what</li>
+</ul>
+<h3 id="replication-rebalancing-repair">Replication, Rebalancing &amp;
+Repair</h3>
+<ul>
+<li>Allocator internals and decision-making</li>
+<li>Node decommissioning, rebalancing, and recovery flows</li>
+<li>Reading and acting on under-replicated range alerts</li>
+</ul>
+<h3 id="high-volume-schema-patterns">High-Volume Schema Patterns</h3>
+<ul>
+<li><strong>Hash-Sharded Time-Series PK</strong> — write-heavy
+timestamp-ordered data without rightmost-range hotspots</li>
+<li><strong>Append-Only Event Log</strong> — UUID PK, no updates, TTL
+cleanup</li>
+<li><strong>Time-Bucketed Composite PK</strong> —
+<code>(tenant_id, hour_bucket, id)</code> for fast time-range
+queries</li>
+<li><strong>Sharded Counter</strong> — replaces single-row
+<code>UPDATE counter SET n = n + 1</code></li>
+<li><strong>Hot/Cold Split</strong> — small partial index on “recent”
+rows plus full table for archives</li>
+<li><strong>Outbox Pattern</strong> — events table written in the same
+transaction as business data, shipped downstream via CDC</li>
+<li><strong>Anti-patterns to avoid</strong>: <code>SERIAL</code> on hot
+paths, low-cardinality lead columns, single-row queues, “index
+everything”</li>
+</ul>
+<h3 id="throughput-engineering">Throughput Engineering</h3>
+<ul>
+<li>Bulk loading: <code>IMPORT INTO</code> vs <code>COPY</code> vs
+multi-row <code>INSERT</code> vs single-row inserts</li>
+<li>Pre-splits at scale: <code>ALTER TABLE ... SPLIT AT</code> before
+bulk imports</li>
+<li>Online schema changes: what runs as a background job and what
+doesn’t</li>
+<li>Range size tuning for very-large tables</li>
+<li>Connection pooling for high-write workloads (PgBouncer transaction
+mode, HikariCP sizing)</li>
+<li>Measuring throughput: <code>cockroach workload</code>, p99 latency
+vs sustained QPS</li>
+</ul>
+<h3 id="day-2-labs">Day 2 Labs</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Lab</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5</td>
+<td>Transactions, Contention &amp; Retry Loops</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>6</td>
+<td>EXPLAIN ANALYZE &amp; Query Tuning</td>
+<td>70 min</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Multi-Region Topologies &amp; Survival Goals</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Throughput Engineering — Bulk Import, Batching &amp; Schema
+Pattern Playbook</strong></td>
+<td>75 min</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="day-3-module-3-production-operations-security">Day 3 — Module 3:
+Production Operations &amp; Security</h2>
+<h3 id="observability-stack">Observability Stack</h3>
+<ul>
+<li>Prometheus scrape targets, dashboards, alerting rules</li>
+<li>Grafana dashboards: built-in plus custom SLO views</li>
+<li>OpenTelemetry traces from CockroachDB</li>
+<li>Structured log channels: <code>SENSITIVE_ACCESS</code>,
+<code>USER_ADMIN</code>, <code>OPS</code>, <code>HEALTH</code></li>
+</ul>
+<h3 id="capacity-planning-hardware-sizing-throughput-target-driven">Capacity
+Planning &amp; Hardware Sizing <em>(throughput-target driven)</em></h3>
+<ul>
+<li>CPU, RAM, disk, and network budgets per node</li>
+<li>NVMe vs. network-attached storage trade-offs</li>
+<li>When to add nodes vs. upgrade existing ones</li>
+<li>Quotas, admission control, and protecting against noisy
+neighbors</li>
+<li><strong>Sizing exercises</strong> by target throughput: 1k QPS, 10k
+QPS, 100k QPS, 1M QPS</li>
+<li>Storage-to-CPU ratio for write-heavy vs read-heavy workloads</li>
+</ul>
+<h3 id="workload-simulation-benchmarking">Workload Simulation &amp;
+Benchmarking</h3>
+<ul>
+<li>The <code>cockroach workload</code> suite: KV, MovR, TPC-C, YCSB,
+ledger</li>
+<li>Generating realistic load for sizing and regression tests</li>
+<li>Reading workload output: throughput vs. p99 latency vs. tail
+behavior</li>
+</ul>
+<h3 id="backup-restore-disaster-recovery">Backup, Restore &amp; Disaster
+Recovery</h3>
+<ul>
+<li>Full, incremental, and scheduled backups (BACKUP/RESTORE, cloud
+storage, userfile)</li>
+<li>Restore strategies and point-in-time recovery</li>
+<li>Cross-cluster restore and DR runbooks</li>
+<li>RTO / RPO math: what your backup cadence actually guarantees</li>
+</ul>
+<h3 id="security-hardening">Security Hardening</h3>
+<ul>
+<li>TLS rotation procedures for node and client certs</li>
+<li>RBAC inheritance, default privileges, and least-privilege roles</li>
+<li>SSO / OIDC integration with an identity provider</li>
+<li>Audit logging end to end: enabling, capturing, shipping to a
+SIEM</li>
+<li>Compliance considerations: SOC2, GDPR, HIPAA</li>
+</ul>
+<h3 id="on-call-practices">On-Call Practices</h3>
+<ul>
+<li><code>cockroach debug zip</code> and what to capture during an
+incident</li>
+<li>Statement diagnostics bundles and how to read them</li>
+<li>Runbook structure and escalation paths</li>
+</ul>
+<h3 id="day-3-labs">Day 3 Labs</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Lab</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>9</td>
+<td>Build a Prometheus + Grafana Observability Stack with SLO
+Dashboards</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>10</td>
+<td>TPC-C Benchmark &amp; Capacity Sizing Exercise</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>11</td>
+<td>BACKUP / RESTORE / Schedules &amp; Cross-Cluster DR Drill</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Security Hardening End-to-End — TLS Rotation, SSO, Audit
+Pipeline</td>
+<td>75 min</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="day-4-module-4-advanced-features-real-world-integration">Day 4 —
+Module 4: Advanced Features &amp; Real-World Integration</h2>
+<h3 id="change-data-capture-in-depth">Change Data Capture in Depth</h3>
+<ul>
+<li>Sinks: Kafka, webhook, cloud storage, Google Pub/Sub</li>
+<li>Schema registry integration (Confluent / Apicurio)</li>
+<li>Exactly-once delivery semantics and how to configure them</li>
+<li>Resolved timestamps and the downstream frontier problem</li>
+<li>Building idempotent downstream consumers</li>
+</ul>
+<h3 id="application-integration-patterns">Application Integration
+Patterns</h3>
+<ul>
+<li>Outbox pattern using CockroachDB + CDC</li>
+<li>Idempotency keys and request-replay safety</li>
+<li>Optimistic concurrency control
+vs. <code>SELECT FOR UPDATE</code></li>
+<li>Connection pooling at scale: PgBouncer modes, HikariCP, sqlx
+pools</li>
+</ul>
+<h3 id="orm-driver-integration">ORM &amp; Driver Integration</h3>
+<ul>
+<li>Python: psycopg, SQLAlchemy with crdb retry helper</li>
+<li>Go: pgx, GORM, sqlx with crdb-go</li>
+<li>Node.js: node-postgres, Prisma, Knex</li>
+<li>Java/Kotlin: pgjdbc, Hibernate (CRDB dialect), jOOQ</li>
+</ul>
+<h3 id="schema-migrations-cicd">Schema Migrations &amp; CI/CD</h3>
+<ul>
+<li>Migration tools: Flyway, Liquibase, Atlas, golang-migrate,
+Alembic</li>
+<li>Coordinating online schema changes with rolling application
+deploys</li>
+<li>Pre-deploy backup hygiene and rollback planning</li>
+</ul>
+<h3 id="migrating-from-postgresql">Migrating from PostgreSQL</h3>
+<ul>
+<li>MOLT verifier and the dialect differences cheat sheet</li>
+<li>Zero-downtime cutover patterns: logical replication, dual-write,
+shadow reads</li>
+<li>Data movement: <code>IMPORT INTO</code>, AWS DMS, custom
+pipelines</li>
+<li>When NOT to migrate: workloads PostgreSQL still does better</li>
+</ul>
+<h3 id="kubernetes-deployment">Kubernetes Deployment</h3>
+<ul>
+<li><code>cockroach-operator</code> and CockroachDB CRDs</li>
+<li>Helm charts and cert-manager integration</li>
+<li>Pod sizing, anti-affinity, and region-aware StatefulSets</li>
+<li>Logical multi-tenancy on a shared Kubernetes cluster</li>
+</ul>
+<h3 id="advanced-features-survey">Advanced Features Survey</h3>
+<ul>
+<li>TTL (time-to-live) tables for automatic data expiry</li>
+<li>User-defined functions (UDFs)</li>
+<li>Spatial data types and queries</li>
+<li>Vector indexes (v23.2+) for embeddings and AI workloads</li>
+<li>Full-text search</li>
+</ul>
+<h3 id="cost-deployment-models">Cost &amp; Deployment Models</h3>
+<ul>
+<li>CockroachDB Serverless vs. Dedicated vs. Self-Hosted — when to use
+what</li>
+<li>Enterprise vs. Core licensing — what changes</li>
+<li>Predicting costs at the workload and team scale</li>
+</ul>
+<h3 id="day-4-labs">Day 4 Labs</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Lab</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>13</td>
+<td>CDC → Kafka → Downstream Consumer with Resolved-Timestamp
+Frontier</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Outbox Pattern + Idempotent Retry Loop in Python/Go</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Migrate a PostgreSQL Schema and Live Data with MOLT</td>
+<td>90 min</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Deploy CockroachDB on Kubernetes with cockroach-operator and
+kind</td>
+<td>90 min</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pacing-summary">Pacing Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Day</th>
+<th>Lab Time</th>
+<th>Lecture Time</th>
+<th>Total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Day 1</td>
+<td>4 × 70 = 285 min</td>
+<td>~135 min</td>
+<td>~7 hrs</td>
+</tr>
+<tr>
+<td>Day 2</td>
+<td>3 × 70 + 2 × 75 = 290 min</td>
+<td>~130 min</td>
+<td>~7 hrs</td>
+</tr>
+<tr>
+<td>Day 3</td>
+<td>4 × 75 = 300 min</td>
+<td>~120 min</td>
+<td>~7 hrs</td>
+</tr>
+<tr>
+<td>Day 4</td>
+<td>2 × 75 + 2 × 90 = 330 min</td>
+<td>~90 min</td>
+<td>~7 hrs</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~1205 min</strong></td>
+<td><strong>~475 min</strong></td>
+<td><strong>~28 hrs</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lab share: ~72% Lecture share: ~28%</strong></p>
+<hr />
+<h2 id="infrastructure-notes">Infrastructure Notes</h2>
+<ul>
+<li><strong>Labs 1–12 and 14</strong> run against
+<code>cockroach demo</code> or local <code>cockroach start</code>
+clusters — same prerequisites as the 2-day course.</li>
+<li><strong>Lab 13</strong> (CDC → Kafka) needs a Kafka broker. A small
+<code>docker-compose.yml</code> ships a single-broker Kafka alongside
+the lab.</li>
+<li><strong>Lab 15</strong> (MOLT migration) needs a PostgreSQL instance
+as the source. A <code>docker-compose.yml</code> snippet provisions
+one.</li>
+<li><strong>Lab 16</strong> (Kubernetes) needs <code>kind</code> or
+<code>minikube</code> on the learner’s machine. The containerized test
+runner uses <code>kind</code> inside the existing image with
+<code>--privileged</code>, or a sibling-DinD setup.</li>
+</ul>
+<hr />
+<h2 id="appendix-a-schema-patterns-playbook-takeaway-reference">Appendix
+A: Schema Patterns Playbook <em>(takeaway reference)</em></h2>
+<p>Named patterns introduced in Day 1, applied across Days 2–4, and
+reinforced in Lab 8. Each pattern lists its target workload, the
+canonical schema, and the trap it avoids.</p>
+<h3 id="hash-sharded-time-series-pk">1. Hash-Sharded Time-Series PK</h3>
+<p><strong>For:</strong> write-heavy, time-ordered data (events,
+metrics, audit logs)</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> <span class="kw">events</span> (</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  account_id  UUID,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  created     TIMESTAMPTZ <span class="kw">DEFAULT</span> now(),</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  payload     STRING,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (account_id, created) <span class="kw">USING</span> <span class="kw">HASH</span> <span class="kw">WITH</span> (bucket_count <span class="op">=</span> <span class="dv">16</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p><strong>Avoids:</strong> rightmost-range write hotspot on monotonic
+keys.</p>
+<h3 id="append-only-event-log">2. Append-Only Event Log</h3>
+<p><strong>For:</strong> ingest-heavy logs that are never updated and
+aged out by time</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> event_log (</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">id</span>       UUID <span class="kw">PRIMARY</span> <span class="kw">KEY</span> <span class="kw">DEFAULT</span> gen_random_uuid(),</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  ts       TIMESTAMPTZ <span class="kw">DEFAULT</span> now(),</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  payload  JSONB</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>) <span class="kw">WITH</span> (ttl_expire_after <span class="op">=</span> <span class="st">&#39;30 days&#39;</span>, ttl_job_cron <span class="op">=</span> <span class="st">&#39;@hourly&#39;</span>);</span></code></pre></div>
+<p><strong>Avoids:</strong> unbounded growth; DELETE-as-you-go jobs.</p>
+<h3 id="per-tenant-co-located-pk">3. Per-Tenant Co-located PK</h3>
+<p><strong>For:</strong> multi-tenant SaaS where most queries filter by
+tenant</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> orders (</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  tenant_id  UUID,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  order_id   UUID <span class="kw">DEFAULT</span> gen_random_uuid(),</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">..</span>.</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (tenant_id, order_id)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p><strong>Avoids:</strong> cross-range scans for single-tenant queries.
+<strong>Watch:</strong> one hot tenant becomes one hot range — combine
+with hash sharding for a hot tenant.</p>
+<h3 id="time-bucketed-composite-pk">4. Time-Bucketed Composite PK</h3>
+<p><strong>For:</strong> per-tenant time-range queries that need
+ordering</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> metrics (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  tenant_id    UUID,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  hour_bucket  TIMESTAMPTZ,           <span class="co">-- truncated to hour</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  metric_id    UUID <span class="kw">DEFAULT</span> gen_random_uuid(),</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">value</span>        <span class="dt">DECIMAL</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (tenant_id, hour_bucket, metric_id)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div>
+<p><strong>Avoids:</strong> unbounded range scans; sequential keys.</p>
+<h3 id="sharded-counter">5. Sharded Counter</h3>
+<p><strong>For:</strong> very-high-frequency counters</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> counter_shards (</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  name STRING, shard <span class="dt">INT</span>, n <span class="dt">INT</span> <span class="kw">DEFAULT</span> <span class="dv">0</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (name, shard)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- Increment: random shard pick</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="kw">UPDATE</span> counter_shards <span class="kw">SET</span> n <span class="op">=</span> n <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> name <span class="op">=</span> <span class="st">&#39;page_views&#39;</span> <span class="kw">AND</span> shard <span class="op">=</span> (<span class="kw">random</span>()<span class="op">*</span><span class="dv">16</span>):<span class="ch">:INT</span>;</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">-- Read: sum across shards</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">sum</span>(n) <span class="kw">FROM</span> counter_shards <span class="kw">WHERE</span> name <span class="op">=</span> <span class="st">&#39;page_views&#39;</span>;</span></code></pre></div>
+<p><strong>Avoids:</strong> SQLSTATE 40001 retry storms on single-row
+counters.</p>
+<h3 id="hotcold-split-via-partial-index">6. Hot/Cold Split via Partial
+Index</h3>
+<p><strong>For:</strong> big table where 99% of queries hit a small
+recent slice</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">INDEX</span> orders_open <span class="kw">ON</span> orders(total <span class="kw">DESC</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  STORING (customer_id) <span class="kw">WHERE</span> status <span class="op">=</span> <span class="st">&#39;open&#39;</span>;</span></code></pre></div>
+<p><strong>Avoids:</strong> wasting index space on rows that are never
+queried.</p>
+<h3 id="global-reference-table">7. GLOBAL Reference Table</h3>
+<p><strong>For:</strong> small read-anywhere lookup data (countries,
+currencies, feature flags)</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> country_codes (code STRING <span class="kw">PRIMARY</span> <span class="kw">KEY</span>, name STRING) LOCALITY <span class="kw">GLOBAL</span>;</span></code></pre></div>
+<p><strong>Avoids:</strong> cross-region reads on hot lookup paths.
+<strong>Watch:</strong> writes are slow.</p>
+<h3 id="outbox-pattern-cdc">8. Outbox Pattern + CDC</h3>
+<p><strong>For:</strong> publishing events atomically with business
+writes</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> events_outbox (</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">id</span>        UUID <span class="kw">PRIMARY</span> <span class="kw">KEY</span> <span class="kw">DEFAULT</span> gen_random_uuid(),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  topic     STRING <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  payload   JSONB,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  created   TIMESTAMPTZ <span class="kw">DEFAULT</span> now()</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>) <span class="kw">WITH</span> (ttl_expire_after <span class="op">=</span> <span class="st">&#39;7 days&#39;</span>);</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> CHANGEFEED <span class="cf">FOR</span> <span class="kw">TABLE</span> events_outbox <span class="kw">INTO</span> <span class="st">&#39;kafka://...&#39;</span>;</span></code></pre></div>
+<p><strong>Avoids:</strong> dual-write inconsistency between database
+and message queue.</p>
+<h3 id="ttl-table">9. TTL Table</h3>
+<p><strong>For:</strong> rows with a natural expiration date (sessions,
+tokens, soft locks)</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> sessions (</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">id</span>       UUID <span class="kw">PRIMARY</span> <span class="kw">KEY</span> <span class="kw">DEFAULT</span> gen_random_uuid(),</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  user_id  UUID,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  expires  TIMESTAMPTZ</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>) <span class="kw">WITH</span> (ttl_expiration_expression <span class="op">=</span> <span class="st">&#39;expires&#39;</span>, ttl_job_cron <span class="op">=</span> <span class="st">&#39;*/10 * * * *&#39;</span>);</span></code></pre></div>
+<p><strong>Avoids:</strong> background DELETE jobs that compete with
+live traffic.</p>
+<h3 id="pre-split-bulk-import">10. Pre-Split + Bulk Import</h3>
+<p><strong>For:</strong> one-time loads of sequential-key data
+(analytics imports, archive restores)</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ALTER</span> <span class="kw">TABLE</span> big_import <span class="kw">SPLIT</span> <span class="kw">AT</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">VALUES</span> (<span class="dv">100000</span>), (<span class="dv">200000</span>), (<span class="dv">300000</span>), <span class="op">..</span>., (<span class="dv">900000</span>);</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>IMPORT <span class="kw">INTO</span> big_import (<span class="kw">id</span>, payload)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>CSV <span class="kw">DATA</span> (<span class="st">&#39;s3://...&#39;</span>);</span></code></pre></div>
+<p><strong>Avoids:</strong> writing 100M rows into a single range, then
+waiting for the splitter to catch up.</p>
+<h3 id="anti-patterns-to-spot-in-code-review">Anti-Patterns to Spot in
+Code Review</h3>
+<ul>
+<li><code>id SERIAL PRIMARY KEY</code> on a high-volume table → use UUID
+or hash-sharded</li>
+<li><code>UPDATE counters SET n = n + 1 WHERE id = &#39;...&#39;</code> → use
+Sharded Counter</li>
+<li>Low-cardinality lead column in PK (<code>region</code>,
+<code>status</code>, …) → reorder or rethink</li>
+<li>Indexes on every column “just in case” → write amplification
+multiplies inserts</li>
+<li><code>DELETE FROM logs WHERE created &lt; ...</code> as a recurring
+job → use TTL Table</li>
+<li>Application reads then writes without <code>BEGIN ... COMMIT</code>
+→ no atomicity guarantees</li>
+<li>Writing to Kafka <strong>and</strong> database from app code → use
+Outbox + CDC instead</li>
+</ul>
+</body>
+</html>

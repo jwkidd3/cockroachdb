@@ -1,0 +1,130 @@
+/* Print stylesheet for the 4-day outline PDF. */
+
+@page {
+    size: letter;
+    margin: 0.75in 0.85in 0.85in 0.85in;
+}
+
+html {
+    font-size: 11pt;
+}
+
+body {
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.45;
+    color: #1f2d3d;
+    max-width: none;
+    margin: 0;
+}
+
+/* Title block */
+h1.title {
+    font-size: 28pt;
+    color: #1A3A5C;
+    margin: 0 0 0.1em 0;
+    padding-bottom: 0.3em;
+    border-bottom: 4px solid #FF6B35;
+}
+p.subtitle {
+    font-size: 14pt;
+    color: #4a5e7a;
+    margin: 0.2em 0 0.4em 0;
+    font-style: italic;
+}
+.date, p.date {
+    font-size: 10pt;
+    color: #6b7a90;
+    margin-bottom: 1.4em;
+}
+
+/* Section headings */
+h1, h2, h3, h4 {
+    color: #1A3A5C;
+    page-break-after: avoid;
+}
+h2 {
+    font-size: 18pt;
+    margin-top: 1.3em;
+    margin-bottom: 0.4em;
+    padding: 0.35em 0.55em;
+    background: linear-gradient(90deg, #DCE9F2 0%, transparent 80%);
+    border-left: 5px solid #2E5C8A;
+}
+h3 {
+    font-size: 13pt;
+    margin-top: 1em;
+    margin-bottom: 0.25em;
+    color: #2E5C8A;
+}
+h4 {
+    font-size: 11.5pt;
+    margin-top: 0.7em;
+    margin-bottom: 0.2em;
+}
+
+/* Lists */
+ul, ol {
+    margin: 0.35em 0 0.5em 1.6em;
+    padding: 0;
+}
+li {
+    margin: 0.12em 0;
+}
+
+/* Code spans */
+code {
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    background: #f0f4f8;
+    padding: 0.05em 0.35em;
+    border-radius: 3px;
+    font-size: 0.88em;
+    color: #1A3A5C;
+}
+
+/* Tables */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.7em 0 0.9em 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+}
+thead th {
+    background: #2E5C8A;
+    color: white;
+    padding: 0.45em 0.6em;
+    text-align: left;
+}
+tbody td {
+    padding: 0.35em 0.6em;
+    border-bottom: 1px solid #d8e0e8;
+}
+tbody tr:nth-child(even) td {
+    background: #f6f9fc;
+}
+tbody td:first-child {
+    width: 2.5em;
+    color: #6b7a90;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Horizontal rules become page breaks */
+hr {
+    border: 0;
+    border-top: 1px dashed #c5d0de;
+    margin: 1.4em 0;
+}
+
+/* Emphasis */
+strong { color: #1A3A5C; }
+em     { color: #4a5e7a; }
+
+/* Page break controls — Day sections each start on a fresh page. */
+h2 { page-break-before: auto; break-before: auto; }
+h2[id^="day-"] {
+    page-break-before: always;
+    break-before: page;
+}
+
+/* Avoid orphaned table headers / single bullets at page bottom */
+li, tr, p { page-break-inside: avoid; }

@@ -1,0 +1,48 @@
+# Convenience wrapper for running the lab test suite in a container.
+#
+# Build the image (once, or after Dockerfile changes):
+#   docker compose build
+#
+# Run the whole suite:
+#   docker compose run --rm tests
+#
+# Run a single lab:
+#   docker compose run --rm tests ./tests/lab03_test.sh
+#
+# Keep the container around for postmortem on failure:
+#   docker compose run --rm -e KEEP_ON_FAIL=1 tests ./tests/lab07_test.sh
+
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+      # Build for the host's architecture by default. To force a specific one:
+      #   docker compose build --build-arg TARGETARCH=arm64
+      args:
+        CRDB_VERSION: v23.2.5
+    image: crdb-labs-tests:local
+
+    # 8 GB is enough to run every lab including Lab 7's 9-node cluster.
+    # Reduce to 4 GB if you only intend to run Lab 1-6.
+    mem_limit: 8g
+    # Cockroach creates many connections / file descriptors during multi-node tests.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+    # The tests use 26257-26399 (SQL) and 8080-8146 (HTTP) inside the container.
+    # No host port mapping is needed — every connection is loopback-local to the
+    # container. Uncomment if you want to peek at the DB Console from your host
+    # while a test is paused (e.g. with KEEP_ON_FAIL=1).
+    # ports:
+    #   - "26257:26257"
+    #   - "8080:8080"
+
+    # Mount source so edits to labs/tests don't require a rebuild.
+    volumes:
+      - .:/work:cached
+
+    working_dir: /work
+    tty: true
