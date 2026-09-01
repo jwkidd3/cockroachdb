@@ -1,0 +1,6 @@
+# Keep Windows batch files CRLF so they run correctly when cloned on Windows.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts must stay LF, even on Windows checkouts.
+*.sh text eol=lf

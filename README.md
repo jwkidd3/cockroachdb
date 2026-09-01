@@ -134,6 +134,8 @@ cockroachdb/
 ├── labs/
 │   ├── SCHEMA_PATTERNS_PLAYBOOK.md            # take-home pattern catalog
 │   └── lab01..lab16_*.md                      # 16 labs
+├── scripts/
+│   └── pull_latest.bat                        # Windows: pull the latest materials
 ├── setup/                                     # instructor: student VM provisioning
 │   ├── INSTRUCTOR_SETUP.md                    # sizing, image build, launch, teardown
 │   ├── provision_student_vm.sh                # builds the golden image
@@ -196,6 +198,9 @@ Speaker notes: `S`. Overview: `O`. Print to PDF: append `?print-pdf` and use the
 - Labs are self-contained — you can drop into any lab after completing its Setup block.
 - Commands assume a Unix-like shell; Windows variants are called out where the syntax differs.
 - Between labs, `bash setup/reset_labs.sh` returns the machine to a known state.
+- To pick up lab corrections during the course, run `git pull` — or on Windows,
+  double-click [`scripts\pull_latest.bat`](scripts/pull_latest.bat), which stashes your own
+  work first and does a fast-forward-only pull so you can't land in a merge conflict mid-lab.
 
 ## Running the 2-Day Version
 
