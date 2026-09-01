@@ -136,7 +136,7 @@ By the end of the course, attendees will be able to:
 - Storage-to-CPU ratio for write-heavy vs read-heavy workloads
 
 ### Workload Simulation & Benchmarking
-- The `cockroach workload` suite: KV, MovR, TPC-C, YCSB, ledger
+- The `cockroach workload` suite: KV, MovR, TPC-C, YCSB, TPC-H, bank
 - Generating realistic load for sizing and regression tests
 - Reading workload output: throughput vs. p99 latency vs. tail behavior
 
@@ -263,8 +263,9 @@ Named patterns introduced in Day 1, applied across Days 2–4, and reinforced in
 CREATE TABLE events (
   account_id  UUID,
   created     TIMESTAMPTZ DEFAULT now(),
-  payload     STRING,
-  PRIMARY KEY (account_id, created) USING HASH WITH (bucket_count = 16)
+  id          UUID DEFAULT gen_random_uuid(),   -- per-row tiebreaker: now() is
+  payload     STRING,                           -- the TRANSACTION timestamp
+  PRIMARY KEY (account_id, created, id) USING HASH WITH (bucket_count = 16)
 );
 ```
 **Avoids:** rightmost-range write hotspot on monotonic keys.
@@ -312,9 +313,10 @@ CREATE TABLE counter_shards (
   name STRING, shard INT, n INT DEFAULT 0,
   PRIMARY KEY (name, shard)
 );
--- Increment: random shard pick
+-- Increment: the APPLICATION picks the shard (random() in a predicate is
+-- evaluated per row and silently loses or duplicates increments)
 UPDATE counter_shards SET n = n + 1
-WHERE name = 'page_views' AND shard = (random()*16)::INT;
+WHERE name = 'page_views' AND shard = $1;   -- $1 = randint(0, 15)
 -- Read: sum across shards
 SELECT sum(n) FROM counter_shards WHERE name = 'page_views';
 ```

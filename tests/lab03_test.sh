@@ -84,11 +84,15 @@ EXPLAIN_OUT=$(sql "EXPLAIN SELECT * FROM hotspots.events_composite WHERE account
 assert_contains "EXPLAIN uses a scan node" "$EXPLAIN_OUT" "scan"
 
 section "Part D — Hash-sharded composite for hot single tenant"
+# now() is the TRANSACTION timestamp, so every row from one INSERT shares it —
+# (account_id, created) alone is not unique. A time-series PK needs a per-row
+# tiebreaker or the second row fails with a duplicate key error.
 sql "USE hotspots; CREATE TABLE events_sharded (
   account_id UUID,
   created    TIMESTAMPTZ DEFAULT now(),
+  id         UUID NOT NULL DEFAULT gen_random_uuid(),
   payload    STRING NOT NULL,
-  PRIMARY KEY (account_id, created) USING HASH WITH (bucket_count = 16));" >/dev/null
+  PRIMARY KEY (account_id, created, id) USING HASH WITH (bucket_count = 16));" >/dev/null
 
 sql "USE hotspots;
 INSERT INTO events_sharded (account_id, payload)
@@ -98,10 +102,11 @@ FROM generate_series(1, 20000);" >/dev/null
 SHARDED_COUNT=$(sql_value "SELECT count(*) FROM hotspots.events_sharded;")
 assert_eq "events_sharded has 20000 rows" "$SHARDED_COUNT" "20000"
 
-# The hidden shard column should exist
-SHARD_COL=$(sql_value "SELECT column_name FROM information_schema.columns
-WHERE table_name = 'events_sharded' AND column_name LIKE '%shard%';")
-assert_contains "events_sharded has a hash-shard column" "$SHARD_COL" "shard"
+# The hidden shard column should exist. NOTE: hidden computed columns added by
+# USING HASH do not appear in information_schema.columns — read the DDL instead.
+SHARDED_DDL=$(sql "SHOW CREATE TABLE hotspots.events_sharded;")
+assert_contains "events_sharded is hash-sharded" "$SHARDED_DDL" "USING HASH"
+assert_contains "events_sharded has a hash-shard column" "$SHARDED_DDL" "shard_16"
 
 # Range query plan must reference the hash key
 EXPLAIN_HASH=$(sql "EXPLAIN SELECT * FROM hotspots.events_sharded
@@ -158,10 +163,14 @@ EVENT_COUNT=$(sql_value "SELECT count(*) FROM hotspots.event_log;")
 assert_eq "event_log loaded with 50000 rows" "$EVENT_COUNT" "50000"
 
 # A TTL job for the table should now exist
-TTL_JOB=$(sql_value "SELECT count(*) FROM [SHOW JOBS]
-  WHERE job_type = 'ROW LEVEL TTL'
-    AND description ILIKE '%event_log%';")
-assert_ge "row-level TTL job created for event_log" "$TTL_JOB" "1"
+# A ROW LEVEL TTL *job* only exists once the cron has fired (@hourly here), so a
+# freshly created table has none. What exists immediately is the TTL SCHEDULE,
+# named 'row-level-ttl: <table> [<id>]'.
+TTL_SCHED=$(sql_value "SELECT count(*) FROM [SHOW SCHEDULES] WHERE label ILIKE '%row-level-ttl%event_log%';")
+assert_ge "row-level TTL schedule created for event_log" "$TTL_SCHED" "1"
+
+TTL_DDL=$(sql "SHOW CREATE TABLE hotspots.event_log;")
+assert_contains "event_log carries its TTL storage parameters" "$TTL_DDL" "ttl_expire_after"
 
 # Verify the TTL settings are actually attached to the table
 TTL_SETTINGS=$(sql "SHOW CREATE TABLE hotspots.event_log;")

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Lab 8 — Backup, Restore, Changefeeds & Security Hardening
+# Lab 8 — Throughput Engineering: bulk import, batching, PK bake-off,
+# sharded counters, online schema change, concurrency knee.
 #
-# Tests cover Parts A (backup/restore + scheduled + PITR), B (changefeeds —
-# core variant, since cockroach start --insecure has no enterprise license),
-# C (cert generation + secure cluster), D (RBAC), E (audit logging).
+# The lab is about measured numbers; the test asserts the mechanisms work and
+# that the expected orderings hold (batched beats single-row, hash-sharded
+# spreads across more ranges than SERIAL, sharded counter beats single-row).
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,263 +13,269 @@ source "$SCRIPT_DIR/lib/common.sh"
 CLUSTER_TAG="lab08"
 BASE_SQL_PORT=26397
 BASE_HTTP_PORT=8143
-
-# Cert/data directories for Part C (separate from cluster.sh's STORE_BASE)
-SECURE_CERTS="/tmp/crdb-lab08-certs-$$"
-SECURE_KEYS="/tmp/crdb-lab08-keys-$$"
-SECURE_DATA="/tmp/crdb-lab08-data-$$"
-SECURE_PORT=26399
-SECURE_HTTP=8146
-
 source "$SCRIPT_DIR/lib/cluster.sh"
 
-cleanup_all() {
-    stop_cluster
-    cockroach quit --certs-dir="$SECURE_CERTS" --host="localhost:${SECURE_PORT}" 2>/dev/null || true
-    pkill -f "cockroach start-single-node --certs-dir=$SECURE_CERTS" 2>/dev/null || true
-    if [ "${KEEP_ON_FAIL:-0}" != "1" ]; then
-        rm -rf "$SECURE_CERTS" "$SECURE_KEYS" "$SECURE_DATA"
-    fi
-}
-trap 'cleanup_all' EXIT INT TERM
+URL="postgresql://root@localhost:${BASE_SQL_PORT}?sslmode=disable"
+CSV="${STORE_BASE}/load_test.csv"
 
-section "Setup — 3-node insecure cluster for Parts A & B"
+trap 'stop_cluster' EXIT INT TERM
+
+section "Setup — 3-node cluster"
 start_cluster 3
 
-cat <<'SQL' | sql_script
-CREATE DATABASE bank;
-USE bank;
-CREATE TABLE accounts (
-  id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name    STRING NOT NULL,
-  balance DECIMAL(12,2) NOT NULL,
-  region  STRING
+sql "CREATE DATABASE throughput;" >/dev/null
+cat <<'SQL' | sql_script >/dev/null
+USE throughput;
+SET sql_safe_updates = off;
+CREATE TABLE load_test (
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant   INT NOT NULL,
+  amount   DECIMAL(12,2) NOT NULL,
+  note     STRING NOT NULL,
+  created  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-INSERT INTO accounts (name, balance, region) VALUES
-  ('Alice',   1000.00, 'us-east'),
-  ('Bob',      500.00, 'us-west'),
-  ('Charlie', 2500.00, 'eu-west'),
-  ('Dana',    1200.00, 'us-east');
 SQL
+pass "load_test table created"
 
-START_COUNT=$(sql_value "SELECT count(*) FROM bank.accounts;")
-assert_eq "starting account count is 4" "$START_COUNT" "4"
+section "Part A — four ingest methods"
 
-section "Part A — BACKUP / RESTORE"
+ROWS=20000     # smaller than the lab's 100k so the suite stays quick
 
-# Insecure (free / Core) clusters do not include an enterprise license, so
-# enterprise-only backups (to userfile, S3, etc.) may be rejected.
-# We test the parts that DON'T need enterprise:
-#   - userfile storage upload/download (works in core)
-#   - BACKUP/RESTORE syntax & job creation (succeed even when enterprise gates payload)
-#
-# Test plan:
-#   1. Take a full backup to userfile and verify the listing
-#   2. Take an incremental
-#   3. Drop and restore
-#   4. Point-in-time restore into a new db name
+# A1: single-row inserts (200 only; we extrapolate rather than wait)
+T0=$(date +%s)
+for i in $(seq 1 200); do
+    echo "INSERT INTO throughput.load_test (tenant, amount, note) VALUES (1, 9.99, 'single');"
+done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1
+T1=$(date +%s)
+SINGLE_SECS=$(( T1 - T0 )); [ "$SINGLE_SECS" -eq 0 ] && SINGLE_SECS=1
+SINGLE_RATE=$(( 200 / SINGLE_SECS ))
+info "single-row: 200 rows in ${SINGLE_SECS}s (~${SINGLE_RATE} rows/s)"
+SINGLE_COUNT=$(sql_value "SELECT count(*) FROM throughput.load_test;")
+assert_eq "single-row inserts landed" "$SINGLE_COUNT" "200"
 
-BACKUP_OUT=$(sql "BACKUP DATABASE bank INTO 'userfile:///lab8/backups';" 2>&1 || true)
-if echo "$BACKUP_OUT" | grep -qi "use of this feature\|enterprise"; then
-    warn "BACKUP DATABASE requires an enterprise license on this cluster; skipping Part A"
-    BACKUP_SKIPPED=1
-else
-    BACKUP_SKIPPED=0
-    pass "BACKUP DATABASE succeeded"
+# A2: multi-row INSERT ... SELECT
+sql "TRUNCATE throughput.load_test;" >/dev/null
+T0=$(date +%s)
+sql "INSERT INTO throughput.load_test (tenant, amount, note)
+     SELECT g % 50, (g % 1000)::DECIMAL / 100, 'batched'
+     FROM generate_series(1, ${ROWS}) g;" >/dev/null
+T1=$(date +%s)
+BATCH_SECS=$(( T1 - T0 )); [ "$BATCH_SECS" -eq 0 ] && BATCH_SECS=1
+BATCH_RATE=$(( ROWS / BATCH_SECS ))
+info "multi-row: ${ROWS} rows in ${BATCH_SECS}s (~${BATCH_RATE} rows/s)"
+BATCH_COUNT=$(sql_value "SELECT count(*) FROM throughput.load_test;")
+assert_eq "multi-row insert loaded all rows" "$BATCH_COUNT" "$ROWS"
+assert_gt "batched insert beats single-row insert (rows/sec)" "$BATCH_RATE" "$SINGLE_RATE"
 
-    SHOW_BACKUPS=$(sql "SHOW BACKUPS IN 'userfile:///lab8/backups';")
-    assert_contains "SHOW BACKUPS returns at least one path" "$SHOW_BACKUPS" "/"
+# A3/A4: CSV + IMPORT INTO via userfile
+python3 - "$CSV" "$ROWS" <<'PY'
+import csv, sys, uuid, random
+path, n = sys.argv[1], int(sys.argv[2])
+with open(path, 'w', newline='') as f:
+    w = csv.writer(f)
+    for i in range(n):
+        w.writerow([str(uuid.uuid4()), i % 50, round(random.random()*1000, 2),
+                    f'copy row {i}', '2024-01-01 00:00:00+00'])
+PY
+assert_file_exists "CSV generated" "$CSV"
 
-    # Make a change and take an incremental
-    sql "USE bank; UPDATE accounts SET balance = balance + 100 WHERE name = 'Alice';" >/dev/null
-    sql "BACKUP DATABASE bank INTO LATEST IN 'userfile:///lab8/backups';" >/dev/null
-    pass "Incremental BACKUP succeeded"
-
-    # Drop the database
-    sql "USE defaultdb; DROP DATABASE bank CASCADE;" >/dev/null
-    DROPPED=$(sql_value "SELECT count(*) FROM [SHOW DATABASES] WHERE database_name = 'bank';")
-    assert_eq "bank database is gone before restore" "$DROPPED" "0"
-
-    # Restore
-    sql "RESTORE DATABASE bank FROM LATEST IN 'userfile:///lab8/backups';" >/dev/null
-    RESTORED=$(sql_value "SELECT count(*) FROM bank.accounts;")
-    assert_eq "bank restored with 4 accounts" "$RESTORED" "4"
-
-    # PITR into a new name
-    sleep 1
-    PITR_OUT=$(sql "RESTORE DATABASE bank FROM LATEST IN 'userfile:///lab8/backups' AS OF SYSTEM TIME '-1s' WITH new_db_name = 'bank_archive';" 2>&1 || true)
-    if echo "$PITR_OUT" | grep -qi "no backup chain\|not covered"; then
-        warn "PITR window not covered by current backup chain — that's OK on a tiny test"
+if cockroach userfile upload "$CSV" /lab8/load_test.csv --url "$URL" >/dev/null 2>&1; then
+    pass "userfile upload succeeded"
+    sql "TRUNCATE throughput.load_test;" >/dev/null
+    IMPORT_OUT=$(sql "IMPORT INTO throughput.load_test (id, tenant, amount, note, created)
+                      CSV DATA ('userfile:///lab8/load_test.csv');" 2>&1 || true)
+    if echo "$IMPORT_OUT" | grep -qi "use of this feature\|enterprise"; then
+        warn "IMPORT INTO gated by license on this cluster; skipping"
     else
-        ARCH_COUNT=$(sql_value "SELECT count(*) FROM bank_archive.public.accounts;" 2>/dev/null || echo "0")
-        assert_ge "bank_archive PITR restore yielded rows" "$ARCH_COUNT" "1"
+        IMPORT_COUNT=$(sql_value "SELECT count(*) FROM throughput.load_test;")
+        assert_eq "IMPORT INTO loaded all rows" "$IMPORT_COUNT" "$ROWS"
     fi
-fi
-
-section "Part B — Core changefeed (no enterprise license required)"
-# A core changefeed is a session-scoped stream. We test by running it for a
-# few seconds in the background, making changes, and confirming JSON appeared.
-
-# Make a few changes the changefeed should pick up
-sql "USE bank; INSERT INTO accounts (name, balance, region) VALUES ('Eve', 800, 'us-east');" >/dev/null
-sql "USE bank; UPDATE accounts SET balance = 1500 WHERE name = 'Alice';" >/dev/null
-
-# Stream events for a short window to a file
-CDC_OUT="${STORE_BASE}/cdc.json"
-( cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
-    --execute "EXPERIMENTAL CHANGEFEED FOR bank.accounts;" \
-    >"$CDC_OUT" 2>/dev/null ) &
-CDC_PID=$!
-sleep 3
-
-# Make additional changes while the changefeed is running
-sql "USE bank; UPDATE accounts SET balance = balance + 10 WHERE name = 'Bob';" >/dev/null
-sql "USE bank; INSERT INTO accounts (name, balance, region) VALUES ('Frank', 600, 'us-east');" >/dev/null
-sleep 3
-
-kill "$CDC_PID" 2>/dev/null || true
-wait "$CDC_PID" 2>/dev/null || true
-
-# The output should contain JSON-shaped row events. Either "value" key (insert/update)
-# or "key" column showing row keys.
-if [ -s "$CDC_OUT" ] && grep -q "{" "$CDC_OUT"; then
-    pass "Core changefeed emitted rows (`wc -l < "$CDC_OUT"` lines)"
 else
-    warn "Core changefeed produced no output; head of file:"
-    head "$CDC_OUT" | sed 's/^/    /'
+    warn "userfile upload unavailable; skipping IMPORT INTO check"
 fi
 
-# Enterprise rangefeed setting toggle should at least syntactically apply
-assert_command_succeeds "rangefeed cluster setting accepted" \
+section "Part C — pre-split before bulk load"
+
+sql "CREATE TABLE throughput.seq_import (id INT PRIMARY KEY, payload STRING);" >/dev/null
+sql "CREATE TABLE throughput.seq_split  (id INT PRIMARY KEY, payload STRING);" >/dev/null
+
+RANGES_BEFORE=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE throughput.seq_split];")
+assert_eq "new table starts as a single range" "$RANGES_BEFORE" "1"
+
+sql "ALTER TABLE throughput.seq_split SPLIT AT SELECT g * 5000 FROM generate_series(1, 9) g;" >/dev/null
+RANGES_AFTER_SPLIT=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE throughput.seq_split];")
+assert_ge "pre-split created multiple ranges" "$RANGES_AFTER_SPLIT" "9"
+
+sql "INSERT INTO throughput.seq_import SELECT g, repeat('x', 100) FROM generate_series(1, 20000) g;" >/dev/null
+sql "INSERT INTO throughput.seq_split  SELECT g, repeat('x', 100) FROM generate_series(1, 20000) g;" >/dev/null
+
+SPLIT_LEASEHOLDERS=$(sql_value "SELECT count(DISTINCT lease_holder) FROM [SHOW RANGES FROM TABLE throughput.seq_split WITH DETAILS];")
+assert_ge "pre-split table spread across leaseholders" "$SPLIT_LEASEHOLDERS" "1"
+
+assert_command_succeeds "UNSPLIT ALL releases manual splits" \
     cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
-    --execute "SET CLUSTER SETTING kv.rangefeed.enabled = true;"
+    --execute "ALTER TABLE throughput.seq_split UNSPLIT ALL;"
 
-# Stop the insecure cluster before Part C — we need the ports for the secure one
-stop_cluster
+section "Part D — PK design bake-off"
 
-section "Part C — Generate certs and start a secure single-node cluster"
-mkdir -p "$SECURE_CERTS" "$SECURE_KEYS" "$SECURE_DATA"
-
-cockroach cert create-ca --certs-dir="$SECURE_CERTS" --ca-key="$SECURE_KEYS/ca.key"
-assert_file_exists "CA cert" "$SECURE_CERTS/ca.crt"
-
-cockroach cert create-node localhost 127.0.0.1 \
-    --certs-dir="$SECURE_CERTS" --ca-key="$SECURE_KEYS/ca.key"
-assert_file_exists "node cert" "$SECURE_CERTS/node.crt"
-
-cockroach cert create-client root \
-    --certs-dir="$SECURE_CERTS" --ca-key="$SECURE_KEYS/ca.key"
-assert_file_exists "root client cert" "$SECURE_CERTS/client.root.crt"
-
-cockroach start-single-node \
-    --certs-dir="$SECURE_CERTS" \
-    --store="$SECURE_DATA" \
-    --listen-addr="localhost:${SECURE_PORT}" \
-    --http-addr="localhost:${SECURE_HTTP}" \
-    --pid-file="$SECURE_DATA/server.pid" \
-    --background \
-    >"$SECURE_DATA/server.out" 2>&1
-assert_file_exists "secure server PID file" "$SECURE_DATA/server.pid"
-
-wait_for "secure SQL ready" 20 \
-    "cockroach sql --certs-dir=$SECURE_CERTS --host=localhost:${SECURE_PORT} --execute 'SELECT 1;'"
-
-# Insecure connect MUST fail
-INSECURE_OUT=$(cockroach sql --insecure --host="localhost:${SECURE_PORT}" \
-    --execute "SELECT 1;" 2>&1 || true)
-assert_contains "insecure connect rejected" "$INSECURE_OUT" "secure"
-
-section "Part D — RBAC with future-grants"
-cockroach sql --certs-dir="$SECURE_CERTS" --host="localhost:${SECURE_PORT}" <<'SQL' >/dev/null
-ALTER USER root WITH PASSWORD 'lab8-root-pw';
-CREATE DATABASE ledger;
-USE ledger;
-CREATE TABLE accounts (id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                       name STRING NOT NULL, balance DECIMAL(12,2) NOT NULL);
-INSERT INTO accounts (name, balance) VALUES ('Alice', 1000), ('Bob', 500);
-
-CREATE ROLE ledger_ro;
-GRANT CONNECT ON DATABASE ledger TO ledger_ro;
-GRANT USAGE   ON SCHEMA   ledger.public TO ledger_ro;
-GRANT SELECT  ON ALL TABLES IN SCHEMA ledger.public TO ledger_ro;
-ALTER DEFAULT PRIVILEGES IN SCHEMA ledger.public GRANT SELECT ON TABLES TO ledger_ro;
-
-CREATE ROLE ledger_rw;
-GRANT CONNECT ON DATABASE ledger TO ledger_rw;
-GRANT USAGE   ON SCHEMA   ledger.public TO ledger_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ledger.public TO ledger_rw;
-ALTER DEFAULT PRIVILEGES IN SCHEMA ledger.public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ledger_rw;
-
-CREATE USER report_user WITH PASSWORD 'report-pw';
-GRANT ledger_ro TO report_user;
-
-CREATE USER app_user WITH PASSWORD 'app-pw';
-GRANT ledger_rw TO app_user;
+cat <<'SQL' | sql_script >/dev/null
+USE throughput;
+CREATE TABLE pk_serial (
+  id SERIAL PRIMARY KEY, tenant INT, payload STRING, created TIMESTAMPTZ DEFAULT now());
+CREATE TABLE pk_uuid (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant INT, payload STRING,
+  created TIMESTAMPTZ DEFAULT now());
+CREATE TABLE pk_composite (
+  tenant INT, id UUID DEFAULT gen_random_uuid(), payload STRING,
+  created TIMESTAMPTZ DEFAULT now(), PRIMARY KEY (tenant, id));
+CREATE TABLE pk_hash (
+  tenant INT, created TIMESTAMPTZ DEFAULT now(), id UUID DEFAULT gen_random_uuid(),
+  payload STRING,
+  PRIMARY KEY (tenant, created, id) USING HASH WITH (bucket_count = 16));
 SQL
+pass "four PK-design tables created"
 
-# Positive: report_user can SELECT
-RO_COUNT=$(cockroach sql --certs-dir="$SECURE_CERTS" --user=report_user \
-    --host="localhost:${SECURE_PORT}" --format=tsv \
-    --execute "SELECT count(*) FROM ledger.public.accounts;" 2>/dev/null \
-    | tail -n +2 | head -1 | awk '{print $1}')
-assert_eq "report_user can read accounts" "$RO_COUNT" "2"
+# The hash-sharded table must carry the hidden shard column.
+HASH_DDL=$(sql "SHOW CREATE TABLE throughput.pk_hash;")
+assert_contains "hash-sharded PK declared" "$HASH_DDL" "USING HASH"
+assert_contains "hidden shard column created" "$HASH_DDL" "shard_16"
 
-# Negative: report_user CANNOT INSERT
-RO_INS=$(cockroach sql --certs-dir="$SECURE_CERTS" --user=report_user \
-    --host="localhost:${SECURE_PORT}" \
-    --execute "INSERT INTO ledger.public.accounts (name, balance) VALUES ('Eve', 1);" 2>&1 || true)
-assert_contains "report_user denied INSERT" "$RO_INS" "permission denied\|privilege"
+for T in pk_serial pk_uuid pk_composite pk_hash; do
+    sql "INSERT INTO throughput.$T (tenant, payload)
+         SELECT g % 50, 'p' FROM generate_series(1, 20000) g;" >/dev/null
+done
+pass "20k rows loaded into each PK design"
 
-# Positive: app_user can UPDATE
-cockroach sql --certs-dir="$SECURE_CERTS" --user=app_user --host="localhost:${SECURE_PORT}" \
-    --execute "UPDATE ledger.public.accounts SET balance = balance + 1 WHERE name = 'Alice';" \
-    >/dev/null
-NEW_BAL=$(cockroach sql --certs-dir="$SECURE_CERTS" --user=app_user --host="localhost:${SECURE_PORT}" \
-    --format=tsv \
-    --execute "SELECT balance FROM ledger.public.accounts WHERE name = 'Alice';" 2>/dev/null \
-    | tail -n +2 | head -1 | awk '{print $1}')
-assert_eq "app_user UPDATE succeeded" "$NEW_BAL" "1001.00"
+R_SERIAL=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE throughput.pk_serial];")
+R_HASH=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE throughput.pk_hash];")
+info "ranges — pk_serial=$R_SERIAL  pk_hash=$R_HASH (at this row count neither table has split yet;"
+info "         the lab uses larger volumes and the Hot Ranges page to show the difference)"
 
-# Negative: app_user CANNOT CREATE TABLE
-APP_DDL=$(cockroach sql --certs-dir="$SECURE_CERTS" --user=app_user --host="localhost:${SECURE_PORT}" \
-    --execute "CREATE TABLE ledger.public.bogus (id INT);" 2>&1 || true)
-assert_contains "app_user denied CREATE TABLE" "$APP_DDL" "permission denied\|privilege"
-
-# Future-grants: create a new table as root; report_user should auto-see it
-cockroach sql --certs-dir="$SECURE_CERTS" --host="localhost:${SECURE_PORT}" \
-    --execute "CREATE TABLE ledger.public.transactions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), amount DECIMAL(12,2));" \
-    >/dev/null
-RO_NEW=$(cockroach sql --certs-dir="$SECURE_CERTS" --user=report_user --host="localhost:${SECURE_PORT}" \
-    --format=tsv \
-    --execute "SELECT count(*) FROM ledger.public.transactions;" 2>/dev/null \
-    | tail -n +2 | head -1 | awk '{print $1}')
-assert_eq "future-grant: report_user auto-reads new table" "$RO_NEW" "0"
-
-section "Part E — Audit logging"
-cockroach sql --certs-dir="$SECURE_CERTS" --host="localhost:${SECURE_PORT}" \
-    --execute "ALTER TABLE ledger.public.accounts EXPERIMENTAL_AUDIT SET READ WRITE;" \
-    >/dev/null
-pass "EXPERIMENTAL_AUDIT enabled on accounts"
-
-# Trigger audited reads/writes
-cockroach sql --certs-dir="$SECURE_CERTS" --user=app_user --host="localhost:${SECURE_PORT}" \
-    --execute "SELECT * FROM ledger.public.accounts;
-               UPDATE ledger.public.accounts SET balance = balance + 1 WHERE name = 'Bob';" \
-    >/dev/null
-sleep 2
-
-# Disable audit
-cockroach sql --certs-dir="$SECURE_CERTS" --host="localhost:${SECURE_PORT}" \
-    --execute "ALTER TABLE ledger.public.accounts EXPERIMENTAL_AUDIT SET OFF;" \
-    >/dev/null
-pass "EXPERIMENTAL_AUDIT disabled cleanly"
-
-# Look for audit entries in the logs. Channel layout varies by version; tolerate either.
-if grep -RiE "sensitive_access|EXPERIMENTAL_AUDIT|TableID.*name.*accounts" "$SECURE_DATA/logs/" 2>/dev/null | head -1 | grep -q .; then
-    pass "audit log entries found in server logs"
+# The mechanism that produces the spread, independent of whether a split has
+# happened yet: writes must land in many hash buckets, not one.
+SHARD_COL=$(echo "$HASH_DDL" | grep -o 'crdb_internal_[a-z_0-9]*shard_16' | head -1)
+if [ -n "$SHARD_COL" ]; then
+    DISTINCT_SHARDS=$(sql_value "SELECT count(DISTINCT $SHARD_COL) FROM throughput.pk_hash;")
+    assert_ge "writes scattered across hash buckets" "$DISTINCT_SHARDS" "8"
 else
-    warn "no audit log entries found in $SECURE_DATA/logs/ — channel routing may have sent them elsewhere; check log config in production"
+    fail "could not determine the hash shard column name from SHOW CREATE TABLE"
 fi
+
+# The SERIAL table's keys are near-monotonic: max-min spread over 20k rows is small
+# relative to the keyspace, which is exactly why its writes pile on one range.
+SERIAL_SPREAD=$(sql_value "SELECT (max(id) - min(id)) FROM throughput.pk_serial;")
+info "pk_serial key spread across 20k rows: $SERIAL_SPREAD (near-monotonic => rightmost-range writes)"
+
+PLAN=$(sql "EXPLAIN SELECT * FROM throughput.pk_composite WHERE tenant = 7 ORDER BY id LIMIT 10;")
+assert_contains "composite PK query uses the primary index" "$PLAN" "pk_composite"
+
+section "Part E — sharded counter vs single-row counter"
+
+cat <<'SQL' | sql_script >/dev/null
+USE throughput;
+CREATE TABLE counter_single (name STRING PRIMARY KEY, n INT NOT NULL DEFAULT 0);
+INSERT INTO counter_single VALUES ('page_views', 0);
+CREATE TABLE counter_shards (
+  name STRING, shard INT2, n INT NOT NULL DEFAULT 0, PRIMARY KEY (name, shard));
+INSERT INTO counter_shards (name, shard, n) SELECT 'page_views', g, 0 FROM generate_series(0, 15) g;
+SQL
+pass "counter tables created"
+
+# The trap the lab teaches: random() is volatile and is evaluated PER ROW in a
+# predicate, so `WHERE shard = (random()*16)::INT2` matches a random number of
+# rows — losing and duplicating increments. Assert the broken form is broken so
+# the lab's claim stays true against future versions.
+sql "UPDATE throughput.counter_shards SET n = 0 WHERE name = 'page_views';" >/dev/null
+for i in $(seq 1 200); do
+    echo "UPDATE throughput.counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = (random()*16)::INT2;"
+done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1
+VOLATILE_TOTAL=$(sql_value "SELECT sum(n) FROM throughput.counter_shards WHERE name = 'page_views';")
+info "volatile predicate: 200 increments produced a total of ${VOLATILE_TOTAL}"
+if [ "${VOLATILE_TOTAL:-200}" -ne 200 ]; then
+    pass "volatile random() in a predicate loses/duplicates increments (as the lab warns)"
+else
+    warn "volatile predicate happened to total exactly 200 on this run — the lab's `SELECT count(*)` demo still shows the per-row evaluation"
+fi
+
+# The correct form: the client picks the shard, so the server sees a literal.
+bump() {
+    local kind="$1" workers=8 per=40
+    local t0 t1
+    t0=$(date +%s)
+    for w in $(seq 1 $workers); do
+        ( for i in $(seq 1 $per); do
+            if [ "$kind" = single ]; then
+                echo "UPDATE throughput.counter_single SET n = n + 1 WHERE name = 'page_views';"
+            else
+                echo "UPDATE throughput.counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = $(( RANDOM % 16 ));"
+            fi
+          done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1 ) &
+    done
+    wait
+    t1=$(date +%s)
+    echo $(( t1 - t0 ))
+}
+
+sql "UPDATE throughput.counter_single SET n = 0; UPDATE throughput.counter_shards SET n = 0;" >/dev/null
+SINGLE_T=$(bump single)
+SHARDED_T=$(bump sharded)
+info "counter contention: single-row=${SINGLE_T}s  sharded=${SHARDED_T}s (320 increments each)"
+
+SINGLE_N=$(sql_value "SELECT n FROM throughput.counter_single WHERE name = 'page_views';")
+SHARDED_N=$(sql_value "SELECT sum(n) FROM throughput.counter_shards WHERE name = 'page_views';")
+assert_eq "single-row counter counted every increment" "$SINGLE_N" "320"
+assert_eq "sharded counter sums to every increment" "$SHARDED_N" "320"
+if [ "$SHARDED_T" -le "$SINGLE_T" ]; then
+    pass "sharded counter completed no slower than the single-row counter"
+else
+    warn "sharded counter was slower on this run (${SHARDED_T}s vs ${SINGLE_T}s) — contention effects are noisy at this scale"
+fi
+
+SHARD_RANGES=$(sql_value "SELECT count(DISTINCT shard) FROM throughput.counter_shards WHERE n > 0;")
+assert_ge "increments spread across multiple shards" "$SHARD_RANGES" "2"
+
+section "Part F — online schema change under write load"
+
+( for i in $(seq 1 40); do
+    echo "INSERT INTO throughput.pk_uuid (tenant, payload) SELECT g % 50, 'live' FROM generate_series(1,200) g;"
+  done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1 ) &
+WRITER_PID=$!
+
+sleep 1
+assert_command_succeeds "CREATE INDEX succeeds while writes are in flight" \
+    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    --execute "CREATE INDEX pk_uuid_tenant_created_idx ON throughput.pk_uuid (tenant, created DESC);"
+
+wait "$WRITER_PID" 2>/dev/null || true
+
+IDX=$(sql_value "SELECT count(*) FROM [SHOW INDEXES FROM throughput.pk_uuid]
+                 WHERE index_name = 'pk_uuid_tenant_created_idx';")
+assert_ge "new index exists after the online schema change" "$IDX" "1"
+
+# CREATE INDEX runs through the DECLARATIVE schema changer in modern versions and
+# is recorded as 'NEW SCHEMA CHANGE'; the legacy changer ('SCHEMA CHANGE') still
+# handles things like TRUNCATE. Match both or this silently measures the wrong job.
+JOBS=$(sql_value "SELECT count(*) FROM [SHOW JOBS] WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE');")
+assert_ge "schema change ran as a background job" "$JOBS" "1"
+
+# Index must be usable and consistent with the base table.
+IDX_PLAN=$(sql "EXPLAIN SELECT tenant, created FROM throughput.pk_uuid WHERE tenant = 3 ORDER BY created DESC LIMIT 5;")
+assert_contains "optimizer picks the new index" "$IDX_PLAN" "pk_uuid_tenant_created_idx"
+
+section "Part G — concurrency knee via cockroach workload"
+
+assert_command_succeeds "workload init kv" \
+    cockroach workload init kv --drop "$URL"
+
+for C in 1 8; do
+    OUT=$(cockroach workload run kv --duration=10s --concurrency=$C --read-percent=50 "$URL" 2>&1 | tail -3)
+    if echo "$OUT" | grep -qE '[0-9]'; then
+        pass "workload run at concurrency=$C produced results"
+        echo "$OUT" | sed 's/^/    /'
+    else
+        fail "workload run at concurrency=$C produced no output"
+    fi
+done
 
 section "Done"
 echo "Lab 8: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed."

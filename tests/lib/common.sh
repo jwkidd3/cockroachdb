@@ -72,22 +72,38 @@ assert_lt() {
     fi
 }
 
+# NOTE: these use a here-string, not `echo "$haystack" | grep`.
+# With `set -o pipefail`, `grep -q` exits on its first match and closes the pipe;
+# the writing side then dies of SIGPIPE (141) and pipefail makes the whole
+# pipeline non-zero. On a large haystack (e.g. an 800 KB /_status/vars dump)
+# that turns a real match into a FAIL — and, in assert_not_contains, turns a
+# real match into a silent PASS. A here-string has no pipeline, so no SIGPIPE.
 assert_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -q -- "$needle"; then
+    if grep -q -- "$needle" <<<"$haystack"; then
         pass "$desc (contains '$needle')"
     else
-        fail "$desc — '$needle' not found in: $haystack"
+        fail "$desc — '$needle' not found in: $(head -c 2000 <<<"$haystack")"
     fi
 }
 
 assert_not_contains() {
     local desc="$1" haystack="$2" needle="$3"
-    if echo "$haystack" | grep -q -- "$needle"; then
-        fail "$desc — unexpected '$needle' found in: $haystack"
+    if grep -q -- "$needle" <<<"$haystack"; then
+        fail "$desc — unexpected '$needle' found in: $(head -c 2000 <<<"$haystack")"
     else
         pass "$desc (does not contain '$needle')"
     fi
+}
+
+# `SHOW CLUSTER SETTING <bool>` renders as 't'/'f' in --format=tsv, but as
+# 'true'/'false' in other formats and in docs. Accept either spelling.
+assert_true() {
+    local desc="$1" actual="$2"
+    case "$actual" in
+        t|true|TRUE|True) pass "$desc (= $actual)" ;;
+        *) fail "$desc — expected a true value, got '$actual'" ;;
+    esac
 }
 
 assert_file_exists() {

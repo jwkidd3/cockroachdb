@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CockroachDB — Day 3: Production Operations &amp; Security</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/white.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/monokai.min.css">
+
+    <style>
+        /* Overflow safety: keep slide content visible when it exceeds the
+           1280x900 viewport. Without this rule, content past the bottom edge
+           silently disappears in present mode. */
+        .reveal .slides > section > section,
+        .reveal .slides > section:not(:has(section)) {
+            overflow-y: auto;
+            max-height: 88vh;
+        }
+        .reveal .slides section pre {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        .reveal .slides section pre code {
+            font-size: 0.55em;
+            line-height: 1.18;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .reveal {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+            color: #1A3A5C;
+            text-transform: none;
+        }
+
+        .reveal h1 {
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .reveal .title-slide {
+            background: linear-gradient(135deg, #0F2540 0%, #1A3A5C 50%, #2E5C8A 100%);
+            color: white !important;
+            padding: 2em;
+            border-radius: 15px;
+        }
+
+        .reveal .title-slide h1,
+        .reveal .title-slide h2 {
+            color: white !important;
+        }
+
+        .reveal .section-title {
+            background: linear-gradient(135deg, #1A3A5C 0%, #2E5C8A 100%);
+            color: white !important;
+            padding: 1.5em;
+            border-radius: 10px;
+            margin-bottom: 0.5em;
+        }
+
+        .reveal .section-title h2 {
+            color: white !important;
+            margin: 0;
+        }
+
+        .reveal .duration {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em 1em;
+            border-radius: 20px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin: 0.5em 0;
+        }
+
+        .reveal .highlight-box {
+            background: linear-gradient(120deg, #DCE9F2 0%, #EEF4FA 100%);
+            padding: 0.8em;
+            border-radius: 8px;
+            border-left: 4px solid #2E5C8A;
+            margin: 0.5em 0;
+        }
+
+        .reveal .lab-slide .highlight-box {
+            padding: 0.4em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .info-box {
+            background: #EEF4FA;
+            border: 2px solid #2E5C8A;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .warning-box {
+            background: #FFF1E6;
+            border: 2px solid #FF6B35;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .lab-slide {
+            background: linear-gradient(135deg, #FFE3D1 0%, #FFC6A3 100%);
+            border: 3px solid #FF6B35;
+            border-radius: 15px;
+            padding: 0.6em;
+            font-size: 0.75em;
+            overflow-y: auto;
+            max-height: 90vh;
+            color: #1f2d24 !important;
+        }
+
+        .reveal .lab-slide h3,
+        .reveal .lab-slide h4,
+        .reveal .lab-slide p,
+        .reveal .lab-slide li,
+        .reveal .lab-slide strong,
+        .reveal .lab-slide em {
+            color: #2A1A0F !important;
+        }
+
+        .reveal .lab-slide h3 {
+            color: #B83C0C !important;
+            margin-top: 0;
+            margin-bottom: 0.5em;
+            font-size: 1.2em;
+        }
+
+        .reveal .lab-slide h4 {
+            margin-top: 0;
+            margin-bottom: 0.2em;
+            font-size: 0.95em;
+        }
+
+        .reveal .lab-slide ul {
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide li {
+            margin: 0.1em 0;
+            line-height: 1.2;
+        }
+
+        .reveal .lab-slide pre {
+            font-size: 0.8em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide pre code {
+            color: #1a1a1a !important;
+        }
+
+        .reveal .lab-slide .lab-duration {
+            display: inline-block;
+            background: rgba(184, 60, 12, 0.12);
+            color: #B83C0C !important;
+            padding: 0.15em 0.7em;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: bold;
+            margin-left: 0.6em;
+            vertical-align: middle;
+            border: 1px solid rgba(184, 60, 12, 0.35);
+        }
+
+        .reveal .lab-slide code {
+            font-size: 0.85em;
+            color: #1a1a1a !important;
+        }
+
+        .reveal .objectives {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+            padding: 0.8em;
+            margin: 0.5em 0;
+        }
+
+        .reveal table {
+            margin: auto;
+            border-collapse: collapse;
+            border-spacing: 0;
+            font-size: 0.8em;
+        }
+
+        .reveal table th {
+            background: #2E5C8A;
+            color: white;
+            font-weight: bold;
+        }
+
+        .reveal table th,
+        .reveal table td {
+            text-align: left;
+            padding: 0.5em;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .reveal table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .reveal pre code {
+            max-height: 500px;
+            font-size: 0.6em;
+            line-height: 1.2;
+        }
+
+        .reveal .slides section .fragment {
+            opacity: 0.3;
+        }
+
+        .reveal .slides section .fragment.visible {
+            opacity: 1;
+        }
+
+        .reveal .progress {
+            background: rgba(26, 58, 92, 0.2);
+        }
+
+        .reveal .progress span {
+            background: #2E5C8A;
+        }
+
+        .reveal .controls {
+            color: #2E5C8A;
+        }
+
+        .reveal .slide-number {
+            background-color: #1A3A5C;
+            color: white;
+        }
+
+        .reveal .two-column {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .reveal .two-column > div {
+            flex: 1;
+            margin: 0 0.5em;
+        }
+
+        .reveal .crdb-logo {
+            color: #FF6B35;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .reveal .small-text {
+            font-size: 0.7em;
+        }
+
+        .reveal .code-title {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em;
+            margin: 0;
+            border-radius: 5px 5px 0 0;
+            font-size: 0.8em;
+        }
+
+        .reveal .agenda-item {
+            padding: 0.5em;
+            margin: 0.3em 0;
+            background: #f8f9fa;
+            border-left: 4px solid #2E5C8A;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .reveal .schedule-slide .agenda-item {
+            padding: 0.25em 0.6em;
+            margin: 0.12em 0;
+            font-size: 0.78em;
+        }
+
+        .reveal .schedule-slide h2 {
+            font-size: 1.6em;
+            margin-bottom: 0.4em;
+        }
+
+        .reveal .schedule-slide .section-title {
+            padding: 0.6em;
+            margin-bottom: 0.3em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Title Slide -->
+            <section class="title-slide">
+                <h1>CockroachDB</h1>
+                <h2>Day 3: Production Operations &amp; Security</h2>
+                <p style="margin-top: 2em; font-size: 1.2em;">
+                    <span class="crdb-logo">🪳 Distributed SQL</span> — observe it, size it, survive it
+                </p>
+                <p style="margin-top: 1em; opacity: 0.9;">
+                    Observability · Capacity Planning · Benchmarking · DR · Security
+                </p>
+            </section>
+
+            <!-- Day 3 Schedule -->
+            <section class="schedule-slide">
+                <h2>📅 Day 3 Schedule</h2>
+
+                <div class="section-title">
+                    <h2>Module 3: Production Operations &amp; Security</h2>
+                </div>
+
+                <div class="agenda-item">1. Observability Stack — Prometheus, Grafana, log channels</div>
+                <div class="agenda-item">🧪 <strong>Lab 9</strong> — Build the observability stack with SLO dashboards <em>(75 min)</em></div>
+                <div class="agenda-item">2. Capacity Planning &amp; Hardware Sizing</div>
+                <div class="agenda-item">3. Workload Simulation &amp; Benchmarking</div>
+                <div class="agenda-item">🧪 <strong>Lab 10</strong> — TPC-C benchmark &amp; capacity sizing <em>(75 min)</em></div>
+                <div class="agenda-item">4. Backup, Restore &amp; Disaster Recovery</div>
+                <div class="agenda-item">🧪 <strong>Lab 11</strong> — BACKUP/RESTORE/schedules &amp; cross-cluster DR drill <em>(75 min)</em></div>
+                <div class="agenda-item">5. Security Hardening &amp; On-Call Practices</div>
+                <div class="agenda-item">🧪 <strong>Lab 12</strong> — Security end-to-end: TLS rotation, SSO, audit pipeline <em>(75 min)</em></div>
+            </section>
+
+            <!-- Where we are -->
+            <section>
+                <h2>🔁 Where Days 1–2 Left Us</h2>
+                <div class="highlight-box">
+                    <ul>
+                        <li class="fragment"><strong>Day 1:</strong> the architecture, and why the <em>primary key is a distribution decision</em></li>
+                        <li class="fragment"><strong>Day 2:</strong> transactions, plan reading, multi-region — and Lab 8's measured throughput numbers</li>
+                    </ul>
+                </div>
+                <div class="info-box fragment">
+                    <p><strong>Today changes the question.</strong> Days 1–2 asked <em>"is this schema correct and fast?"</em>
+                    Day 3 asks <em>"how do I know it still is at 3am, and what do I buy to keep it that way?"</em></p>
+                </div>
+                <p class="fragment small-text">Every schema decision you made yesterday shows up today as a metric, a
+                capacity number, or a page.</p>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 1: Observability -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>📊 Section 1: The Observability Stack</h2>
+                    <p>What to measure, and what to page on</p>
+                </section>
+
+                <section>
+                    <h3>Two Thousand Metrics, Fifteen That Matter</h3>
+                    <pre><code class="language-bash">curl -s http://localhost:8080/_status/vars | wc -l
+# ~2000</code></pre>
+                    <div class="warning-box fragment">
+                        <p>A dashboard with 200 panels is a dashboard nobody reads. The job is not
+                        to display everything — it's to choose the handful that answer
+                        <em>"is it healthy?"</em> and <em>"what changed?"</em></p>
+                    </div>
+                    <p class="fragment">CockroachDB exposes metrics three ways:</p>
+                    <ul class="fragment small-text">
+                        <li><code>/_status/vars</code> — Prometheus text format, per node</li>
+                        <li><code>crdb_internal.kv_node_status</code> — the same numbers via SQL</li>
+                        <li>DB Console → Metrics — prebuilt dashboards over the same data</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3>The Short List</h3>
+                    <table style="font-size: 0.62em;">
+                        <tr><th>Metric</th><th>Signal</th><th>Page when</th></tr>
+                        <tr><td><code>ranges_unavailable</code></td><td>Lost quorum — data unreadable</td><td>&gt; 0 for 1 min 🔴</td></tr>
+                        <tr><td><code>liveness_livenodes</code></td><td>Nodes the cluster believes are up</td><td>&lt; expected 🔴</td></tr>
+                        <tr><td><code>ranges_underreplicated</code></td><td>Below target replica count</td><td>&gt; 0 for 15 min 🟠</td></tr>
+                        <tr><td><code>sql_service_latency_bucket</code></td><td>p50 / p99 SQL latency</td><td>p99 over SLO 🟠</td></tr>
+                        <tr><td><code>txn_restarts_serializable</code></td><td>40001 retries — contention</td><td>rising trend 🟠</td></tr>
+                        <tr><td><code>sys_cpu_combined_percent_normalized</code></td><td>Per-node CPU</td><td>&gt; 0.80 sustained 🟠</td></tr>
+                        <tr><td><code>capacity_available</code></td><td>Disk headroom</td><td>&lt; 20% free 🔴</td></tr>
+                        <tr><td><code>admission_wait_durations_kv_sum</code></td><td>Admission control queueing (one series per queue)</td><td>rising = overload 🟠</td></tr>
+                        <tr><td><code>rocksdb_read_amplification</code></td><td>Storage engine read cost</td><td>&gt; 20 sustained 🟠</td></tr>
+                        <tr><td><code>changefeed_max_behind_nanos</code></td><td>CDC lag</td><td>over freshness SLO 🟠</td></tr>
+                    </table>
+                    <div class="highlight-box fragment" style="margin-top:0.4em;">
+                        <p class="small-text"><strong>The one people miss:</strong> <code>txn_restarts_serializable</code>.
+                        A rising restart rate is almost always a <em>schema</em> problem surfacing as an
+                        ops problem — a single-row counter, a sequential key, an over-wide transaction.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>From Metric to SLI to Alert</h3>
+                    <p class="code-title">Recording rules — compute once, use everywhere</p>
+                    <pre><code class="language-yaml">- record: crdb:sql_latency:p99
+  expr: histogram_quantile(0.99, sum(rate(sql_service_latency_bucket[1m])) by (le))
+
+- record: crdb:sql_success_ratio
+  expr: |
+    1 - ( sum(rate(sql_failure_count[5m]))
+          / clamp_min(sum(rate(sql_query_count[5m])), 1) )</code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>SLO:</strong> 99.9% of statements complete under 100 ms over 30 days.<br>
+                        <strong>Error budget:</strong> 0.1% × 30 days ≈ 43 minutes of "too slow".</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Burn-Rate Alerting — Page on Trajectory, Not on Blips</h3>
+                    <pre><code class="language-yaml">- alert: CRDBLatencySLOFastBurn
+  expr: |
+    (1 - ( sum(rate(sql_service_latency_bucket{le="0.1"}[1h]))
+           / clamp_min(sum(rate(sql_service_latency_count[1h])), 1) ))
+    > (14.4 * 0.001)
+  for: 5m
+  labels: {severity: critical}</code></pre>
+                    <table class="fragment" style="font-size: 0.65em;">
+                        <tr><th>Burn rate</th><th>Window</th><th>Budget gone in</th><th>Action</th></tr>
+                        <tr><td>14.4×</td><td>1 hour</td><td>~2 days</td><td>Page immediately</td></tr>
+                        <tr><td>6×</td><td>6 hours</td><td>~5 days</td><td>Page</td></tr>
+                        <tr><td>3×</td><td>1 day</td><td>~10 days</td><td>Ticket</td></tr>
+                        <tr><td>1×</td><td>3 days</td><td>30 days</td><td>Nothing — that's the budget</td></tr>
+                    </table>
+                    <p class="fragment small-text">A threshold alert on "p99 &gt; 100 ms" pages you for a 30-second blip.
+                    A burn-rate alert pages you when the month is actually at risk.</p>
+                </section>
+
+                <section>
+                    <h3>Structured Log Channels</h3>
+                    <p>CockroachDB routes events to named channels. In production each one goes somewhere different.</p>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Channel</th><th>Carries</th><th>Ships to</th></tr>
+                        <tr><td><code>HEALTH</code></td><td>Node liveness, restarts, disk problems</td><td>Ops alerting</td></tr>
+                        <tr><td><code>OPS</code></td><td>Decommissioning, rebalancing, node events</td><td>Ops log</td></tr>
+                        <tr><td><code>SENSITIVE_ACCESS</code></td><td>Audited table reads/writes</td><td>SIEM</td></tr>
+                        <tr><td><code>USER_ADMIN</code></td><td>User/role creation and deletion</td><td>SIEM</td></tr>
+                        <tr><td><code>PRIVILEGES</code></td><td>GRANT / REVOKE</td><td>SIEM</td></tr>
+                        <tr><td><code>SQL_EXEC</code></td><td>Statement execution (verbose)</td><td>Debug only</td></tr>
+                        <tr><td><code>SQL_PERF</code></td><td>Slow queries</td><td>Performance triage</td></tr>
+                    </table>
+                    <pre class="fragment"><code class="language-yaml">sinks:
+  file-groups:
+    security:
+      channels: [SENSITIVE_ACCESS, USER_ADMIN, PRIVILEGES]
+      auditable: true
+      buffered-writes: false   # audit records must survive a crash</code></pre>
+                </section>
+
+                <!-- Lab 9 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 9: Prometheus + Grafana with SLO Dashboards<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Scrape all three nodes and confirm the targets are healthy</li>
+                            <li>Write recording rules for p50/p99 and a success-ratio SLI</li>
+                            <li>Alert on node loss, unavailable ranges, and error-budget burn rate</li>
+                            <li>Split log channels into health / ops / security sinks</li>
+                            <li>Capture and redact a <code>debug zip</code></li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash"># Fixed ports so the scrape config is static
+for i in 1 2 3; do cockroach start --insecure --store=/tmp/lab9/n$i \
+  --listen-addr=localhost:$((26256+i)) --http-addr=localhost:$((8079+i)) \
+  --join=localhost:26257,localhost:26258,localhost:26259 --background; done
+cockroach init --insecure --host=localhost:26257</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Lab Activities</h4>
+                        <ul>
+                            <li><strong>A:</strong> The metrics endpoint and the fifteen that matter</li>
+                            <li><strong>B:</strong> Prometheus with recording and burn-rate rules</li>
+                            <li><strong>C:</strong> Grafana — official dashboards plus a 4-panel SLO view</li>
+                            <li><strong>D:</strong> Log channels split to separate sinks</li>
+                            <li><strong>E:</strong> <code>debug zip</code>, redaction, statement bundles</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 2: Capacity Planning -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>📐 Section 2: Capacity Planning &amp; Hardware Sizing</h2>
+                    <p>From a throughput target to a purchase order</p>
+                </section>
+
+                <section>
+                    <h3>The Per-Node Budget</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Resource</th><th>Guidance</th><th>Why</th></tr>
+                        <tr><td>CPU</td><td>4–16 vCPU; ≥ 8 for production</td><td>Below 4, background work starves foreground SQL</td></tr>
+                        <tr><td>RAM</td><td>4 GB per vCPU</td><td>Cache 25% + SQL memory 25% + Go heap + page cache</td></tr>
+                        <tr><td>Disk</td><td>≤ 2.5 TB per node</td><td>Recovery and rebalance time scale with store size</td></tr>
+                        <tr><td>IOPS</td><td>≥ 500 IOPS, ≥ 30 MB/s per vCPU</td><td>Raft log + LSM compaction are write-amplifying</td></tr>
+                        <tr><td>Network</td><td>≥ 1 Gb/s; multi-region: latency ≫ bandwidth</td><td>Every write is a Raft round trip</td></tr>
+                        <tr><td>Store/CPU</td><td>~150 GB/vCPU write-heavy<br>~320 GB/vCPU read-heavy</td><td>Compaction cost scales with data per core</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>Always set <code>--cache=.25 --max-sql-memory=.25</code>.</strong>
+                        The defaults are laptop-safe, not production-correct. A node should be told it owns the machine.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>The Number That Decides Everything: Write Amplification</h3>
+                    <div class="info-box">
+                        <p>One logical <code>INSERT</code> into a table with <strong>two secondary indexes</strong>,
+                        at replication factor 3:</p>
+                        <pre style="font-size:0.75em;"><code>1 row  ×  3 KV writes (base + 2 indexes)  ×  3 replicas  =  9 physical writes</code></pre>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <p><strong>Read that again.</strong> Adding one index to a hot table increases
+                        your write hardware requirement by ~33%. That is a <em>schema</em> decision
+                        with a <em>hardware</em> price tag.</p>
+                    </div>
+                    <p class="fragment small-text">This is why Lab 8's "index tax" measurement matters more than
+                    any sizing spreadsheet: the spreadsheet takes the index count as an input.</p>
+                </section>
+
+                <section>
+                    <h3>The Sizing Formula</h3>
+                    <pre><code class="language-text">nodes_needed = ceil( target_QPS
+                     / (measured_ops_per_node × utilization_target) )
+
+utilization_target = 0.5</code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>Why 0.5 and not 0.8?</strong> The cluster must still serve traffic during:</p>
+                        <ul class="small-text">
+                            <li>A node failure (its load redistributes to the survivors)</li>
+                            <li>A rebalance (background replica movement competes for IO)</li>
+                            <li>A rolling upgrade (one node down at a time, by design)</li>
+                        </ul>
+                    </div>
+                    <p class="fragment small-text">Then check the other three constraints — storage capacity,
+                    IOPS, and store-per-vCPU — and take the largest node count of the four.
+                    <strong>The binding constraint is rarely CPU.</strong></p>
+                </section>
+
+                <section>
+                    <h3>Admission Control — Graceful Degradation</h3>
+                    <p>When demand exceeds capacity, something has to wait. Admission control chooses <em>what</em>.</p>
+                    <pre><code class="language-sql">SHOW CLUSTER SETTING admission.kv.enabled;              -- true by default
+SHOW CLUSTER SETTING admission.sql_kv_response.enabled;
+
+-- Tag a workload so its work is deprioritized
+SET default_transaction_quality_of_service = 'background';   -- analytics
+SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre>
+                    <div class="highlight-box fragment">
+                        <p class="small-text">Without admission control, an analytical scan and your checkout path
+                        compete as equals and both get slow. With it, the scan queues and checkout keeps its
+                        latency. <strong>Overload becomes a slowdown of the right thing instead of a collapse
+                        of everything.</strong></p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Benchmarking: Pick the Right Workload</h3>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Workload</th><th>Shape</th><th>Answers</th></tr>
+                        <tr><td><code>kv</code></td><td>Single-table point ops</td><td>Raw per-node ceiling</td></tr>
+                        <tr><td><code>ycsb</code></td><td>Configurable read/write mix</td><td>Read/write sensitivity</td></tr>
+                        <tr><td><code>tpcc</code></td><td>9 tables, joins, txn mix</td><td>"Can this run my OLTP app?"</td></tr>
+                        <tr><td><code>movr</code></td><td>Multi-region ride-share</td><td>Multi-region latency</td></tr>
+                        <tr><td><code>bank</code></td><td>Transfers between accounts</td><td>Contention and retry behaviour</td></tr>
+                        <tr><td><code>tpch</code></td><td>Read-only analytical queries</td><td>Scan-heavy / OLAP-style load</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>The trap:</strong> <code>kv</code> numbers look glorious and mean
+                        almost nothing for an app with joins, indexes, and foreign keys.
+                        Use <code>kv</code> for a ceiling; use <code>tpcc</code> for what you'll actually get.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Reading TPC-C Output</h3>
+                    <pre><code class="language-text">_elapsed_______tpmC____efc__avg(ms)__p50(ms)__p99(ms)_pMax(ms)
+  180.0s      126.3   98.2%     12.4     11.0     41.9     71.3</code></pre>
+                    <ul class="small-text">
+                        <li><strong>tpmC</strong> — new-order transactions per minute</li>
+                        <li><strong>efc</strong> — efficiency vs the theoretical 12.86 tpmC per warehouse</li>
+                        <li><strong>p99</strong> — the number your users actually feel</li>
+                    </ul>
+                    <div class="highlight-box fragment">
+                        <p><strong>Passing = efficiency ≥ 85%.</strong> Below that, the cluster is the bottleneck.
+                        Raise warehouses until it drops, then find out <em>which</em> resource bound first —
+                        CPU, disk, or contention.</p>
+                    </div>
+                    <p class="fragment small-text">TPC-C also teaches schema design by example: every table leads its
+                    primary key with the warehouse id. That's the Per-Tenant Co-located PK pattern, and it's
+                    why a new-order transaction touches one range instead of nine.</p>
+                </section>
+
+                <!-- Lab 10 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 10: TPC-C Benchmark &amp; Capacity Sizing<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Run TPC-C and read efficiency, tpmC, and tail latency</li>
+                            <li>Sweep warehouses until efficiency drops, then name the bottleneck</li>
+                            <li>Measure your per-node ceiling at three read/write mixes</li>
+                            <li>Watch admission control protect foreground work</li>
+                            <li>Produce sizing proposals for 1k / 10k / 100k / 1M QPS</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach workload fixtures import tpcc --warehouses=10 "$CRDB"
+cockroach workload run tpcc --warehouses=10 --ramp=30s --duration=3m "$CRDB"</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Deliverable</h4>
+                        <p style="font-size:0.8em; margin:0.2em 0;">Each pair presents one sizing scenario:
+                        node count, instance shape, <strong>the binding constraint</strong>, and the one schema
+                        decision that most changes the answer.</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 3: Backup & DR -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>💾 Section 3: Backup, Restore &amp; Disaster Recovery</h2>
+                    <p>An untested backup is a hypothesis</p>
+                </section>
+
+                <section>
+                    <h3>The Backup Vocabulary</h3>
+                    <pre><code class="language-sql">-- Full, from a slightly stale snapshot so it doesn't fight live traffic
+BACKUP DATABASE bank INTO 's3://backups/bank?AUTH=implicit'
+  AS OF SYSTEM TIME '-10s'
+  WITH revision_history;
+
+-- Incremental — auto-detects its parent
+BACKUP DATABASE bank INTO LATEST IN 's3://backups/bank?AUTH=implicit';
+
+-- Inspect without restoring
+SHOW BACKUPS IN 's3://backups/bank?AUTH=implicit';
+SHOW BACKUP FROM LATEST IN 's3://backups/bank?AUTH=implicit';</code></pre>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><code>AS OF SYSTEM TIME '-10s'</code> on <em>every</em> production backup.
+                        <code>revision_history</code> is what makes any timestamp in the window restorable,
+                        not just the backup instants.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Restore Shapes</h3>
+                    <pre><code class="language-sql">-- Side by side — never straight over the live database during a drill
+RESTORE DATABASE bank FROM LATEST IN '...' WITH new_db_name = 'bank_restored';
+
+-- One table into an existing database
+RESTORE TABLE bank.public.accounts FROM LATEST IN '...' WITH into_db = 'staging';
+
+-- Point in time
+RESTORE DATABASE bank FROM LATEST IN '...' AS OF SYSTEM TIME '2024-06-01 14:02:00';
+
+-- Whole cluster: users, roles, settings too. Needs a fresh cluster.
+RESTORE FROM LATEST IN '...';</code></pre>
+                    <div class="warning-box fragment">
+                        <p class="small-text">A <strong>database</strong> backup does not carry users, roles, or grants.
+                        A <strong>cluster</strong> backup does. Guess which one people discover mid-incident.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>RTO and RPO — Honest Arithmetic</h3>
+                    <pre><code class="language-text">worst-case RPO = incremental interval + backup duration + detection time
+actual RTO     = locate + restore + verify + cut over</code></pre>
+                    <table class="fragment" style="font-size: 0.65em;">
+                        <tr><th>Cadence</th><th>Nominal RPO</th><th>Realistic RPO</th><th>Cost</th></tr>
+                        <tr><td>Hourly incremental</td><td>1 h</td><td>~1 h 5 m</td><td>Low</td></tr>
+                        <tr><td>15-minute incremental</td><td>15 m</td><td>~18 m</td><td>Medium</td></tr>
+                        <tr><td>5-minute incremental</td><td>5 m</td><td>~7.7 m</td><td>High</td></tr>
+                        <tr><td>Changefeed to object store</td><td>seconds</td><td>seconds</td><td>Highest</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p><strong>Your RTO is a measurement, not a policy.</strong> Restore a real dataset,
+                        time it, divide by size, extrapolate. The number in the runbook is almost always
+                        smaller than the number on the stopwatch.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>The DR Drill That Counts</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>✅ A real drill</h4>
+                                <ul class="small-text">
+                                    <li>Restores into a <em>different</em> cluster</li>
+                                    <li>Verifies row counts <em>and</em> a business checksum</li>
+                                    <li>Confirms users and grants came back</li>
+                                    <li>Records a measured RTO</li>
+                                    <li>Ends with an app smoke test</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>❌ Theatre</h4>
+                                <ul class="small-text">
+                                    <li>"The backup job succeeded"</li>
+                                    <li>Restoring over the source</li>
+                                    <li>Checking that <em>a</em> row exists</li>
+                                    <li>An RTO copied from a vendor slide</li>
+                                    <li>Never testing the runbook on someone else</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text">Swap runbooks with another pair in the lab. If they can't follow
+                    yours without asking you a question, it won't work at 3am either.</p>
+                </section>
+
+                <!-- Lab 11 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 11: BACKUP / RESTORE / Schedules &amp; Cross-Cluster DR<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Full, incremental, and scheduled backups with revision history</li>
+                            <li>Restore a database, a table, and a point in time — side by side</li>
+                            <li>Run a real cross-cluster DR drill and verify it</li>
+                            <li>Compute the RPO your cadence actually guarantees</li>
+                            <li>Write a runbook someone else can follow</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash"># Cluster A (primary) on 2625x, cluster B (standby) on 2635x
+# Backups go to nodelocal:// so the lab runs offline</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Deliverable</h4>
+                        <p style="font-size:0.8em; margin:0.2em 0;">A completed drill record: backup size, backup
+                        duration, transfer time, restore time, <strong>measured RTO</strong>, and a
+                        row-count + checksum match between A and B.</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 4: Security -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🔐 Section 4: Security Hardening</h2>
+                    <p>Certificates, roles, authentication, audit</p>
+                </section>
+
+                <section>
+                    <h3>TLS Everywhere — and the Rotation Nobody Plans</h3>
+                    <pre><code class="language-bash">cockroach cert create-ca     --certs-dir=certs --ca-key=keys/ca.key
+cockroach cert create-node   localhost 127.0.0.1 --certs-dir=certs --ca-key=keys/ca.key
+cockroach cert create-client root --certs-dir=certs --ca-key=keys/ca.key</code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>Rotation without downtime:</strong> reissue the cert, then
+                        <code>kill -SIGHUP &lt;pid&gt;</code>. The node reloads certificates in place —
+                        open connections stay open.</p>
+                    </div>
+                    <table class="fragment" style="font-size: 0.65em;">
+                        <tr><th>Cert</th><th>Lifetime</th><th>Rotate at</th></tr>
+                        <tr><td>CA</td><td>5–10 years</td><td>50% of life, planned</td></tr>
+                        <tr><td>Node</td><td>1 year</td><td>3 months before expiry</td></tr>
+                        <tr><td>Client</td><td>1 year (shorter for humans)</td><td>Quarterly, automated</td></tr>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>Rotating the CA — Order Matters</h3>
+                    <pre><code class="language-text">1. Append the NEW CA to ca.crt on every node and client   (both trusted)
+2. SIGHUP every node
+3. Re-issue node and client certs from the new CA, one node at a time
+4. Remove the OLD CA from ca.crt
+5. SIGHUP every node again</code></pre>
+                    <div class="warning-box fragment">
+                        <p>Doing steps 3 and 4 in the wrong order <strong>locks you out of your own cluster</strong>.
+                        Write the procedure down before you need it, and rehearse it on a throwaway cluster.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>RBAC That Survives CI/CD</h3>
+                    <pre><code class="language-sql">CREATE ROLE ledger_connect;
+GRANT CONNECT ON DATABASE ledger TO ledger_connect;
+GRANT USAGE ON SCHEMA ledger.public TO ledger_connect;
+
+CREATE ROLE ledger_ro;   GRANT ledger_connect TO ledger_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA ledger.public TO ledger_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA ledger.public GRANT SELECT ON TABLES TO ledger_ro;
+
+CREATE ROLE ledger_rw;   GRANT ledger_ro TO ledger_rw;
+CREATE ROLE ledger_migrator; GRANT ledger_rw TO ledger_migrator;
+GRANT CREATE ON SCHEMA ledger.public TO ledger_migrator;</code></pre>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>Do this first, or the rest is decorative:</strong>
+                        a new database's <code>public</code> schema grants <strong>CREATE to the
+                        <code>public</code> role</strong> — every user can create objects in it.</p>
+                        <pre style="font-size:0.7em; margin:0.2em 0;"><code class="language-sql">REVOKE CREATE ON SCHEMA ledger.public FROM public;</code></pre>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <p><strong><code>ALTER DEFAULT PRIVILEGES</code> is the feature that matters.</strong>
+                        Without it, every migration that creates a table also needs a matching
+                        <code>GRANT</code> — and the one someone forgets is the one that pages you.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Authentication: HBA and SSO</h3>
+                    <pre><code class="language-sql">SET CLUSTER SETTING server.host_based_authentication.configuration = '
+# TYPE  DATABASE  USER          ADDRESS  METHOD
+host    all       app_user      all      cert
+host    all       report_user   all      cert-password
+host    all       all           all      scram-sha-256
+';</code></pre>
+                    <pre class="fragment"><code class="language-sql">-- DB Console SSO
+SET CLUSTER SETTING server.oidc_authentication.enabled = true;
+SET CLUSTER SETTING server.oidc_authentication.provider_url = 'https://idp.example.com';
+-- SQL client SSO
+SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><strong>The operational argument for SSO:</strong> deprovisioning a human
+                        in the IdP removes their database access. Without it, offboarding depends on someone
+                        remembering to run <code>DROP USER</code>.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>The Audit Pipeline</h3>
+                    <pre><code class="language-sql">ALTER TABLE ledger.public.accounts EXPERIMENTAL_AUDIT SET READ WRITE;</code></pre>
+                    <p>Every access produces a structured record on the <code>SENSITIVE_ACCESS</code> channel:</p>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Field</th><th>The auditor's question</th></tr>
+                        <tr><td><code>Timestamp</code></td><td>When</td></tr>
+                        <tr><td><code>User</code></td><td>Who</td></tr>
+                        <tr><td><code>TableName</code></td><td>What data</td></tr>
+                        <tr><td><code>Statement</code></td><td>What operation</td></tr>
+                        <tr><td><code>ApplicationName</code></td><td>Which service</td></tr>
+                        <tr><td><code>RemoteAddress</code></td><td>From where</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>Ship it off-box.</strong> An attacker with node access can delete
+                        local log files. Audit records that already left the machine cannot be un-sent.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>On-Call: What to Capture Before You Escalate</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4><code>debug zip</code></h4>
+                                <pre style="font-size:0.65em;"><code class="language-bash">cockroach debug zip out.zip \
+  --host=... --redact</code></pre>
+                                <ul class="small-text">
+                                    <li>Per-node status and logs</li>
+                                    <li>Changed cluster settings</li>
+                                    <li>Range and lease state</li>
+                                    <li>In-flight queries</li>
+                                    <li>Contention events</li>
+                                    <li>Heap and goroutine dumps</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4>Statement bundle</h4>
+                                <pre style="font-size:0.65em;"><code class="language-sql">EXPLAIN ANALYZE (DEBUG)
+  SELECT ...;</code></pre>
+                                <ul class="small-text">
+                                    <li>Narrower and usually more useful</li>
+                                    <li>Plan, statistics, trace, environment</li>
+                                    <li>Reproducible by support</li>
+                                    <li>Also available in DB Console → Statements</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text"><strong>Always <code>--redact</code></strong> anything leaving your
+                    organization — a raw zip contains query text with literal values.</p>
+                </section>
+
+                <section>
+                    <h3>Compliance Mapping</h3>
+                    <table style="font-size: 0.62em;">
+                        <tr><th>Control</th><th>Framework</th><th>Feature</th></tr>
+                        <tr><td>Encryption in transit</td><td>SOC 2, HIPAA</td><td>TLS node + client certs</td></tr>
+                        <tr><td>Encryption at rest</td><td>SOC 2, HIPAA</td><td>Enterprise encryption-at-rest</td></tr>
+                        <tr><td>Least privilege</td><td>SOC 2, GDPR</td><td>Roles + default privileges</td></tr>
+                        <tr><td>Audit trail</td><td>SOC 2, HIPAA</td><td><code>SENSITIVE_ACCESS</code> channel</td></tr>
+                        <tr><td>Right to erasure</td><td>GDPR</td><td>Row deletion + TTL + backup expiry</td></tr>
+                        <tr><td>Data residency</td><td>GDPR</td><td><code>REGIONAL BY ROW</code> + zone configs</td></tr>
+                        <tr><td>Recoverability</td><td>SOC 2</td><td>Scheduled backups + a measured DR drill</td></tr>
+                        <tr><td>Deprovisioning</td><td>SOC 2</td><td>SSO / OIDC</td></tr>
+                    </table>
+                    <p class="fragment small-text">Notice how many of these are answered by <em>schema</em> and
+                    <em>topology</em> choices, not by a security product.</p>
+                </section>
+
+                <!-- Lab 12 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 12: Security Hardening End-to-End<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Build a secure cluster; prove insecure access fails</li>
+                            <li>Rotate node and client certs with zero downtime — verified on the wire</li>
+                            <li>Build a role hierarchy and test it positively <em>and</em> negatively</li>
+                            <li>Configure HBA: certs for services, SCRAM for humans</li>
+                            <li>Wire an audit pipeline and ship it off-box</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 The check people skip</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">openssl s_client -connect localhost:26257 &lt;/dev/null 2>/dev/null \
+  | openssl x509 -noout -dates</code></pre>
+                        <p style="font-size:0.65em; margin:0.2em 0;">Reissuing a cert on disk isn't rotation.
+                        Rotation is what the server actually serves.</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Day 3 Wrap -->
+            <!-- ============================================================ -->
+            <section>
+                <h2>🎯 Day 3 Wrap-Up</h2>
+                <div class="highlight-box">
+                    <ul class="small-text">
+                        <li class="fragment"><strong>Observability</strong> — fifteen metrics, burn-rate alerts, split log channels</li>
+                        <li class="fragment"><strong>Capacity</strong> — measure a per-node ceiling, size at 50% utilization, find the binding constraint</li>
+                        <li class="fragment"><strong>Write amplification</strong> — indexes × replicas is a hardware cost set by your schema</li>
+                        <li class="fragment"><strong>DR</strong> — an RTO you measured, a runbook someone else can follow</li>
+                        <li class="fragment"><strong>Security</strong> — rotation rehearsed, least privilege that survives migrations, audit shipped off-box</li>
+                    </ul>
+                </div>
+                <div class="info-box fragment">
+                    <p><strong>Tomorrow:</strong> CDC in depth, the outbox pattern, ORM and retry integration,
+                    migrating off PostgreSQL, and running all of it on Kubernetes.</p>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/notes/notes.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/zoom/zoom.min.js"></script>
+
+    <script>
+        Reveal.initialize({
+            hash: true,
+            controls: true,
+            progress: true,
+            center: true,
+            transition: 'slide',
+            transitionSpeed: 'default',
+            backgroundTransition: 'fade',
+
+            plugins: [ RevealMarkdown, RevealHighlight, RevealNotes, RevealSearch, RevealZoom ],
+
+            width: 1280,
+            height: 900,
+            margin: 0.06,
+            minScale: 0.2,
+            maxScale: 1.5,
+
+            keyboard: {
+                13: 'next',
+                27: function() {
+                    if (Reveal.isOverview()) {
+                        Reveal.toggleOverview();
+                    }
+                }
+            },
+
+            touch: true,
+            loop: false,
+            rtl: false,
+
+            fragments: true,
+            fragmentInURL: true,
+
+            autoSlide: 0,
+            autoSlideStoppable: true,
+
+            mouseWheel: false,
+            rollingLinks: false,
+            hideAddressBar: true,
+
+            highlight: {
+                highlightOnLoad: true,
+                beforeHighlight: function(hljs) {}
+            }
+        });
+
+        Reveal.addKeyBinding({keyCode: 79, key: 'O', description: 'Toggle overview'}, function() {
+            Reveal.toggleOverview();
+        });
+
+        if (window.location.search.match(/print-pdf/gi)) {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.type = 'text/css';
+            link.href = 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/css/print/pdf.min.css';
+            document.getElementsByTagName('head')[0].appendChild(link);
+        }
+
+        Reveal.configure({
+            slideNumber: 'c/t',
+            showSlideNumber: 'all'
+        });
+    </script>
+</body>
+</html>

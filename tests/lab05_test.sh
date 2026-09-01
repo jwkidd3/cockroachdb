@@ -46,10 +46,14 @@ section "Part A — Force a 40001 by interleaving two transactions"
 # We do this by holding a pipe-backed `cockroach sql` open as session A.
 
 URL="postgresql://root@localhost:${BASE_SQL_PORT}/bank?sslmode=disable"
-mkfifo "${STORE_BASE}/sessA.fifo"
-exec 3>"${STORE_BASE}/sessA.fifo"
-cockroach sql --url "$URL" <"${STORE_BASE}/sessA.fifo" >"${STORE_BASE}/sessA.out" 2>&1 &
+FIFO="${STORE_BASE}/sessA.fifo"
+mkfifo "$FIFO"
+# Order matters: opening a FIFO for WRITE blocks until a reader has it open.
+# Start the reader (session A) first, then open the write end, or the script
+# deadlocks here before session A ever exists.
+cockroach sql --url "$URL" <"$FIFO" >"${STORE_BASE}/sessA.out" 2>&1 &
 SESS_A_PID=$!
+exec 3>"$FIFO"
 sleep 1
 
 # Begin txn A and read
@@ -63,8 +67,16 @@ sql "USE bank; UPDATE accounts SET balance = balance - 100 WHERE name = 'Alice';
 echo "UPDATE accounts SET balance = balance - 50 WHERE name = 'Alice'; COMMIT;" >&3
 sleep 2
 
-# Close session A
+# Close session A. Bounded wait: a wedged session must never hang the suite.
 exec 3>&-
+for _ in $(seq 1 15); do
+    kill -0 "$SESS_A_PID" 2>/dev/null || break
+    sleep 1
+done
+if kill -0 "$SESS_A_PID" 2>/dev/null; then
+    warn "session A did not exit after closing its input; killing it"
+    kill "$SESS_A_PID" 2>/dev/null || true
+fi
 wait "$SESS_A_PID" 2>/dev/null || true
 
 if grep -q "SQLSTATE: 40001\|TransactionRetry\|restart transaction" "${STORE_BASE}/sessA.out"; then
@@ -107,10 +119,13 @@ chmod +x "$RETRY_SCRIPT"
 
 # Drive concurrent contention
 FAILS=0
-for i in {1..30}; do
+# 10+10, not 30+30: each retry script spawns its own `cockroach sql`, and a
+# full Go binary per client means 60 concurrent clients OOM an 8 GB container
+# (processes get SIGKILLed and are miscounted as retry-loop failures).
+for i in {1..10}; do
   "$RETRY_SCRIPT" Alice Bob 10 &
 done
-for i in {1..30}; do
+for i in {1..10}; do
   "$RETRY_SCRIPT" Bob Alice 10 &
 done
 for pid in $(jobs -p); do
@@ -163,20 +178,27 @@ INSERT INTO counter_shards (name, shard) SELECT 'page_views', g FROM generate_se
 SHARD_COUNT=$(sql_value "SELECT count(*) FROM bank.counter_shards;")
 assert_eq "16 shards pre-created" "$SHARD_COUNT" "16"
 
-# Drive 200 concurrent increments
-for i in {1..200}; do
-  cockroach sql --url "$URL" --execute \
-    "UPDATE counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = (random()*16)::INT;" >/dev/null 2>&1 &
+# 200 increments through 8 pooled writers. Spawning 200 `cockroach sql`
+# processes instead would need ~20 GB of RSS and thrashes the machine long
+# before it stresses the database.
+for w in $(seq 1 8); do
+  ( for i in $(seq 1 25); do
+      echo "UPDATE counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = $(( RANDOM % 16 ));"
+    done | cockroach sql --url "$URL" >/dev/null 2>&1 ) &
 done
 wait
 
+# Exactly 200 — there are no acceptable "lost updates" here. Every increment is
+# an atomic single-statement transaction, and the shard is chosen client-side,
+# so a shortfall means either a dropped statement or the volatile-random()
+# bug (a `random()` call in the WHERE clause is evaluated per row scanned).
 TOTAL=$(sql_value "SELECT sum(n) FROM bank.counter_shards WHERE name = 'page_views';")
-assert_ge "sharded counter total >= 150 (allowing for ~25 lost-update racey decrements)" "$TOTAL" "150"
+assert_eq "sharded counter counted every increment" "$TOTAL" "200"
 
 section "Part F — Contention events are observable in crdb_internal"
 # Drive heavy contention
-for i in {1..30}; do "$RETRY_SCRIPT" Alice Bob 5 & done
-for i in {1..30}; do "$RETRY_SCRIPT" Bob Alice 5 & done
+for i in {1..10}; do "$RETRY_SCRIPT" Alice Bob 5 & done
+for i in {1..10}; do "$RETRY_SCRIPT" Bob Alice 5 & done
 wait
 
 CONTENTION_EVENTS=$(sql_value "SELECT count(*) FROM crdb_internal.transaction_contention_events WHERE collection_ts > now() - INTERVAL '1 minute';")

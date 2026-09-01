@@ -86,14 +86,20 @@ AFTER_OPEN=$(sql_value "SELECT count(*) FROM shop.orders WHERE status = 'open';"
 assert_lt "open count decreased after status change" "$AFTER_OPEN" "$BEFORE_OPEN"
 
 section "Part D — Hash-sharded index for time-series writes"
-sql "USE shop; CREATE INDEX orders_placed_hashed ON orders(placed) STORING (customer_id, total) USING HASH WITH (bucket_count = 8);" >/dev/null
+# Clause order matters: ON t(col) USING HASH STORING (...) WITH (bucket_count = N).
+# 'STORING (...) USING HASH' and 'USING HASH WITH (...) STORING (...)' are both
+# syntax errors — and an un-created index makes the plan assertions below vacuous.
+sql "USE shop; CREATE INDEX orders_placed_hashed ON orders(placed) USING HASH STORING (customer_id, total) WITH (bucket_count = 8);" >/dev/null
 
 EXPLAIN_HASH=$(sql "EXPLAIN SELECT id, customer_id, total FROM shop.orders WHERE placed > now() - INTERVAL '5 minutes';")
-assert_contains "hash-sharded index plan runs" "$EXPLAIN_HASH" "scan"
+assert_contains "hash-sharded index is actually used by the plan" "$EXPLAIN_HASH" "orders_placed_hashed"
 
-# Inspect the index — should have its shard column
-HASH_IDX_SHARD=$(sql_value "SELECT count(*) FROM information_schema.columns WHERE table_name = 'orders' AND column_name LIKE '%shard%';")
-assert_ge "hash shard column added" "$HASH_IDX_SHARD" "1"
+# Inspect the index — should have its shard column.
+# NOTE: the hidden shard column does not appear in information_schema.columns;
+# read the DDL instead.
+HASH_DDL=$(sql "SHOW CREATE TABLE shop.orders;")   # qualify: sql() has no database context
+assert_contains "hash-sharded index declared" "$HASH_DDL" "USING HASH"
+assert_contains "hidden shard column present in the DDL" "$HASH_DDL" "shard_"
 
 section "Part E — Expression index"
 sql "USE shop; CREATE INDEX customers_email_lower ON customers((lower(email)));" >/dev/null

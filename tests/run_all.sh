@@ -6,16 +6,28 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-LABS=(
-    "lab01_test.sh"
-    "lab02_test.sh"
-    "lab03_test.sh"
-    "lab04_test.sh"
-    "lab05_test.sh"
-    "lab06_test.sh"
-    "lab07_test.sh"
-    "lab08_test.sh"
+# Day 1: labs 1-4   Day 2: labs 5-8   Day 3: labs 9-12   Day 4: labs 13-16
+# Run a subset with DAY=3 ./run_all.sh, or LABS_OVERRIDE="lab08_test.sh lab10_test.sh" ./run_all.sh
+ALL_LABS=(
+    "lab01_test.sh" "lab02_test.sh" "lab03_test.sh" "lab04_test.sh"
+    "lab05_test.sh" "lab06_test.sh" "lab07_test.sh" "lab08_test.sh"
+    "lab09_test.sh" "lab10_test.sh" "lab11_test.sh" "lab12_test.sh"
+    "lab13_test.sh" "lab14_test.sh" "lab15_test.sh" "lab16_test.sh"
 )
+
+case "${DAY:-all}" in
+    1) LABS=("${ALL_LABS[@]:0:4}") ;;
+    2) LABS=("${ALL_LABS[@]:4:4}") ;;
+    3) LABS=("${ALL_LABS[@]:8:4}") ;;
+    4) LABS=("${ALL_LABS[@]:12:4}") ;;
+    all) LABS=("${ALL_LABS[@]}") ;;
+    *) echo "DAY must be 1-4 or unset"; exit 2 ;;
+esac
+
+# Explicit override: LABS="lab08_test.sh lab13_test.sh" ./run_all.sh
+if [ -n "${LABS_OVERRIDE:-}" ]; then
+    read -r -a LABS <<< "$LABS_OVERRIDE"
+fi
 
 RESULTS=()
 START_TIME=$(date +%s)

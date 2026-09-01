@@ -34,6 +34,13 @@ section "Setup — 9-node cluster across 3 simulated regions"
 start_cluster 9
 
 # Confirm localities propagated
+# Localities propagate through gossip; asserting immediately after start_cluster
+# races that propagation and sees only the node we are connected to.
+wait_for "all 9 nodes have gossiped their locality" 90 \
+    "[ \"\$(cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv \
+        --execute \"SELECT count(*) FROM crdb_internal.gossip_nodes WHERE locality != '';\" \
+        | tail -n +2 | head -1)\" = '9' ]"
+
 EAST_NODES=$(sql_value "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE locality LIKE '%us-east1%';")
 WEST_NODES=$(sql_value "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE locality LIKE '%us-west1%';")
 EU_NODES=$(sql_value   "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE locality LIKE '%europe-west1%';")
@@ -43,7 +50,27 @@ assert_eq "3 nodes in europe-west1" "$EU_NODES" "3"
 
 section "Part A — Database regions and survival goal"
 sql "CREATE DATABASE shop;" >/dev/null
-sql "USE shop; ALTER DATABASE shop SET PRIMARY REGION 'us-east1';" >/dev/null
+
+# Multi-region SQL (SET PRIMARY REGION, REGIONAL BY ROW, GLOBAL, survival goals)
+# is an enterprise feature. `cockroach demo` — which the lab itself uses — ships a
+# temporary licence; a plain `cockroach start` cluster like this one does not.
+# Set COCKROACH_LICENSE (and COCKROACH_ORG) to exercise the full lab here.
+if [ -n "${COCKROACH_LICENSE:-}" ]; then
+    sql "SET CLUSTER SETTING cluster.organization = '${COCKROACH_ORG:-Lab}';" >/dev/null 2>&1 || true
+    sql "SET CLUSTER SETTING enterprise.license = '${COCKROACH_LICENSE}';" >/dev/null 2>&1 || true
+fi
+
+MR_PROBE=$(sql "USE shop; ALTER DATABASE shop SET PRIMARY REGION 'us-east1';" 2>&1 || true)
+if grep -qi "requires an enterprise license" <<<"$MR_PROBE"; then
+    warn "multi-region SQL requires an enterprise licence; skipping Parts A-E"
+    warn "the localities above are the part that works on any cluster — the lab itself"
+    warn "uses 'cockroach demo --global', which includes a temporary licence"
+    section "Done"
+    echo "Lab 7: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed (multi-region parts skipped: no licence)."
+    [ "$FAIL_COUNT" -eq 0 ]
+    exit $?
+fi
+pass "multi-region enabled: PRIMARY REGION set"
 sql "USE shop; ALTER DATABASE shop ADD REGION 'us-west1';" >/dev/null
 sql "USE shop; ALTER DATABASE shop ADD REGION 'europe-west1';" >/dev/null
 

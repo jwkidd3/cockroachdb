@@ -61,7 +61,7 @@ SET sql_safe_updates = off;        -- lets us TRUNCATE without WHERE
    ```sql
    SHOW RANGES FROM TABLE events_serial WITH DETAILS;
    SELECT count(*) AS range_count, sum(range_size_mb) AS size_mb
-   FROM [SHOW RANGES FROM TABLE events_serial];
+   FROM [SHOW RANGES FROM TABLE events_serial WITH DETAILS];
    ```
    On a small enough payload you may see only 1–2 ranges. Crucially, *all recent writes hit the rightmost range*.
 
@@ -173,10 +173,18 @@ For genuinely time-ordered access (recent events, time-range queries), use hash 
    CREATE TABLE events_sharded (
      account_id  UUID,
      created     TIMESTAMPTZ DEFAULT now(),
+     id          UUID NOT NULL DEFAULT gen_random_uuid(),
      payload     STRING NOT NULL,
-     PRIMARY KEY (account_id, created) USING HASH WITH (bucket_count = 16)
+     PRIMARY KEY (account_id, created, id) USING HASH WITH (bucket_count = 16)
    );
    ```
+
+   > ⚠️ **`id` is not decoration.** `now()` is the **transaction** timestamp — every row inserted
+   > by a single statement gets the *same* value. Without a per-row tiebreaker,
+   > `(account_id, created)` is not unique and the very next step fails with
+   > `duplicate key value violates unique constraint "events_sharded_pkey"`. Use a UUID (as here)
+   > or `clock_timestamp()` when you need genuine per-row wall-clock time.
+
 
 2. **Insert 20,000 events for ONE account** — what was a hotspot in Part C is now spread:
    ```sql
@@ -247,7 +255,7 @@ Sometimes you know up front your keys will be sequential (e.g., a one-time impor
 5. **Inspect the leaseholder placement:**
    ```sql
    SELECT lease_holder, count(*) AS ranges
-   FROM [SHOW RANGES FROM TABLE big_import]
+   FROM [SHOW RANGES FROM TABLE big_import WITH DETAILS]
    GROUP BY lease_holder;
    ```
    Roughly even? If not, the allocator may not yet have rebalanced; wait a minute and re-check.
@@ -285,16 +293,38 @@ CREATE TABLE tbl4 (
   PRIMARY KEY (region, ts)
 );
 
--- 5
+-- 5  (does this even create?)
 CREATE TABLE tbl5 (
   ts     TIMESTAMPTZ,
   shard  INT AS (mod(extract(epoch from ts)::INT, 16)) STORED,
   body   STRING,
   PRIMARY KEY (shard, ts)
 );
+
+-- 5b  the same idea, expressed the way CockroachDB actually supports
+CREATE TABLE tbl5b (
+  ts     TIMESTAMPTZ,
+  body   STRING,
+  id     UUID DEFAULT gen_random_uuid(),
+  PRIMARY KEY (ts, id) USING HASH WITH (bucket_count = 16)
+);
 ```
 
-> Expected answers: 1 hotspots (sequential). 2 distributes well. 3 hotspots per-tenant for a hot tenant (use hash sharding). 4 hotspots heavily (low-cardinality lead column) — bad. 5 distributes if `ts` writes are spread across the shard space.
+> Expected answers: 1 hotspots (sequential). 2 distributes well. 3 hotspots per-tenant for a hot
+> tenant (use hash sharding). 4 hotspots heavily (low-cardinality lead column) — bad.
+>
+> **5 is a trick question: it does not create at all.**
+> ```
+> ERROR: mod(): extract(): context-dependent operators are not allowed in STORED COMPUTED COLUMN
+> ```
+> `extract(epoch from ts)` on a `TIMESTAMPTZ` depends on the session time zone, and a stored
+> computed column must be deterministic forever — the value is written to disk once. Any
+> `TIMESTAMPTZ → INT/STRING` conversion has the same problem (`to_char(ts AT TIME ZONE 'UTC')`
+> is the escape hatch when you truly need one).
+>
+> **5b is what you actually want:** `USING HASH` builds and maintains the shard column for you,
+> with no hand-written expression to get wrong. Hand-rolled shard columns were the pattern
+> before `USING HASH` existed; there is no reason to write one now.
 
 ### Part G: Append-Only Event Log with TTL *(Playbook #2, #9)* (10 min)
 
@@ -333,7 +363,8 @@ For high-volume audit logs, metric streams, and anything that's "write once, rea
      ts  TIMESTAMPTZ DEFAULT now()
    ) WITH (ttl_expire_after = '30 seconds', ttl_job_cron = '* * * * *');
 
-   INSERT INTO ttl_demo SELECT NULL, now() FROM generate_series(1, 100);
+   -- list the column: SELECT NULL, now() would try to write NULL into the PK
+   INSERT INTO ttl_demo (ts) SELECT now() FROM generate_series(1, 100);
    SELECT count(*) FROM ttl_demo;        -- 100
 
    -- Wait ~90 seconds for TTL to expire + a job run

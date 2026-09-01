@@ -84,7 +84,7 @@ assert_not_contains "Q2 plan has no index join" "$PLAN_Q2_AFTER" "index join"
 
 section "Part B — Hash-sharded placed index for Q1"
 sql "USE catalog;
-CREATE INDEX orders_by_placed ON orders(placed DESC) STORING (product_id, total) USING HASH WITH (bucket_count = 8);" >/dev/null
+CREATE INDEX orders_by_placed ON orders(placed DESC) USING HASH STORING (product_id, total) WITH (bucket_count = 8);" >/dev/null
 
 PLAN_Q1_AFTER=$(sql "EXPLAIN SELECT p.category, count(*) FROM catalog.orders o JOIN catalog.products p ON o.product_id = p.id WHERE o.placed > now() - INTERVAL '1 hour' GROUP BY p.category;")
 assert_contains "Q1 plan runs after hash-sharded index added" "$PLAN_Q1_AFTER" "scan"

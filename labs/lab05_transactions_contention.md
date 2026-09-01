@@ -262,13 +262,23 @@ Single-row counters (`UPDATE counters SET n = n + 1`) are a classic CockroachDB 
    SELECT 'page_views', g FROM generate_series(0, 15) g;
    ```
 
-2. **Increment with a random shard:**
+2. **Increment a shard — and note where the shard is chosen:**
    ```sql
-   -- Pick a random shard each time
+   -- The application picks the shard; here it arrives as a literal
    UPDATE counter_shards
    SET n = n + 1
-   WHERE name = 'page_views' AND shard = (random() * 16)::INT;
+   WHERE name = 'page_views' AND shard = 7;      -- app: randint(0, 15)
    ```
+
+   > ⚠️ **Do not write `WHERE shard = (random()*16)::INT`.** `random()` is a *volatile* function,
+   > and a volatile function in a predicate is evaluated **once per row scanned** — so the
+   > statement matches a random *number* of shard rows: sometimes zero (the increment is
+   > silently lost), sometimes several (it double-counts). Prove it to yourself:
+   > ```sql
+   > SELECT count(*) FROM counter_shards WHERE shard = (random()*16)::INT;   -- run it 8 times
+   > ```
+   > Pick the shard in the application, where the value is stable. Lab 8 Part E measures the
+   > damage the wrong form does.
 
 3. **Read the total — sum across shards:**
    ```sql
@@ -277,14 +287,23 @@ Single-row counters (`UPDATE counters SET n = n + 1`) are a classic CockroachDB 
 
 4. **Drive concurrent increments and watch contention disappear:**
    ```bash
-   for i in {1..200}; do
-     cockroach sql --url "$CRDB_URL" \
-       --execute "UPDATE counter_shards SET n = n + 1
-                  WHERE name = 'page_views' AND shard = (random()*16)::INT;" &
+   # 8 concurrent writers, 25 increments each. Note the shape: statements are
+   # PIPED into 8 long-lived shells rather than spawning 200 processes —
+   # each `cockroach sql` is a full binary, and 200 of them will exhaust the
+   # memory on a laptop long before they stress the database.
+   for w in $(seq 1 8); do
+     ( for i in $(seq 1 25); do
+         echo "UPDATE counter_shards SET n = n + 1
+               WHERE name = 'page_views' AND shard = $((RANDOM % 16));"
+       done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1 ) &
    done
    wait
    ```
-   Compare to incrementing a single-row counter — orders of magnitude better.
+   ```sql
+   SELECT sum(n) AS total FROM counter_shards WHERE name = 'page_views';  -- must be 200 + earlier
+   ```
+   Every increment landed, and contention is spread across 16 rows instead of piling onto one.
+   Compare to incrementing a single-row counter — orders of magnitude better under concurrency.
 
 ### Part F: Diagnose Contention in DB Console & SQL (10 min)
 

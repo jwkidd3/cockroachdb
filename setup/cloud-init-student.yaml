@@ -1,0 +1,32 @@
+#cloud-config
+# Cloud-init for student VMs launched FROM the golden image.
+# The heavy lifting was done when the image was built; this only handles
+# per-instance setup.
+
+package_update: false
+
+write_files:
+  - path: /etc/motd
+    permissions: '0644'
+    content: |
+
+      ╔══════════════════════════════════════════════════════════════╗
+      ║   CockroachDB — Distributed SQL in Practice (4 days)         ║
+      ╠══════════════════════════════════════════════════════════════╣
+      ║   Course materials:  ~/cockroachdb-course                    ║
+      ║   Reset between labs: bash ~/cockroachdb-course/setup/reset_labs.sh
+      ║   Quick cluster:      crdemo                                 ║
+      ║   Quick SQL:          crsql                                  ║
+      ║   DB Console:         http://localhost:8080 (via SSH tunnel) ║
+      ╚══════════════════════════════════════════════════════════════╝
+
+runcmd:
+  # Confirm the ulimit and sysctl settings survived the image capture.
+  - [ sysctl, --system ]
+  - [ systemctl, restart, docker ]
+  # Freshen the course materials in case labs were corrected after the image was built.
+  - [ bash, -lc, "cd /home/student/cockroachdb-course 2>/dev/null && sudo -u student git pull --ff-only || true" ]
+  # Leave a marker the verify script and the instructor can check.
+  - [ bash, -lc, "date -Is > /home/student/.provisioned_at && chown student:student /home/student/.provisioned_at" ]
+
+final_message: "Student VM ready after $UPTIME seconds"

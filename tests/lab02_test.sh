@@ -57,20 +57,24 @@ TOP_HAS_KV=$(sql_value "SELECT count(*) FROM crdb_internal.statement_statistics 
 assert_gt "statement_statistics has kv workload entries" "$TOP_HAS_KV" "0"
 
 # 3. cluster_sessions returns at least our own
-SESSION_COUNT=$(sql_value "SELECT count(*) FROM crdb_internal.cluster_sessions WHERE status = 'active';")
-assert_ge "cluster_sessions returns at least 1 active session" "$SESSION_COUNT" "1"
+# A session is only 'active' while a statement is in flight; by the time this
+# query runs, our own session is 'idle'. Count every session instead.
+SESSION_COUNT=$(sql_value "SELECT count(*) FROM crdb_internal.cluster_sessions;")
+assert_ge "cluster_sessions returns at least our own session" "$SESSION_COUNT" "1"
 
 # 4. kv_store_status has per-node entries
 STORE_ROWS=$(sql_value "SELECT count(*) FROM crdb_internal.kv_store_status;")
 assert_ge "kv_store_status has per-node rows" "$STORE_ROWS" "3"
 
 # 5. Storage usage parseable
-AVAIL=$(sql_value "SELECT (metrics->>'capacity-available')::DECIMAL FROM crdb_internal.kv_store_status LIMIT 1;")
-[ -n "$AVAIL" ] && pass "capacity-available metric is parseable ($AVAIL)" \
-    || fail "capacity-available metric missing or unparseable"
+AVAIL=$(sql_value "SELECT (metrics->>'capacity.available')::DECIMAL FROM crdb_internal.kv_store_status LIMIT 1;")
+[ -n "$AVAIL" ] && pass "capacity.available metric is parseable ($AVAIL)" \
+    || fail "capacity.available metric missing or unparseable"
 
-# 6. Ranges with table_name set (user data exists)
-USER_RANGES=$(sql_value "SELECT count(*) FROM crdb_internal.ranges_no_leases WHERE table_name = 'kv';")
+# 6. Ranges for the kv table.
+# NOTE: crdb_internal.ranges_no_leases has no table_name column (and there is no
+# crdb_internal.cluster_replicas). Use SHOW RANGES for anything table-scoped.
+USER_RANGES=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE kv.kv];")
 assert_ge "kv table has at least 1 range" "$USER_RANGES" "1"
 
 section "Part D — Custom dashboard query returns sensible values"
@@ -87,12 +91,14 @@ section "Part E — Jobs and schema change"
 sql "CREATE INDEX kv_v_idx ON kv.kv(v);" >/dev/null
 sleep 2
 
-JOB_COUNT=$(sql_value "SELECT count(*) FROM [SHOW JOBS] WHERE job_type = 'SCHEMA CHANGE';")
+# v23.2 records CREATE INDEX as 'NEW SCHEMA CHANGE' (declarative schema changer);
+# 'SCHEMA CHANGE' is the legacy changer, still used by e.g. TRUNCATE.
+JOB_COUNT=$(sql_value "SELECT count(*) FROM [SHOW JOBS] WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE');")
 assert_ge "schema change recorded as a job" "$JOB_COUNT" "1"
 
 # Wait for it to finish
 wait_for "schema change job completes" 30 \
-    "cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv --execute \"SELECT count(*) FROM [SHOW JOBS] WHERE job_type = 'SCHEMA CHANGE' AND status NOT IN ('succeeded','failed','canceled');\" | tail -n +2 | grep -q '^0\$'"
+    "cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv --execute \"SELECT count(*) FROM [SHOW JOBS] WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE') AND status NOT IN ('succeeded','failed','canceled');\" | tail -n +2 | grep -q '^0\$'"
 
 section "Part F — Session inspection"
 SESSIONS_LIST=$(sql "SELECT node_id, application_name, client_address FROM crdb_internal.cluster_sessions WHERE status = 'active';")

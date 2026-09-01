@@ -1,4 +1,4 @@
-# Lab 1: Cluster Bootstrap & Lifecycle (75 minutes)
+# Lab 1: Cluster Bootstrap & Lifecycle (75 min)
 
 ## Learning Objectives
 
@@ -7,7 +7,7 @@ By the end of this lab you will be able to:
 - Start a 3-node CockroachDB cluster two ways: via `cockroach demo` and via `cockroach start` with a real init step
 - Inspect node liveness, range distribution, and leaseholders from SQL
 - Kill nodes and observe Raft's automatic re-replication
-- Drive a graceful **decommission** of a node
+- Drive a graceful **decommission** of a node — and discover why it needs `replication factor + 1` nodes
 - Connect to the cluster with three different clients: built-in `cockroach sql`, `psql`, and a quick Python script
 - Diagnose a common "cluster won't start" error class — port collisions, join-list typos, version skew
 
@@ -226,31 +226,61 @@ Decommissioning is how you shrink a cluster in production — different from a k
    cockroach node status --host=localhost:26257 --insecure
    ```
 
-2. **Decommission node 3** (in another terminal so you can watch progress):
+2. **Try to decommission node 3 — and watch it be refused:**
    ```bash
    cockroach node decommission 3 --host=localhost:26257 --insecure
    ```
-   The command blocks until every range with a replica on node 3 has a replacement elsewhere. On a tiny cluster like ours, that's only a few seconds; on a real production node it can take many minutes.
+   ```
+   ranges blocking decommission detected
+   n3 has 67 replicas blocked with error: "0 of 2 live stores are able to take a new
+   replica for the range (2 already have a voter, 0 already have a non-voter);
+   likely not enough nodes in cluster"
+   ERROR: Cannot decommission nodes.
+   ```
 
-3. **Confirm:**
+   > **This is the lesson.** Decommissioning moves every replica off the node *before* it leaves.
+   > With 3 nodes and a replication factor of 3, each range already has a replica on all three —
+   > there is nowhere for node 3's replicas to go, so the cluster refuses rather than dropping
+   > below its replication target.
+   >
+   > **You need spare capacity to shrink: at least `replication factor + 1` nodes.** This is the
+   > single most common surprise when someone tries to scale a 3-node cluster down, and it is why
+   > the Kubernetes lab (Lab 16) insists on decommissioning *before* reducing the replica count —
+   > the same constraint, one layer up.
+
+3. **Add a fourth node so the replicas have somewhere to go:**
+   ```bash
+   cockroach start --insecure \
+     --store=lab1-data/n4 \
+     --listen-addr=localhost:26260 --http-addr=localhost:8083 \
+     --join=localhost:26257,localhost:26258,localhost:26259 \
+     --background
+   ```
+   ```bash
+   cockroach node status --host=localhost:26257 --insecure     # 4 nodes now
+   ```
+
+4. **Decommission node 3 again — now it works:**
+   ```bash
+   cockroach node decommission 3 --host=localhost:26257 --insecure
+   ```
+   The command blocks until every range with a replica on node 3 has a replacement elsewhere.
+   On a cluster this small that's seconds; on a real production node it can take many minutes.
+
+5. **Confirm:**
    ```sql
-   SELECT node_id, is_live, draining, decommissioning
-   FROM crdb_internal.gossip_nodes
-   ORDER BY node_id;
+   SELECT node_id, membership FROM crdb_internal.kv_node_liveness ORDER BY node_id;
    ```
-   Node 3 is now `decommissioning = true` and `is_live = false`. Reads/writes succeed against nodes 1 and 2; no data was lost.
+   Node 3 reports `decommissioned`; nodes 1, 2, and 4 are `active`. Reads and writes keep
+   working throughout, and no data was lost.
 
-4. **What would happen with `cockroach node decommission` on a 3-node cluster's only spare?**
-   Run the same command against node 2:
+6. **Note what recommission can and cannot do:**
    ```bash
-   cockroach node decommission 2 --host=localhost:26257 --insecure --wait=none
+   cockroach node recommission 3 --host=localhost:26257 --insecure
    ```
-   It exits quickly — but if you query the cluster a moment later, you'll see it's *stuck*. With only 1 surviving node and a replication factor of 3, ranges can't be re-replicated. The decommission stays pending.
-
-5. **Recommission node 2 to unstick the cluster:**
-   ```bash
-   cockroach node recommission 2 --host=localhost:26257 --insecure
-   ```
+   Recommission reverses a decommission that is still *in progress*. Once a node reaches
+   `decommissioned`, it is permanently out of the cluster — bringing that capacity back means
+   starting a new node, which joins with a new node ID.
 
 ### Part F: Three Ways to Connect (10 min)
 

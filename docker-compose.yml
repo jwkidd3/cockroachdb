@@ -7,7 +7,10 @@
 #   docker compose run --rm tests
 #
 # Run a single lab:
-#   docker compose run --rm tests ./tests/lab03_test.sh
+#   docker compose run --rm tests ./tests/lab08_test.sh
+#
+# Run one day's labs:
+#   docker compose run --rm -e DAY=3 tests
 #
 # Keep the container around for postmortem on failure:
 #   docker compose run --rm -e KEEP_ON_FAIL=1 tests ./tests/lab07_test.sh
@@ -23,16 +26,18 @@ services:
         CRDB_VERSION: v23.2.5
     image: crdb-labs-tests:local
 
-    # 8 GB is enough to run every lab including Lab 7's 9-node cluster.
-    # Reduce to 4 GB if you only intend to run Lab 1-6.
-    mem_limit: 8g
+    # 10 GB covers Lab 7 (9-node cluster) and Lab 11 (two 3-node clusters).
+    # Reduce to 4 GB if you only intend to run Labs 1-6.
+    # Docker-dependent parts of Labs 9, 13, 15, 16 skip inside the container
+    # (no nested Docker) — run those on the host for full coverage.
+    mem_limit: 10g
     # Cockroach creates many connections / file descriptors during multi-node tests.
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
 
-    # The tests use 26257-26399 (SQL) and 8080-8146 (HTTP) inside the container.
+    # The tests use 26257-26490 (SQL) and 8080-8230 (HTTP) inside the container.
     # No host port mapping is needed — every connection is loopback-local to the
     # container. Uncomment if you want to peek at the DB Console from your host
     # while a test is paused (e.g. with KEEP_ON_FAIL=1).

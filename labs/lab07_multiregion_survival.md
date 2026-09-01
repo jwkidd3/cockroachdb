@@ -23,6 +23,20 @@ By the end of this lab you will be able to:
 cockroach demo --global --nodes 9 --no-example-database --empty
 ```
 
+> ⚠️ **Multi-region SQL is an enterprise feature.** `SET PRIMARY REGION`, `ADD REGION`,
+> `SURVIVE ... FAILURE`, `REGIONAL BY ROW`, and `LOCALITY GLOBAL` all require a licence, and
+> without one you get
+> `use of multi-region features requires an enterprise license`.
+> **`cockroach demo` includes a temporary licence**, which is why this lab uses it. If you run
+> these steps against your own `cockroach start` cluster instead, set a trial licence first:
+> ```sql
+> SET CLUSTER SETTING cluster.organization = 'Your Org';
+> SET CLUSTER SETTING enterprise.license = 'crl-0-...';
+> ```
+> Node **localities** (`--locality=region=...`) and zone configurations are core features and
+> work on any cluster.
+
+
 You should see something like:
 
 ```text

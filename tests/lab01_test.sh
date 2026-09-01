@@ -69,21 +69,54 @@ LIVE_AFTER_RESTART=$(sql_value "SELECT count(*) FROM crdb_internal.gossip_nodes 
 assert_eq "3 live nodes after restart" "$LIVE_AFTER_RESTART" "3"
 
 # Under-replicated ranges should converge to 0
-wait_for "under-replicated ranges drop to 0" 60 \
-    "cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv --execute \"SELECT (SELECT count(*) FROM crdb_internal.ranges_no_leases WHERE array_length(replicas,1) < 3) = 0;\" | tail -n +2 | grep -q '^true'"
+# NOTE: --format=tsv renders booleans as 't'/'f', not 'true'/'false'. Grepping
+# for '^true' here never matches, so this used to burn the whole timeout and
+# fail on a perfectly healthy cluster. 120s allows for slow re-replication on a
+# resource-constrained machine.
+wait_for "under-replicated ranges drop to 0" 120 \
+    "cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv --execute \"SELECT (SELECT count(*) FROM crdb_internal.ranges_no_leases WHERE array_length(replicas,1) < 3) = 0;\" | tail -n +2 | grep -qE '^(t|true)$'"
 pass "all ranges back to full replication"
 
-section "Part E — Graceful decommission, then recommission"
-# Decommission node 3 (or whichever survived all the above)
+section "Part E — Decommission needs spare capacity"
 DECOMM_NODE=3
-info "decommissioning node $DECOMM_NODE"
+
+# A 3-node cluster at replication factor 3 has nowhere to put node 3's replicas,
+# so decommissioning is REFUSED. This is the lesson, not a failure.
+info "attempting to decommission node $DECOMM_NODE on a 3-node RF=3 cluster"
+REFUSAL=$(cockroach node decommission "$DECOMM_NODE" --insecure --host="localhost:${BASE_SQL_PORT}" 2>&1 || true)
+assert_contains "decommission is refused without spare capacity" "$REFUSAL" \
+    "Cannot decommission\|likely not enough nodes\|blocking decommission"
+
+STILL_ACTIVE=$(sql_value "SELECT membership FROM crdb_internal.kv_node_liveness WHERE node_id = $DECOMM_NODE;")
+assert_contains "node $DECOMM_NODE is still usable after the refusal" "$STILL_ACTIVE" "active\|decommissioning"
+
+# Add a fourth node so the replicas have somewhere to go, then retry.
+info "adding node 4 to give the allocator somewhere to move replicas"
+cockroach start --insecure \
+    --store="${STORE_BASE}/n4" \
+    --listen-addr="localhost:$((BASE_SQL_PORT+3))" \
+    --http-addr="localhost:$((BASE_HTTP_PORT+3))" \
+    --join="$(_join_string 3)" \
+    --pid-file="${STORE_BASE}/n4.pid" \
+    --log="{sinks: {stderr: {filter: NONE}}}" \
+    --background >>"${STORE_BASE}/n4.out" 2>&1 \
+    || fail "node 4 failed to start"
+CLUSTER_SIZE=4
+CLUSTER_PIDS[4]=$(cat "${STORE_BASE}/n4.pid")
+wait_for "node 4 joined" 60 \
+    "cockroach sql --insecure --host=localhost:$((BASE_SQL_PORT+3)) --execute 'SELECT 1;'"
+wait_for "cluster reports 4 live nodes" 60 \
+    "[ \"\$(cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv \
+        --execute \"SELECT count(*) FROM crdb_internal.gossip_nodes WHERE is_live;\" \
+        | tail -n +2 | head -1)\" = '4' ]"
+
+info "decommissioning node $DECOMM_NODE (this moves every replica off it)"
 if cockroach node decommission "$DECOMM_NODE" --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1; then
-    pass "decommission command completed"
+    pass "decommission completed once spare capacity existed"
 else
-    fail "decommission command failed"
+    fail "decommission still failed with 4 nodes"
 fi
 
-# After decommission, the node should be marked draining/decommissioning AND is_live = false.
 sleep 3
 DECOMM_STATE=$(sql_value "SELECT membership FROM crdb_internal.kv_node_liveness WHERE node_id = $DECOMM_NODE;")
 assert_contains "node $DECOMM_NODE is decommissioning or decommissioned" \

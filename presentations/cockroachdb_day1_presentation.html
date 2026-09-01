@@ -304,28 +304,36 @@
                     <span class="crdb-logo">🪳 Distributed SQL</span> — survive anything, scale anywhere
                 </p>
                 <p style="margin-top: 1em; opacity: 0.9;">
-                    From Single Node to Multi-Region in Two Days
+                    From Single Node to Multi-Region in Four Days
                 </p>
             </section>
 
             <!-- Course Overview -->
             <section>
                 <div class="section-title">
-                    <h2>🎯 Course Overview — 2 Days</h2>
+                    <h2>🎯 Course Overview — 4 Days</h2>
                 </div>
 
                 <div class="agenda-item fragment">
                     <strong>Day 1 — Architecture &amp; Foundations</strong><br>
-                    <span class="small-text">Distributed SQL, Raft &amp; ranges, install &amp; tooling, schema design</span>
+                    <span class="small-text">Distributed SQL, Raft &amp; ranges, install &amp; tooling, schema design (Labs 1–4)</span>
                 </div>
                 <div class="agenda-item fragment">
-                    <strong>Day 2 — Distributed Operations &amp; Production Readiness</strong><br>
-                    <span class="small-text">Transactions, query tuning, multi-region, backup/CDC, security, monitoring</span>
+                    <strong>Day 2 — Distributed Operations &amp; Resilience</strong><br>
+                    <span class="small-text">Transactions, query tuning, multi-region, schema patterns, throughput engineering (Labs 5–8)</span>
+                </div>
+                <div class="agenda-item fragment">
+                    <strong>Day 3 — Production Operations &amp; Security</strong><br>
+                    <span class="small-text">Observability &amp; SLOs, capacity sizing, benchmarking, backup/DR, security hardening (Labs 9–12)</span>
+                </div>
+                <div class="agenda-item fragment">
+                    <strong>Day 4 — Advanced Features &amp; Integration</strong><br>
+                    <span class="small-text">CDC, outbox &amp; idempotency, PostgreSQL migration, Kubernetes (Labs 13–16)</span>
                 </div>
 
                 <div class="info-box fragment">
-                    <strong>Hands-on:</strong> 8 labs across 2 days. Every lab runs against a local
-                    <code>cockroach demo</code> cluster — no Docker, no cloud account required.
+                    <strong>Hands-on:</strong> 16 labs, ~72% of class time. Labs 1–12 and 14 need only the
+                    <code>cockroach</code> binary; Labs 13, 15, and 16 add Docker (Kafka, PostgreSQL, kind).
                 </div>
             </section>
 
@@ -535,7 +543,7 @@ Storage (Pebble)   ← LSM-tree, MVCC key-value store
                     <h3>It's All Key-Value Underneath</h3>
                     <p>Every SQL row, every index entry, every system metadata record is stored as a key-value pair in Pebble (CockroachDB's LSM-tree storage engine).</p>
                     <p class="code-title">SQL → KV Example</p>
-                    <pre><code class="language-sql">
+                    <pre><code class="language-text">
 -- Logical SQL:
 CREATE TABLE users (id UUID PRIMARY KEY, email STRING, name STRING);
 INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
@@ -949,15 +957,19 @@ cockroach start   →  --http-addr=<host>:<port>  (default 8080)
 -- All nodes in the cluster
 SELECT node_id, address, locality, is_live FROM crdb_internal.gossip_nodes;
 
--- All ranges and where their leaseholders live
-SELECT range_id, table_name, lease_holder, replicas
-FROM crdb_internal.ranges_no_leases LIMIT 20;
+-- All ranges and where their leaseholders live.
+-- (crdb_internal.ranges_no_leases has no table_name or lease_holder columns —
+--  anything table-scoped or lease-related comes from SHOW RANGES.)
+SELECT table_name, range_id, lease_holder, range_size_mb
+FROM [SHOW CLUSTER RANGES WITH TABLES, DETAILS] LIMIT 20;
 
--- Top statements by total runtime
-SELECT key, statistics->'statistics'->'cnt' AS executions,
-       statistics->'statistics'->'svcLat'->'mean' AS mean_latency_s
+-- Top statements by execution count
+-- (there is no `key` column — the statement text lives in metadata->>'query')
+SELECT metadata->>'query'                            AS statement,
+       (statistics->'statistics'->>'cnt')::INT       AS executions,
+       (statistics->'statistics'->'svcLat'->>'mean')::FLOAT AS mean_latency_s
 FROM crdb_internal.statement_statistics
-ORDER BY (statistics->'statistics'->'cnt')::INT DESC LIMIT 10;
+ORDER BY executions DESC LIMIT 10;
 
 -- Current sessions and what they're doing
 SELECT node_id, session_id, application_name, active_queries
@@ -1001,6 +1013,28 @@ cockroach demo --nodes 3 --no-example-database --empty</code></pre>
             <section>
                 <section class="section-title">
                     <h2>🗂️ 4. SQL Dialect &amp; Schema Design</h2>
+                </section>
+
+                <section>
+                    <h3>The Idea This Course Is Built Around</h3>
+                    <div class="info-box">
+                        <p style="font-size:1.1em;">In a single-node database, the primary key answers
+                        <em>"which row is this?"</em><br>
+                        In a distributed database, it also answers
+                        <strong>"which machine does this row live on, and which machine gets the write?"</strong></p>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <p><strong>The primary key is a distribution decision.</strong> Uniqueness is the easy half.</p>
+                    </div>
+                    <table class="fragment" style="font-size: 0.62em;">
+                        <tr><th>Day</th><th>What that decision turns into</th></tr>
+                        <tr><td>1</td><td>Range layout and where the hotspot is</td></tr>
+                        <tr><td>2</td><td>Contention, plan shape, and measured rows/sec (Lab 8)</td></tr>
+                        <tr><td>3</td><td>Write amplification → node count → hardware bill (Lab 10)</td></tr>
+                        <tr><td>4</td><td>Outbox design, migration redesign, Kubernetes topology</td></tr>
+                    </table>
+                    <p class="fragment small-text">You will be asked to defend a primary key with a number
+                    before this course is over.</p>
                 </section>
 
                 <section>
@@ -1081,10 +1115,18 @@ CREATE TABLE invoices (
 CREATE TABLE events (
   account_id  UUID,
   created     TIMESTAMPTZ DEFAULT now(),
+  id          UUID DEFAULT gen_random_uuid(),   -- per-row tiebreaker
   payload     JSONB,
-  PRIMARY KEY (account_id, created) USING HASH WITH (bucket_count = 16)
+  PRIMARY KEY (account_id, created, id) USING HASH WITH (bucket_count = 16)
 );
                     </code></pre>
+                    <div class="warning-box">
+                        <p class="small-text"><strong>Why <code>id</code> is in the key:</strong>
+                        <code>now()</code> is the <em>transaction</em> timestamp, so every row written by one
+                        statement shares it. <code>(account_id, created)</code> alone is not unique and the
+                        second row fails with <code>duplicate key value violates unique constraint</code>.
+                        A time-series key needs a per-row tiebreaker.</p>
+                    </div>
                     <div class="highlight-box fragment">
                         <p>Under the hood, CockroachDB prepends a hidden <code>crdb_internal_account_id_created_shard_16</code> column (a hash bucket 0–15) to the key, so writes for similar timestamps land on different ranges.</p>
                         <p class="small-text">Range queries by exact <code>(account_id, created)</code> still work via index lookup. Open-ended scans on <code>created</code> alone may need a separate non-sharded secondary index.</p>
@@ -1308,7 +1350,7 @@ CREATE INDEX ON events(account_id, created)
                     <h3>Index Picking — A Mental Model</h3>
                     <p>The optimizer picks an index by estimating how many rows it will read. The fastest plan is the one that <em>scans the fewest keys</em>.</p>
                     <p class="code-title">Reading a plan</p>
-                    <pre><code class="language-sql">
+                    <pre><code class="language-text">
 EXPLAIN SELECT * FROM orders WHERE customer_id = 'abc';
 
   • scan

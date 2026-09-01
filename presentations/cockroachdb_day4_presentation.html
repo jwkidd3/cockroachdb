@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CockroachDB — Day 4: Advanced Features &amp; Integration</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/white.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/monokai.min.css">
+
+    <style>
+        /* Overflow safety: keep slide content visible when it exceeds the
+           1280x900 viewport. Without this rule, content past the bottom edge
+           silently disappears in present mode. */
+        .reveal .slides > section > section,
+        .reveal .slides > section:not(:has(section)) {
+            overflow-y: auto;
+            max-height: 88vh;
+        }
+        .reveal .slides section pre {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        .reveal .slides section pre code {
+            font-size: 0.55em;
+            line-height: 1.18;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .reveal {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+            color: #1A3A5C;
+            text-transform: none;
+        }
+
+        .reveal h1 {
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .reveal .title-slide {
+            background: linear-gradient(135deg, #0F2540 0%, #1A3A5C 50%, #2E5C8A 100%);
+            color: white !important;
+            padding: 2em;
+            border-radius: 15px;
+        }
+
+        .reveal .title-slide h1,
+        .reveal .title-slide h2 {
+            color: white !important;
+        }
+
+        .reveal .section-title {
+            background: linear-gradient(135deg, #1A3A5C 0%, #2E5C8A 100%);
+            color: white !important;
+            padding: 1.5em;
+            border-radius: 10px;
+            margin-bottom: 0.5em;
+        }
+
+        .reveal .section-title h2 {
+            color: white !important;
+            margin: 0;
+        }
+
+        .reveal .duration {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em 1em;
+            border-radius: 20px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin: 0.5em 0;
+        }
+
+        .reveal .highlight-box {
+            background: linear-gradient(120deg, #DCE9F2 0%, #EEF4FA 100%);
+            padding: 0.8em;
+            border-radius: 8px;
+            border-left: 4px solid #2E5C8A;
+            margin: 0.5em 0;
+        }
+
+        .reveal .lab-slide .highlight-box {
+            padding: 0.4em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .info-box {
+            background: #EEF4FA;
+            border: 2px solid #2E5C8A;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .warning-box {
+            background: #FFF1E6;
+            border: 2px solid #FF6B35;
+            border-radius: 8px;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .reveal .lab-slide {
+            background: linear-gradient(135deg, #FFE3D1 0%, #FFC6A3 100%);
+            border: 3px solid #FF6B35;
+            border-radius: 15px;
+            padding: 0.6em;
+            font-size: 0.75em;
+            overflow-y: auto;
+            max-height: 90vh;
+            color: #1f2d24 !important;
+        }
+
+        .reveal .lab-slide h3,
+        .reveal .lab-slide h4,
+        .reveal .lab-slide p,
+        .reveal .lab-slide li,
+        .reveal .lab-slide strong,
+        .reveal .lab-slide em {
+            color: #2A1A0F !important;
+        }
+
+        .reveal .lab-slide h3 {
+            color: #B83C0C !important;
+            margin-top: 0;
+            margin-bottom: 0.5em;
+            font-size: 1.2em;
+        }
+
+        .reveal .lab-slide h4 {
+            margin-top: 0;
+            margin-bottom: 0.2em;
+            font-size: 0.95em;
+        }
+
+        .reveal .lab-slide ul {
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide li {
+            margin: 0.1em 0;
+            line-height: 1.2;
+        }
+
+        .reveal .lab-slide pre {
+            font-size: 0.8em;
+            margin: 0.3em 0;
+        }
+
+        .reveal .lab-slide pre code {
+            color: #1a1a1a !important;
+        }
+
+        .reveal .lab-slide .lab-duration {
+            display: inline-block;
+            background: rgba(184, 60, 12, 0.12);
+            color: #B83C0C !important;
+            padding: 0.15em 0.7em;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: bold;
+            margin-left: 0.6em;
+            vertical-align: middle;
+            border: 1px solid rgba(184, 60, 12, 0.35);
+        }
+
+        .reveal .lab-slide code {
+            font-size: 0.85em;
+            color: #1a1a1a !important;
+        }
+
+        .reveal .objectives {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+            padding: 0.8em;
+            margin: 0.5em 0;
+        }
+
+        .reveal table {
+            margin: auto;
+            border-collapse: collapse;
+            border-spacing: 0;
+            font-size: 0.8em;
+        }
+
+        .reveal table th {
+            background: #2E5C8A;
+            color: white;
+            font-weight: bold;
+        }
+
+        .reveal table th,
+        .reveal table td {
+            text-align: left;
+            padding: 0.5em;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .reveal table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .reveal pre code {
+            max-height: 500px;
+            font-size: 0.6em;
+            line-height: 1.2;
+        }
+
+        .reveal .slides section .fragment {
+            opacity: 0.3;
+        }
+
+        .reveal .slides section .fragment.visible {
+            opacity: 1;
+        }
+
+        .reveal .progress {
+            background: rgba(26, 58, 92, 0.2);
+        }
+
+        .reveal .progress span {
+            background: #2E5C8A;
+        }
+
+        .reveal .controls {
+            color: #2E5C8A;
+        }
+
+        .reveal .slide-number {
+            background-color: #1A3A5C;
+            color: white;
+        }
+
+        .reveal .two-column {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .reveal .two-column > div {
+            flex: 1;
+            margin: 0 0.5em;
+        }
+
+        .reveal .crdb-logo {
+            color: #FF6B35;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .reveal .small-text {
+            font-size: 0.7em;
+        }
+
+        .reveal .code-title {
+            background: #1A3A5C;
+            color: white;
+            padding: 0.5em;
+            margin: 0;
+            border-radius: 5px 5px 0 0;
+            font-size: 0.8em;
+        }
+
+        .reveal .agenda-item {
+            padding: 0.5em;
+            margin: 0.3em 0;
+            background: #f8f9fa;
+            border-left: 4px solid #2E5C8A;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .reveal .schedule-slide .agenda-item {
+            padding: 0.25em 0.6em;
+            margin: 0.12em 0;
+            font-size: 0.78em;
+        }
+
+        .reveal .schedule-slide h2 {
+            font-size: 1.6em;
+            margin-bottom: 0.4em;
+        }
+
+        .reveal .schedule-slide .section-title {
+            padding: 0.6em;
+            margin-bottom: 0.3em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Title Slide -->
+            <section class="title-slide">
+                <h1>CockroachDB</h1>
+                <h2>Day 4: Advanced Features &amp; Real-World Integration</h2>
+                <p style="margin-top: 2em; font-size: 1.2em;">
+                    <span class="crdb-logo">🪳 Distributed SQL</span> — in the shape of a real system
+                </p>
+                <p style="margin-top: 1em; opacity: 0.9;">
+                    CDC · Application Patterns · Migration · Kubernetes · Cost
+                </p>
+            </section>
+
+            <!-- Day 4 Schedule -->
+            <section class="schedule-slide">
+                <h2>📅 Day 4 Schedule</h2>
+
+                <div class="section-title">
+                    <h2>Module 4: Advanced Features &amp; Integration</h2>
+                </div>
+
+                <div class="agenda-item">1. Change Data Capture in Depth</div>
+                <div class="agenda-item">🧪 <strong>Lab 13</strong> — CDC → Kafka → consumer with a resolved-timestamp frontier <em>(75 min)</em></div>
+                <div class="agenda-item">2. Application Integration: outbox, idempotency, pooling, ORMs</div>
+                <div class="agenda-item">🧪 <strong>Lab 14</strong> — Outbox pattern + idempotent retry loop <em>(75 min)</em></div>
+                <div class="agenda-item">3. Schema Migrations, CI/CD &amp; Migrating from PostgreSQL</div>
+                <div class="agenda-item">🧪 <strong>Lab 15</strong> — Migrate a PostgreSQL schema and live data with MOLT <em>(90 min)</em></div>
+                <div class="agenda-item">4. Kubernetes Deployment</div>
+                <div class="agenda-item">🧪 <strong>Lab 16</strong> — cockroach-operator on kind <em>(90 min)</em></div>
+                <div class="agenda-item">5. Advanced Features Survey · Cost &amp; Deployment Models · Course Wrap</div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 1: CDC -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>📡 Section 1: Change Data Capture in Depth</h2>
+                    <p>Getting data out, correctly</p>
+                </section>
+
+                <section>
+                    <h3>Two Flavours</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>Core</h4>
+                                <pre style="font-size:0.7em;"><code class="language-sql">EXPERIMENTAL CHANGEFEED
+  FOR shop.orders;</code></pre>
+                                <ul class="small-text">
+                                    <li>Streams to the SQL session</li>
+                                    <li>No license, no sink</li>
+                                    <li>Dies with the session</li>
+                                    <li><strong>Debugging only</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4>Enterprise</h4>
+                                <pre style="font-size:0.7em;"><code class="language-sql">CREATE CHANGEFEED
+  FOR TABLE shop.orders
+  INTO 'kafka://...'
+  WITH updated, resolved='10s';</code></pre>
+                                <ul class="small-text">
+                                    <li>Runs as a resumable job</li>
+                                    <li>At-least-once delivery</li>
+                                    <li>Survives restarts and rebalances</li>
+                                    <li><strong>Everything in production</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text">Sinks: Kafka, webhook, cloud storage (S3/GCS/Azure), Google Pub/Sub.</p>
+                </section>
+
+                <section>
+                    <h3>Envelope Options and What They Cost</h3>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Option</th><th>Adds</th><th>Costs</th></tr>
+                        <tr><td><code>updated</code></td><td>MVCC timestamp of the change</td><td>Negligible</td></tr>
+                        <tr><td><code>resolved = 'Ns'</code></td><td>Frontier watermarks</td><td>More messages</td></tr>
+                        <tr><td><code>diff</code></td><td>The <code>before</code> image</td><td>~2× payload</td></tr>
+                        <tr><td><code>key_in_value</code></td><td>PK inside the value</td><td>Small</td></tr>
+                        <tr><td><code>format = avro</code></td><td>Avro + schema registry</td><td>Needs a registry</td></tr>
+                        <tr><td><code>mvcc_timestamp</code></td><td>Raw MVCC even for deletes</td><td>Negligible</td></tr>
+                    </table>
+                    <pre class="fragment" style="font-size:0.85em;"><code class="language-json">{"after": {"id":"…","status":"paid"},
+ "before":{"id":"…","status":"new"},
+ "key":   ["…"],
+ "updated":"1716400000000000000.0000000000"}</code></pre>
+                </section>
+
+                <section>
+                    <h3>The Resolved-Timestamp Frontier</h3>
+                    <div class="warning-box">
+                        <p><strong>This is the part everyone gets wrong.</strong> Changefeed messages arrive
+                        <em>out of order across ranges</em>. A row you receive at 14:05 may have a timestamp
+                        of 14:02, and a 14:01 row may still be in flight.</p>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <p>A <code>resolved</code> message is the cluster promising:
+                        <em>"no further message will arrive with a timestamp below this value."</em></p>
+                    </div>
+                    <table class="fragment" style="font-size: 0.68em;">
+                        <tr><th>Question</th><th>Answer</th></tr>
+                        <tr><td>Is my view current as of 14:00?</td><td>Yes, iff frontier ≥ 14:00</td></tr>
+                        <tr><td>Can I close yesterday's books?</td><td>Yes, iff frontier ≥ midnight</td></tr>
+                        <tr><td>Did I miss events during the outage?</td><td>No, iff you restart from the last frontier</td></tr>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>At-Least-Once Means Duplicates Are Normal</h3>
+                    <p>After a job restart, a lease transfer, or a rebalance, messages are re-emitted.
+                    Your consumer must be idempotent — three ways:</p>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Technique</th><th>How</th><th>Best for</th></tr>
+                        <tr><td>Upsert by PK</td><td><code>INSERT … ON CONFLICT DO UPDATE</code></td><td>Materialized copies</td></tr>
+                        <tr><td>Timestamp guard</td><td>Apply only if <code>updated &gt; last_seen</code></td><td>Out-of-order safety</td></tr>
+                        <tr><td>Dedup ledger</td><td>Store <code>(key, ts)</code> seen-set with TTL</td><td>Side effects</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text">For <strong>side effects</strong> — emails, charges, notifications —
+                        the ledger is the only safe option. You cannot "re-send" an email idempotently
+                        by upserting a row.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Schema Changes Under an Active Feed</h3>
+                    <table style="font-size: 0.7em;">
+                        <tr><th><code>schema_change_policy</code></th><th>Behaviour</th></tr>
+                        <tr><td><code>backfill</code> (default)</td><td>Re-emit the whole table after the change</td></tr>
+                        <tr><td><code>nobackfill</code></td><td>Continue without re-emitting existing rows</td></tr>
+                        <tr><td><code>stop</code></td><td>Fail the job so a human decides</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p><strong>The contract rule:</strong> additive changes (a new nullable column) are safe.
+                        Renames and type changes are not. Version your consumer's schema handling the same way
+                        you version an API.</p>
+                    </div>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>The hidden cost of a paused feed:</strong> its protected timestamp
+                        stops MVCC garbage collection. A changefeed left paused for days grows your storage and
+                        slows every scan. Check <code>SHOW CHANGEFEED JOBS</code> for the feed nobody remembered.</p>
+                    </div>
+                </section>
+
+                <!-- Lab 13 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 13: CDC → Kafka → Frontier Consumer<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Run Core and Enterprise changefeeds; decode the envelopes</li>
+                            <li>Build a consumer that buffers until <code>resolved</code> and applies in order</li>
+                            <li>Prove idempotency by replaying from an earlier cursor</li>
+                            <li>Handle a schema change under an active feed</li>
+                            <li>Kill the sink and confirm nothing was lost</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">docker compose up -d   # single-broker Kafka
+cockroach sql -e "SET CLUSTER SETTING kv.rangefeed.enabled = true;"</code></pre>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>Deliverable</h4>
+                        <p style="font-size:0.8em; margin:0.2em 0;">A working frontier consumer plus a failure drill:
+                        broker killed, feed recovered, <strong>zero events lost</strong>, lag measured.</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 2: Application Integration -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🔌 Section 2: Application Integration Patterns</h2>
+                    <p>Retries, outbox, idempotency, pooling</p>
+                </section>
+
+                <section>
+                    <h3>SQLSTATE 40001 Is Not an Error</h3>
+                    <div class="info-box">
+                        <p>Under <code>SERIALIZABLE</code>, a transaction that would violate serializability is
+                        aborted and <strong>must be retried by the client</strong>. That is the concurrency-control
+                        protocol, not a failure.</p>
+                    </div>
+                    <pre class="fragment"><code class="language-python">for attempt in range(1, MAX_ATTEMPTS + 1):
+    try:
+        with conn:                       # commit on success, rollback on error
+            with conn.cursor() as cur:
+                body(cur)                # the ENTIRE transaction, re-executed
+        break
+    except psycopg2.errors.SerializationFailure:
+        if attempt == MAX_ATTEMPTS: raise
+        time.sleep(random.uniform(0, min(0.5, 0.005 * 2**attempt)))  # jitter!</code></pre>
+                    <div class="warning-box fragment">
+                        <p class="small-text">Two mistakes to avoid: retrying only the failing <em>statement</em>
+                        (the values you read are stale), and backoff <em>without jitter</em> (all your clients
+                        collide again at exactly the same moment).</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Before You Write a Retry Loop</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="warning-box">
+                                <h4>❌ Read-modify-write</h4>
+                                <pre style="font-size:0.7em;"><code class="language-sql">BEGIN;
+SELECT balance FROM accounts
+  WHERE id = $1;
+-- app computes bal + 1
+UPDATE accounts SET balance = $2
+  WHERE id = $1;
+COMMIT;</code></pre>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4>✅ One statement</h4>
+                                <pre style="font-size:0.7em;"><code class="language-sql">UPDATE accounts
+SET balance = balance + 1
+WHERE id = $1;</code></pre>
+                                <p class="small-text">Atomic server-side. No retry loop needed. No round trip
+                                in the middle of the transaction.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text">Use the driver's helper rather than hand-rolling:
+                    <code>crdbpgx.ExecuteTx</code> (Go), <code>run_transaction()</code> (SQLAlchemy).</p>
+                </section>
+
+                <section>
+                    <h3>The Outbox Pattern</h3>
+                    <div class="warning-box">
+                        <p><strong>The dual-write problem:</strong> your service writes an order to the database
+                        <em>and</em> publishes an event to Kafka. If the process dies between them, the two
+                        systems disagree forever. No amount of retry logic fixes this.</p>
+                    </div>
+                    <pre class="fragment"><code class="language-sql">BEGIN;
+  INSERT INTO orders (account, amount) VALUES ($1, $2) RETURNING id;
+  INSERT INTO events_outbox (topic, aggregate, payload)
+    VALUES ('order.created', $order_id, $payload);
+COMMIT;
+-- CDC ships events_outbox downstream. One transaction, one truth.</code></pre>
+                </section>
+
+                <section>
+                    <h3>Designing the Outbox Table</h3>
+                    <pre><code class="language-sql">CREATE TABLE events_outbox (
+  id        UUID NOT NULL DEFAULT gen_random_uuid(),
+  created   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  topic     STRING NOT NULL,
+  aggregate UUID NOT NULL,
+  payload   JSONB NOT NULL,
+  PRIMARY KEY (id)
+) WITH (ttl_expire_after = '7 days', ttl_job_cron = '@hourly');</code></pre>
+                    <table style="font-size: 0.62em;">
+                        <tr><th>Decision</th><th>Why</th></tr>
+                        <tr><td>UUID primary key</td><td>Append-only at high rate — a sequential key hotspots the rightmost range</td></tr>
+                        <tr><td>Row-level TTL</td><td>The outbox is a buffer, not a log. Without TTL it grows forever</td></tr>
+                        <tr><td>No <code>status</code> column, no <code>UPDATE</code></td><td>A polled <code>WHERE status='pending'</code> queue serializes on one range</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>The anti-pattern it replaces:</strong>
+                        <code>SELECT … WHERE status='pending' FOR UPDATE LIMIT 100</code> then
+                        <code>UPDATE … SET status='sent'</code>. Every worker contends on the same rows;
+                        throughput caps out no matter how many workers you add.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Idempotency Keys</h3>
+                    <pre><code class="language-sql">CREATE TABLE idempotency (
+  key      STRING PRIMARY KEY,   -- client-supplied, one per user action
+  account  UUID NOT NULL,
+  response JSONB NOT NULL,       -- what we returned the first time
+  created  TIMESTAMPTZ NOT NULL DEFAULT now()
+) WITH (ttl_expire_after = '24 hours');</code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>Claim the key in the same transaction as the work.</strong> Claim it in a
+                        separate transaction and a crash between the two leaves the key claimed and the work
+                        undone — every retry then returns "already processed" for work that never happened.</p>
+                    </div>
+                    <p class="fragment small-text">A concurrent duplicate loses the race on the primary key and
+                    rolls back its whole transaction, including the order. Exactly one order exists.</p>
+                </section>
+
+                <section>
+                    <h3>Optimistic vs Pessimistic Concurrency</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>OCC (version column)</h4>
+                                <pre style="font-size:0.65em;"><code class="language-sql">UPDATE accounts
+SET balance = $1, version = version + 1
+WHERE id = $2 AND version = $3;
+-- 0 rows => someone won; re-read</code></pre>
+                                <p class="small-text">No locks. Best at <strong>low contention</strong> and when
+                                there's think-time between read and write.</p>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4><code>SELECT FOR UPDATE</code></h4>
+                                <pre style="font-size:0.65em;"><code class="language-sql">BEGIN;
+SELECT balance FROM accounts
+  WHERE id = $1 FOR UPDATE;
+UPDATE accounts SET balance = $2
+  WHERE id = $1;
+COMMIT;</code></pre>
+                                <p class="small-text">Writers queue instead of racing. Best at
+                                <strong>high contention</strong> on a known row.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text">Lab 14 benchmarks both. Measure your actual contention before choosing —
+                    the "obvious" answer flips depending on it.</p>
+                </section>
+
+                <section>
+                    <h3>Connection Pooling</h3>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Setting</th><th>Rule</th></tr>
+                        <tr><td>Per app instance</td><td><code>(cores × 2) + spindles</code>, validated against the measured knee</td></tr>
+                        <tr><td>Cluster total</td><td>Under ~4× total vCPU across all nodes</td></tr>
+                        <tr><td>PgBouncer mode</td><td><strong>transaction</strong> pooling (session pooling wastes connections)</td></tr>
+                        <tr><td>Timeouts</td><td>Set <code>statement_timeout</code> and pool acquisition timeouts</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>An oversized pool adds no throughput.</strong> It moves the queue
+                        from your app into the database, where it's harder to see and more expensive to drain.
+                        Little's Law: <code>concurrency = throughput × latency</code>. 2,000 QPS at 8 ms is
+                        <em>16</em> connections, not 200.</p>
+                    </div>
+                    <p class="fragment small-text">Transaction pooling breaks session-scoped features — use
+                    <code>SET LOCAL</code>, not <code>SET</code>.</p>
+                </section>
+
+                <section>
+                    <h3>Driver &amp; ORM Landscape</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Language</th><th>Driver</th><th>ORM</th><th>Retry helper</th></tr>
+                        <tr><td>Python</td><td>psycopg / psycopg2</td><td>SQLAlchemy, Django</td><td><code>sqlalchemy-cockroachdb</code></td></tr>
+                        <tr><td>Go</td><td>pgx</td><td>GORM, sqlx, ent</td><td><code>crdbpgx.ExecuteTx</code></td></tr>
+                        <tr><td>Node.js</td><td>node-postgres</td><td>Prisma, Knex, TypeORM</td><td>Hand-rolled or <code>cockroach-node</code></td></tr>
+                        <tr><td>Java/Kotlin</td><td>pgjdbc</td><td>Hibernate (CRDB dialect), jOOQ</td><td>Retry aspect / interceptor</td></tr>
+                        <tr><td>Ruby</td><td>pg</td><td>ActiveRecord (adapter)</td><td><code>activerecord-cockroachdb</code></td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>The ORM checklist:</strong> does it retry 40001? does it
+                        emit <code>SERIAL</code> primary keys by default (change them)? does it wrap every
+                        request in one transaction? does it do N+1 queries — each of which is a distributed read?</p>
+                    </div>
+                </section>
+
+                <!-- Lab 14 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 14: Outbox Pattern + Idempotent Retry Loop<span class="lab-duration">⏱ 75 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Measure a naive service vs one with a correct retry loop</li>
+                            <li>Design an outbox table that avoids a hot range and a polled queue</li>
+                            <li>Prove atomicity with a simulated crash before commit</li>
+                            <li>Defend idempotency against sequential <em>and</em> concurrent duplicates</li>
+                            <li>Benchmark OCC against <code>SELECT FOR UPDATE</code></li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 The measurement that lands</h4>
+                        <p style="font-size:0.75em; margin:0.2em 0;">40 concurrent read-modify-writes with no retry loop
+                        drop a meaningful share of requests. The same code with jittered retries loses none —
+                        and the single-statement version needs no retry at all.</p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 3: Migrations & PostgreSQL -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🚚 Section 3: Migrations, CI/CD &amp; Moving off PostgreSQL</h2>
+                    <p>The one chance to fix your primary keys for free</p>
+                </section>
+
+                <section>
+                    <h3>Online Schema Changes in CI/CD</h3>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Change</th><th>Runs as</th><th>Deploy impact</th></tr>
+                        <tr><td><code>CREATE INDEX</code></td><td>Background job</td><td>None — writes continue</td></tr>
+                        <tr><td><code>ADD COLUMN</code> with default</td><td>Background job</td><td>None</td></tr>
+                        <tr><td><code>DROP COLUMN</code></td><td>Background job</td><td>None (data removed async)</td></tr>
+                        <tr><td><code>ALTER COLUMN TYPE</code></td><td>Validating backfill</td><td>Schedule it</td></tr>
+                        <tr><td><code>ADD CONSTRAINT … NOT NULL</code></td><td>Full validation scan</td><td>Schedule it</td></tr>
+                        <tr><td><code>ADD FOREIGN KEY</code></td><td>Full validation scan</td><td>Schedule it</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><strong>The rolling-deploy rule:</strong> a migration must be compatible
+                        with both the old and the new application version, because both run at once.
+                        Add-then-backfill-then-switch-then-drop, across three deploys — never rename in one step.</p>
+                    </div>
+                    <p class="fragment small-text">Tooling: Flyway, Liquibase, Atlas, golang-migrate, Alembic —
+                    all work. Take a backup before every migration deploy; it costs minutes and buys a rollback.</p>
+                </section>
+
+                <section>
+                    <h3>PostgreSQL → CockroachDB: The Cheat Sheet</h3>
+                    <table style="font-size: 0.6em;">
+                        <tr><th>PostgreSQL</th><th>CockroachDB</th><th>Action</th></tr>
+                        <tr><td><code>SERIAL</code> / <code>BIGSERIAL</code></td><td>Works, means <code>unique_rowid()</code></td><td><strong>Change to UUID</strong></td></tr>
+                        <tr><td>Sequences</td><td>Supported, serialize on one range</td><td>Avoid on hot paths</td></tr>
+                        <tr><td>plpgsql triggers</td><td>Not supported</td><td>App code, or a UDF</td></tr>
+                        <tr><td>Stored procedures</td><td>UDFs only</td><td>Rewrite</td></tr>
+                        <tr><td><code>TIMESTAMP</code></td><td>Prefer <code>TIMESTAMPTZ</code></td><td><strong>Change</strong></td></tr>
+                        <tr><td><code>JSON</code></td><td>Stored as <code>JSONB</code></td><td>Fine — inverted-index it</td></tr>
+                        <tr><td>Table inheritance</td><td>Not supported</td><td>Redesign</td></tr>
+                        <tr><td>PG extensions</td><td>Not supported</td><td>Find the built-in</td></tr>
+                        <tr><td>Foreign keys</td><td>Supported; each check is a distributed read</td><td>Audit hot paths</td></tr>
+                    </table>
+                    <pre class="fragment" style="font-size:0.8em;"><code class="language-bash"># Ask the source what it uses BEFORE you promise a timeline
+psql -c "SELECT count(*) FROM information_schema.triggers;"
+psql -c "SELECT extname FROM pg_extension;"
+psql -c "SELECT sequencename FROM pg_sequences;"</code></pre>
+                </section>
+
+                <section>
+                    <h3>The Highest-Value Hour of Any Migration</h3>
+                    <div class="info-box">
+                        <p>Changing a primary key <em>after</em> cutover means another migration.
+                        Changing it <em>during</em> the migration costs nothing — the data is already
+                        being rewritten.</p>
+                    </div>
+                    <table class="fragment" style="font-size: 0.62em;">
+                        <tr><th>Legacy design</th><th>Problem</th><th>Playbook fix</th></tr>
+                        <tr><td><code>id SERIAL PRIMARY KEY</code></td><td>Rightmost-range hotspot</td><td>#3 Per-Tenant Co-located PK</td></tr>
+                        <tr><td><code>BIGSERIAL</code> event log</td><td>Pure append at max rate</td><td>#1 Hash-Sharded Time-Series PK</td></tr>
+                        <tr><td>Index on <code>status</code></td><td>Low cardinality, rarely selective</td><td>#6 Hot/Cold partial index</td></tr>
+                        <tr><td>Nothing ages out events</td><td>Unbounded growth</td><td>#9 TTL table</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><strong>Keep a <code>legacy_id</code> column</strong> through the migration.
+                        Dual-write and shadow-read need to match rows on both sides. Drop it after cutover.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Zero-Downtime Cutover — Name the Rollback</h3>
+                    <pre><code class="language-text">Phase 1  Schema on CRDB, PG live                    ← rollback: drop CRDB
+Phase 2  Bulk load + continuous replication         ← rollback: stop replication
+Phase 3  Dual write, PG authoritative               ← rollback: stop CRDB writes
+Phase 4  Shadow reads, compare, serve PG            ← rollback: stop shadow reads
+Phase 5  Flip: CRDB authoritative, PG still written ← rollback: flip back (minutes)
+Phase 6  Stop writing PG, decommission              ← rollback: restore from backup</code></pre>
+                    <div class="highlight-box fragment">
+                        <h4>The flip gate — evidence, not a date</h4>
+                        <ul class="small-text">
+                            <li>Replication lag &lt; 1 s sustained for 24 h</li>
+                            <li>Shadow-read divergence = 0 over 24 h</li>
+                            <li>Every query at or under its PostgreSQL latency</li>
+                            <li>A tested rollback with a measured RTO</li>
+                            <li>Backups running on the target, restore drill completed</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Migrations Regress Queries — Find Out First</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+                        <tr><td>Full scan where PG used an index</td><td>Missing/stale statistics</td><td><code>CREATE STATISTICS</code></td></tr>
+                        <tr><td>Slow multi-row <code>IN</code> lookup</td><td>Keys scattered across ranges</td><td>Reorder the PK to co-locate</td></tr>
+                        <tr><td>Slow <code>COUNT(*)</code></td><td>Distributed scan, no shortcut</td><td>Follower read, or a maintained counter</td></tr>
+                        <tr><td>Slow FK-heavy inserts</td><td>Each FK check is a distributed read</td><td>Batch; drop non-critical FKs</td></tr>
+                        <tr><td>High p99, fine p50</td><td>Contention or cross-range txns</td><td>Day 2 techniques</td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>Always <code>CREATE STATISTICS</code> before benchmarking a
+                        migration.</strong> A freshly loaded table has none, and you'd be measuring the optimizer
+                        flying blind.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>When NOT to Migrate</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4>✅ CockroachDB earns it</h4>
+                                <ul class="small-text">
+                                    <li>Survivability requirements (zone/region)</li>
+                                    <li>Write throughput beyond one machine</li>
+                                    <li>Data locality / residency rules</li>
+                                    <li>Multi-region low-latency reads with strong consistency</li>
+                                    <li>No tolerance for failover windows</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="warning-box">
+                                <h4>❌ Stay on PostgreSQL</h4>
+                                <ul class="small-text">
+                                    <li>Single region, one instance is fine</li>
+                                    <li>Heavy analytical scans and window functions</li>
+                                    <li>Deep extension dependence (PostGIS specifics)</li>
+                                    <li>Small team, no distributed-systems experience</li>
+                                    <li>The pain you have isn't one of the ✅ list</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text">Being able to argue the ❌ case credibly is what makes the ✅ case believable.</p>
+                </section>
+
+                <!-- Lab 15 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 15: Migrate a PostgreSQL Schema and Live Data<span class="lab-duration">⏱ 90 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Audit a legacy schema and find every incompatibility before migrating</li>
+                            <li>Redesign the primary keys using four Playbook patterns</li>
+                            <li>Move data with MOLT Fetch; verify with counts <em>and</em> a business checksum</li>
+                            <li>Add constraints after the load and measure the validation cost</li>
+                            <li>Compare plans on both engines and fix the regressions</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">docker run -d --name lab15-pg -p 5432:5432 \
+  -e POSTGRES_PASSWORD=pg -e POSTGRES_DB=legacy postgres:16
+molt fetch --source "$PG" --target "$CRDB" --direct-copy
+molt verify --source "$PG" --target "$CRDB"</code></pre>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 4: Kubernetes -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>☸️ Section 4: Kubernetes Deployment</h2>
+                    <p>Stateful, and the state matters</p>
+                </section>
+
+                <section>
+                    <h3>Kubernetes Object → CockroachDB Concept</h3>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Object</th><th>Role</th></tr>
+                        <tr><td>StatefulSet</td><td>Stable identities (<code>crdb-0</code>, <code>crdb-1</code>…) — a node's identity must survive restarts</td></tr>
+                        <tr><td>Headless service</td><td>Peer discovery for <code>--join</code></td></tr>
+                        <tr><td>Public service</td><td>Client entry point</td></tr>
+                        <tr><td>PVC per pod</td><td>The store. <strong>Deleting it deletes that node's data</strong></td></tr>
+                        <tr><td>PodDisruptionBudget</td><td>Stops <code>kubectl drain</code> from taking quorum with it</td></tr>
+                        <tr><td>topologySpreadConstraints</td><td>Keeps replicas out of the same failure domain</td></tr>
+                    </table>
+                    <pre class="fragment" style="font-size:0.85em;"><code class="language-bash">kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"nodes":5}}'
+kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"cockroachDBVersion":"v23.2.6"}}'</code></pre>
+                </section>
+
+                <section>
+                    <h3>The Two Mistakes That Cause Outages</h3>
+                    <div class="warning-box">
+                        <h4>1. No <code>--locality</code></h4>
+                        <p class="small-text">Kubernetes knows the pods are in three zones. <strong>CockroachDB does not</strong>,
+                        unless you tell it. Without <code>--locality</code>, the allocator can put all three
+                        replicas of a range in one zone — and you find out when that zone fails.</p>
+                    </div>
+                    <div class="warning-box fragment">
+                        <h4>2. Scaling down before decommissioning</h4>
+                        <pre style="font-size:0.7em;"><code class="language-bash"># WRONG: removes the pod, replicas go offline instantly
+kubectl patch crdbcluster crdb -p '{"spec":{"nodes":3}}'
+
+# RIGHT: move replicas off while the node still serves, THEN remove it
+cockroach node decommission 5 --wait=all
+kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
+                    </div>
+                    <p class="fragment small-text">Decommission is slower <em>because</em> it is correct.</p>
+                </section>
+
+                <section>
+                    <h3>Operator vs Helm vs Manual</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Approach</th><th>Handles for you</th><th>You still own</th></tr>
+                        <tr><td><strong>cockroach-operator</strong></td><td>Certs, rolling upgrades, scaling, decommission ordering</td><td>Locality, storage class, monitoring</td></tr>
+                        <tr><td><strong>Helm chart</strong></td><td>Templating, values-driven config</td><td>Upgrade ordering, cert lifecycle, decommission</td></tr>
+                        <tr><td><strong>Manual StatefulSet</strong></td><td>Nothing</td><td>Everything, including the two mistakes above</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <h4>Production checklist</h4>
+                        <ul class="small-text">
+                            <li><code>--locality</code> reflects real failure domains</li>
+                            <li>Topology spread / anti-affinity prevents co-location</li>
+                            <li>PodDisruptionBudget protects quorum</li>
+                            <li>SSD storage class, <code>WaitForFirstConsumer</code></li>
+                            <li>Requests == limits for guaranteed QoS; memory limits set</li>
+                            <li>ServiceMonitor scraping <code>/_status/vars</code></li>
+                            <li>Scheduled backups + a completed restore drill</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Lab 16 -->
+                <section class="lab-slide" data-background-color="#1A3A5C">
+                    <h3>🧪 Lab 16: CockroachDB on Kubernetes with kind<span class="lab-duration">⏱ 90 min</span></h3>
+
+                    <div class="objectives">
+                        <h4>Objectives</h4>
+                        <ul>
+                            <li>Deploy via the operator with TLS and topology spread</li>
+                            <li>Scale out and roll a version upgrade under live load</li>
+                            <li>Kill a pod and a node; watch identity and PVC reattachment</li>
+                            <li>Decommission in the correct order</li>
+                            <li>Compare operator / Helm / manual with reasons</li>
+                        </ul>
+                    </div>
+
+                    <div class="highlight-box">
+                        <h4>📊 Setup</h4>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">kind create cluster --name lab16 --config kind-config.yaml  # 3 zoned workers
+kubectl apply -f .../install/crds.yaml
+kubectl apply -f .../install/operator.yaml
+kubectl apply -f crdb.yaml</code></pre>
+                    </div>
+                </section>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Section 5: Advanced features, cost, wrap -->
+            <!-- ============================================================ -->
+            <section>
+                <section class="section-title">
+                    <h2>🧭 Section 5: Advanced Features, Cost &amp; Wrap-Up</h2>
+                </section>
+
+                <section>
+                    <h3>Advanced Features Survey</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Feature</th><th>Use it for</th><th>Watch out for</th></tr>
+                        <tr><td>Row-level TTL</td><td>Sessions, tokens, outbox, event logs</td><td>Cron frequency vs foreground load</td></tr>
+                        <tr><td>UDFs</td><td>Replacing simple triggers/procedures</td><td>Not a general procedural language</td></tr>
+                        <tr><td>Spatial types</td><td>Geo queries, PostGIS-style workloads</td><td>Function coverage differs from PostGIS</td></tr>
+                        <tr><td>Vector indexes</td><td>Embeddings, similarity search</td><td>Check your version — recent feature</td></tr>
+                        <tr><td>Full-text search</td><td>Basic text search without a separate engine</td><td>Not a replacement for a search engine</td></tr>
+                        <tr><td>Follower reads</td><td>Stale-tolerant reads at local latency</td><td>Bounded staleness is a product decision</td></tr>
+                        <tr><td><code>GLOBAL</code> tables</td><td>Read-anywhere reference data</td><td>Writes are slow by design</td></tr>
+                    </table>
+                    <p class="fragment small-text">Version matters for several of these — check the release notes
+                    for the version you actually run, not the newest one.</p>
+                </section>
+
+                <section>
+                    <h3>Deployment Models &amp; Cost</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Model</th><th>Best for</th><th>You operate</th><th>Cost shape</th></tr>
+                        <tr><td>Serverless / Basic</td><td>Dev, small apps, spiky traffic</td><td>Nothing</td><td>Per request + storage</td></tr>
+                        <tr><td>Dedicated / Standard</td><td>Production without an ops team</td><td>Schema and app</td><td>Per node-hour</td></tr>
+                        <tr><td>Self-hosted</td><td>On-prem, regulated, full control</td><td>Everything</td><td>Hardware + staff</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><strong>The honest comparison</strong> includes the ops salary line.
+                        A self-hosted cluster is cheaper on the invoice and more expensive on the payroll.
+                        Estimate both before deciding.</p>
+                    </div>
+                    <p class="fragment small-text">Enterprise vs Core changes what's available around the edges
+                    (some backup, changefeed, and multi-region features) — check the current matrix for your version
+                    rather than trusting a slide.</p>
+                </section>
+
+                <section>
+                    <h3>The Anti-Pattern Checklist — Take This to Code Review</h3>
+                    <table style="font-size: 0.62em;">
+                        <tr><th>Spot this</th><th>Say this</th></tr>
+                        <tr><td><code>id SERIAL PRIMARY KEY</code> on a hot table</td><td>UUID, or hash-shard it</td></tr>
+                        <tr><td><code>UPDATE counters SET n = n + 1 WHERE id = …</code></td><td>Sharded counter</td></tr>
+                        <tr><td>Low-cardinality lead column in the PK</td><td>Reorder or rethink</td></tr>
+                        <tr><td>"Let's index every column just in case"</td><td>Each index is 3 more physical writes</td></tr>
+                        <tr><td><code>DELETE FROM logs WHERE created &lt; …</code> on a cron</td><td>Row-level TTL</td></tr>
+                        <tr><td>App writes to Kafka <em>and</em> the database</td><td>Outbox + CDC</td></tr>
+                        <tr><td>Polled queue with <code>status='pending'</code></td><td>CDC off the write path</td></tr>
+                        <tr><td>No 40001 retry loop</td><td>It will drop requests under load</td></tr>
+                        <tr><td>Pool of 200 per app instance</td><td>Size it from the measured knee</td></tr>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>🎓 Four Days, One Idea</h3>
+                    <div class="info-box">
+                        <p style="font-size:1.1em;"><strong>In a distributed SQL database, the schema is the
+                        performance model, the capacity model, and the availability model.</strong></p>
+                    </div>
+                    <div class="highlight-box fragment">
+                        <ul class="small-text">
+                            <li><strong>Day 1</strong> — the primary key is a distribution decision, not a uniqueness decision</li>
+                            <li><strong>Day 2</strong> — contention, plans, and throughput all trace back to that decision</li>
+                            <li><strong>Day 3</strong> — so do your metrics, your node count, and your hardware bill</li>
+                            <li><strong>Day 4</strong> — and your integration patterns, your migration, and your Kubernetes topology</li>
+                        </ul>
+                    </div>
+                    <p class="fragment"><strong>Take home:</strong> the
+                    <a href="../labs/SCHEMA_PATTERNS_PLAYBOOK.md">Schema Patterns Playbook</a> —
+                    ten patterns, each with the trap it avoids and the measurement that proves it.</p>
+                </section>
+
+                <section>
+                    <h3>Where to Go Next</h3>
+                    <div class="highlight-box">
+                        <ul class="small-text">
+                            <li><strong>Docs:</strong> cockroachlabs.com/docs — the performance and multi-region sections repay a slow read</li>
+                            <li><strong>Forum:</strong> forum.cockroachlabs.com</li>
+                            <li><strong>Release notes:</strong> read them before upgrading; behaviour changes are documented there</li>
+                            <li><strong>Practice:</strong> re-run Lab 8's PK bake-off and Lab 10's sizing exercise against <em>your</em> schema</li>
+                        </ul>
+                    </div>
+                    <div class="info-box fragment">
+                        <h4>Your first week back</h4>
+                        <ol class="small-text">
+                            <li>Run the anti-pattern checklist over one real schema</li>
+                            <li>Measure the batch-size knee and concurrency knee for one real workload</li>
+                            <li>Do one DR drill and record the measured RTO</li>
+                        </ol>
+                    </div>
+                    <p class="fragment" style="text-align:center; font-size:1.2em;">
+                        <span class="crdb-logo">🪳</span> Thank you — go break something on purpose.
+                    </p>
+                </section>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/notes/notes.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/zoom/zoom.min.js"></script>
+
+    <script>
+        Reveal.initialize({
+            hash: true,
+            controls: true,
+            progress: true,
+            center: true,
+            transition: 'slide',
+            transitionSpeed: 'default',
+            backgroundTransition: 'fade',
+
+            plugins: [ RevealMarkdown, RevealHighlight, RevealNotes, RevealSearch, RevealZoom ],
+
+            width: 1280,
+            height: 900,
+            margin: 0.06,
+            minScale: 0.2,
+            maxScale: 1.5,
+
+            keyboard: {
+                13: 'next',
+                27: function() {
+                    if (Reveal.isOverview()) {
+                        Reveal.toggleOverview();
+                    }
+                }
+            },
+
+            touch: true,
+            loop: false,
+            rtl: false,
+
+            fragments: true,
+            fragmentInURL: true,
+
+            autoSlide: 0,
+            autoSlideStoppable: true,
+
+            mouseWheel: false,
+            rollingLinks: false,
+            hideAddressBar: true,
+
+            highlight: {
+                highlightOnLoad: true,
+                beforeHighlight: function(hljs) {}
+            }
+        });
+
+        Reveal.addKeyBinding({keyCode: 79, key: 'O', description: 'Toggle overview'}, function() {
+            Reveal.toggleOverview();
+        });
+
+        if (window.location.search.match(/print-pdf/gi)) {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.type = 'text/css';
+            link.href = 'https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/css/print/pdf.min.css';
+            document.getElementsByTagName('head')[0].appendChild(link);
+        }
+
+        Reveal.configure({
+            slideNumber: 'c/t',
+            showSlideNumber: 'all'
+        });
+    </script>
+</body>
+</html>

@@ -88,8 +88,8 @@ For each query, **predict** the bottleneck before reading the plan.
 
 2. **Q2 — Recent orders for one customer:**
    ```sql
-   WITH cust AS (SELECT customer_id FROM orders LIMIT 1)
    EXPLAIN ANALYZE
+   WITH cust AS (SELECT customer_id FROM orders LIMIT 1)
    SELECT id, qty, total, placed
    FROM orders, cust
    WHERE orders.customer_id = cust.customer_id
@@ -126,8 +126,9 @@ Now run them. For each, note:
    ```sql
    CREATE INDEX orders_by_placed
      ON orders(placed DESC)
+     USING HASH
      STORING (product_id, total)
-     USING HASH WITH (bucket_count = 8);
+     WITH (bucket_count = 8);
    ```
    Re-run Q1. The scan should now be bounded to the last hour's rows, spread across 8 buckets.
 

@@ -1,4 +1,4 @@
-# Lab 2: DB Console & SQL Operational Tour (70 minutes)
+# Lab 2: DB Console & SQL Operational Tour (70 min)
 
 ## Learning Objectives
 
@@ -136,17 +136,19 @@ The DB Console is built on top of `crdb_internal`. Anything visible in the UI is
 
 4. **Hot ranges:**
    ```sql
-   SELECT
-     table_name, range_id, lease_holder,
-     queries_per_second AS qps
-   FROM crdb_internal.ranges_no_leases r
-   LEFT JOIN (SELECT * FROM crdb_internal.zones) z USING (zone_config_id)
-   WHERE table_name IS NOT NULL
-   ORDER BY queries_per_second DESC NULLS LAST
+   -- Where the data lives and who holds each lease
+   SELECT table_name, range_id, lease_holder, range_size_mb
+   FROM [SHOW CLUSTER RANGES WITH TABLES, DETAILS]
+   WHERE database_name = 'kv'
+   ORDER BY range_size_mb DESC
    LIMIT 5;
    ```
 
-   (CRDB version differences may rename `queries_per_second` to `qps`. If you get an error, try `SELECT * FROM crdb_internal.kv_store_status LIMIT 1;` to see what's available.)
+   > **Per-range QPS is not available in SQL.** `crdb_internal` exposes `ranges` and
+   > `ranges_no_leases`, and neither carries a queries-per-second column (there is no
+   > `cluster_replicas` table either). Hot-range traffic comes from **DB Console → Advanced Debug →
+   > Hot Ranges**, or the `/_status/hotranges` HTTP endpoint. What you *can* get from SQL is the
+   > distribution — how many ranges a table has and which node holds each lease.
 
 5. **Active sessions and what they're doing:**
    ```sql
@@ -160,8 +162,8 @@ The DB Console is built on top of `crdb_internal`. Anything visible in the UI is
 6. **Storage usage per node:**
    ```sql
    SELECT node_id,
-          (metrics->>'capacity-available')::DECIMAL / 1e9 AS available_gb,
-          (metrics->>'capacity-used')::DECIMAL      / 1e9 AS used_gb
+          (metrics->>'capacity.available')::DECIMAL / 1e9 AS available_gb,
+          (metrics->>'capacity.used')::DECIMAL      / 1e9 AS used_gb
    FROM crdb_internal.kv_store_status
    ORDER BY node_id;
    ```
@@ -187,7 +189,7 @@ Imagine your team wants a daily Slack message: nodes up, hottest table, contenti
      ),
      top_table_by_size AS (
        SELECT table_name, range_size_mb
-       FROM crdb_internal.ranges_no_leases
+       FROM [SHOW CLUSTER RANGES WITH TABLES, DETAILS]
        WHERE table_name IS NOT NULL
        ORDER BY range_size_mb DESC NULLS LAST
        LIMIT 1
@@ -229,7 +231,7 @@ Schema changes, backups, restores, changefeeds, decommissions, and IMPORTs all r
    ```sql
    SELECT job_id, status, fraction_completed, running_status
    FROM [SHOW JOBS]
-   WHERE job_type = 'SCHEMA CHANGE'
+   WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE')
    ORDER BY created DESC LIMIT 1;
    ```
    For our tiny `kv` table this is over in a second, but on a real production table you'd see `fraction_completed` climb from 0 toward 1.

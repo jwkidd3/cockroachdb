@@ -188,9 +188,21 @@ The `placed` column is a write timestamp — perfectly monotonic. A naïve index
 
    CREATE INDEX orders_placed_hashed
      ON orders(placed)
+     USING HASH
      STORING (customer_id, total)
-     USING HASH WITH (bucket_count = 8);
+     WITH (bucket_count = 8);
    ```
+
+   > ⚠️ **Clause order is fixed and unforgiving:**
+   > `ON t(col)` → `USING HASH` → `STORING (...)` → `WITH (bucket_count = N)`.
+   > Both of these are syntax errors:
+   > ```sql
+   > ... ON orders(placed) STORING (customer_id, total) USING HASH WITH (bucket_count = 8);
+   > ... ON orders(placed) USING HASH WITH (bucket_count = 8) STORING (customer_id, total);
+   > ```
+   > Worth knowing because a failed `CREATE INDEX` is easy to miss: the next `EXPLAIN` still
+   > returns a plan — just not the one you thought you were testing.
+
 
 4. **Confirm spread:**
    ```sql
@@ -263,11 +275,13 @@ Our `orders.payload` is JSONB. A query like "find all orders with `channel = 'mo
 
 2. **From the system catalog:**
    ```sql
-   SELECT index_name, column_name, direction, storing
+   -- Qualify every column: table_indexes and index_columns share several names
+   -- (index_name, descriptor_name), so bare references are ambiguous.
+   SELECT ti.index_name, ic.column_name, ic.column_direction, ic.column_type
    FROM crdb_internal.table_indexes ti
    JOIN crdb_internal.index_columns ic USING (descriptor_id, index_id)
    WHERE ti.descriptor_name = 'orders'
-   ORDER BY index_name, column_name;
+   ORDER BY ti.index_name, ic.column_name;
    ```
 
 3. **Which indexes have NEVER been used?**
@@ -289,7 +303,7 @@ Our `orders.payload` is JSONB. A query like "find all orders with `channel = 'mo
 5. **Quick check of total table size including indexes:**
    ```sql
    SELECT sum(range_size_mb) AS total_mb
-   FROM [SHOW RANGES FROM TABLE orders];
+   FROM [SHOW RANGES FROM TABLE orders WITH DETAILS];
    ```
 
 ## Cleanup

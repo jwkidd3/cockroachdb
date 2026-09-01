@@ -1,0 +1,11 @@
+# Student VM inventory — one "name ip" per line.
+# Populate this after launching instances, e.g. for AWS:
+#
+#   aws ec2 describe-instances --filters "Name=tag:Course,Values=crdb-4day" \
+#     "Name=instance-state-name,Values=running" \
+#     --query 'Reservations[].Instances[].[Tags[?Key==`Name`]|[0].Value,PublicIpAddress]' \
+#     --output text | sort > setup/hosts.txt
+#
+# Example:
+# crdb-student-01   203.0.113.11
+# crdb-student-02   203.0.113.12
