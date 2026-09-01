@@ -33,8 +33,18 @@ set "NODE=crdb"
 set "HTTP0=8080"
 set "SQL0=26257"
 set "AUTH=--insecure"
-echo %CRDB_COMPOSE% | find /i "labs-b" >nul && (set "NODE=crdbb" & set "HTTP0=8180" & set "SQL0=26357")
-echo %CRDB_COMPOSE% | find /i "labs-secure" >nul && (set "NODE=crdbs" & set "HTTP0=8280" & set "SQL0=26457" & set "AUTH=--certs-dir=/certs --host=crdbs1")
+rem Substring tests without spawning find, which needs a pipeline and quoting care.
+if not "%CRDB_COMPOSE%"=="%CRDB_COMPOSE:labs-b=%" (
+    set "NODE=crdbb"
+    set "HTTP0=8180"
+    set "SQL0=26357"
+)
+if not "%CRDB_COMPOSE%"=="%CRDB_COMPOSE:labs-secure=%" (
+    set "NODE=crdbs"
+    set "HTTP0=8280"
+    set "SQL0=26457"
+    set "AUTH=--certs-dir=/certs --host=crdbs1"
+)
 
 set "CMD=%~1"
 if "%CMD%"=="" set "CMD=help"
@@ -50,6 +60,10 @@ if errorlevel 1 (
     set "RC=1"
     goto :done
 )
+
+rem ARG1 is the first argument after the command - the node number for
+rem stop/start/sql-on/logs. Capture it before :collect shifts everything away.
+set "ARG1=%~1"
 
 rem Rebuild the remaining arguments into ARGS.
 set "ARGS="
@@ -78,8 +92,7 @@ echo [ERROR] unknown command "%CMD%"
 goto :help
 
 :up
-echo %CRDB_COMPOSE% | find /i "labs-secure" >nul
-if not errorlevel 1 (
+if not "%CRDB_COMPOSE%"=="%CRDB_COMPOSE:labs-secure=%" (
     %COMPOSE% up -d
     echo Waiting for the secure node...
     timeout /t 12 /nobreak >nul
@@ -93,14 +106,19 @@ if errorlevel 1 (set "RC=1" & goto :done)
 echo Waiting for the cluster to initialise...
 %COMPOSE% up init
 rem Nodes join through gossip after init returns; wait so the list below is complete.
+rem The count is written to a file and read back: parsing a command's output inside
+rem for /f means nesting quotes, which cmd mangles.
 echo Waiting for all nodes to join...
+set "COUNTFILE=%TEMP%\crdb_nodecount.txt"
 for /l %%i in (1,1,60) do (
-    for /f "usebackq delims=" %%n in (`%COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% --format^=tsv -e "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE is_live;" 2^>nul ^| findstr /r "^[0-9]"`) do (
-        if "%%n"=="3" goto :up_ready
-    )
+    %COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% --format=csv -e "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE is_live" > "%COUNTFILE%" 2>nul
+    set "LIVE="
+    for /f "usebackq skip=1 delims=" %%n in ("%COUNTFILE%") do if not defined LIVE set "LIVE=%%n"
+    if "!LIVE!"=="3" goto :up_ready
     timeout /t 2 /nobreak >nul
 )
 :up_ready
+del "%COUNTFILE%" 2>nul
 %COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% -e "SELECT node_id, address, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;"
 echo.
 echo DB Console: http://localhost:%HTTP0%   ^(SQL on localhost:%SQL0%^)
@@ -117,27 +135,22 @@ if "!ARGS!"=="" (
 goto :done
 
 :sqlon
-set "N=%~1"
+set "N=%ARG1%"
 if "%N%"=="" set "N=1"
-shift
-set "REST="
-:sqlon_collect
-if "%~1"=="" goto :sqlon_run
-set "REST=!REST! %1"
-shift
-goto :sqlon_collect
-:sqlon_run
+rem ARGS starts with the node number; drop that token before passing the rest on.
+set "REST=!ARGS!"
+if not "%ARG1%"=="" call set "REST=%%REST: %ARG1%=%%"
 %COMPOSE% exec %NODE%%N% ./cockroach sql %AUTH%!REST!
 goto :done
 
 :stopnode
-if "%~1"=="" (echo usage: crdb.bat stop ^<node-number^> & set "RC=1" & goto :done)
-%COMPOSE% stop %NODE%%~1
+if "%ARG1%"=="" (echo usage: crdb.bat stop ^<node-number^> & set "RC=1" & goto :done)
+%COMPOSE% stop %NODE%%ARG1%
 goto :done
 
 :startnode
-if "%~1"=="" (echo usage: crdb.bat start ^<node-number^> & set "RC=1" & goto :done)
-%COMPOSE% start %NODE%%~1
+if "%ARG1%"=="" (echo usage: crdb.bat start ^<node-number^> & set "RC=1" & goto :done)
+%COMPOSE% start %NODE%%ARG1%
 goto :done
 
 :addnode
@@ -150,7 +163,7 @@ echo http://localhost:%HTTP0%  ^(SQL on localhost:%SQL0%^)
 goto :done
 
 :logs
-set "N=%~1"
+set "N=%ARG1%"
 if "%N%"=="" set "N=1"
 %COMPOSE% logs -f %NODE%%N%
 goto :done
@@ -162,7 +175,28 @@ goto :done
 
 :help
 echo.
-for /f "tokens=1,* delims=:" %%a in ('findstr /b /c:"rem " "%~f0"') do echo %%a %%b
+echo crdb.bat - drive the course's lab cluster (everything runs in Docker)
+echo.
+echo   scripts\crdb.bat up             start a 3-node cluster and initialise it
+echo   scripts\crdb.bat sql            open a SQL shell on node 1
+echo   scripts\crdb.bat sql -e "..."   run SQL non-interactively
+echo   scripts\crdb.bat sql-on 2       open a SQL shell on node 2
+echo   scripts\crdb.bat status         node status
+echo   scripts\crdb.bat stop 2         stop node 2 (simulate a failure)
+echo   scripts\crdb.bat start 2        bring node 2 back
+echo   scripts\crdb.bat add-node       start a 4th node
+echo   scripts\crdb.bat run ^<cmd...^>   any cockroach subcommand on node 1
+echo   scripts\crdb.bat console        print the DB Console URL
+echo   scripts\crdb.bat logs [n]       tail a node's logs
+echo   scripts\crdb.bat ps             container status
+echo   scripts\crdb.bat cp ^<src^> ^<dst^> copy a file into/out of a container
+echo   scripts\crdb.bat down           remove the cluster AND its data
+echo   scripts\crdb.bat reset          down, then up
+echo.
+echo Set CRDB_COMPOSE to pick a different cluster:
+echo   docker-compose.labs.yml         main 3-node cluster (default)
+echo   docker-compose.labs-b.yml       Lab 11 standby cluster
+echo   docker-compose.labs-secure.yml  Lab 12 TLS cluster
 echo.
 goto :done
 
