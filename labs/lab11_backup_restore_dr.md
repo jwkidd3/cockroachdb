@@ -13,25 +13,19 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - ~4 GB free RAM (two small clusters run side by side in Part D)
 
 ## Setup — Cluster A (primary)
 
 ```bash
-mkdir -p /tmp/lab11/backups && cd /tmp/lab11
-
-for i in 1 2 3; do
-  cockroach start --insecure \
-    --store=/tmp/lab11/a$i \
-    --listen-addr=localhost:$((26256+i)) \
-    --http-addr=localhost:$((8079+i)) \
-    --join=localhost:26257,localhost:26258,localhost:26259 \
-    --background
-done
-cockroach init --insecure --host=localhost:26257
+scripts/crdb up
 export A='postgresql://root@localhost:26257?sslmode=disable'
 ```
+
+> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
+> From your machine it is `localhost:26257`; from inside another container it is
+> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
 
 > **Backup storage in this lab.** We use a local `nodelocal://` path so the lab runs offline.
 > In production the destination is cloud storage: `s3://bucket/path?AUTH=implicit`,
@@ -59,7 +53,9 @@ The error is explicit, e.g.:
 
 1. **Free path (default).** Do every step; where a step is marked 🔒 **Enterprise**, read it and
    run the free alternative given beside it. You still complete the DR drill end to end.
-2. **`cockroach demo`.** `cockroach demo --nodes 3` ships with a temporary licence, so every step
+2. **A containerised `demo` cluster.**
+   `docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 --no-example-database --empty`
+   ships with a temporary licence, so every step
    works. Use it for Parts A–C; Part D needs two clusters, so start a second demo on other ports.
 3. **Trial licence.** If you have one:
    ```sql
@@ -73,7 +69,7 @@ the runbook — works on the free path.
 Create a dataset with something worth losing:
 
 ```bash
-cockroach sql --insecure --url "$A" <<'SQL'
+scripts/crdb sql <<'SQL'
 CREATE DATABASE bank;
 USE bank;
 
@@ -298,62 +294,68 @@ SQL
 
 The drill that matters: cluster A is gone, bring the data up on cluster B.
 
-1. **Start cluster B on different ports:**
+1. **Start the standby cluster.** It is the same compose stack under a second project name,
+   on different ports (SQL 26357, console 8180), so both clusters run side by side:
    ```bash
-   for i in 1 2 3; do
-     cockroach start --insecure \
-       --store=/tmp/lab11/b$i \
-       --listen-addr=localhost:$((26356+i)) \
-       --http-addr=localhost:$((8179+i)) \
-       --join=localhost:26357,localhost:26358,localhost:26359 \
-       --background
-   done
-   cockroach init --insecure --host=localhost:26357
-   export B='postgresql://root@localhost:26357?sslmode=disable'
+   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb up
    ```
+   ```bash
+   scripts/crdb ps                                              # cluster A
+   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb ps       # cluster B
+   ```
+
+   > **Both clusters mount the same backup volume** at `/backups` (node 1 of each, via
+   > `--external-io-dir`). That is deliberate: it stands in for the cloud bucket both
+   > clusters would share in production, and it means the drill exercises **restore**
+   > rather than file copying.
 
 2. **Take a full cluster backup on A** — cluster backups include users, roles, and settings,
    which a database backup does not:
    ```bash
-   cockroach sql --insecure --url "$A" -e "
+   scripts/crdb sql -e "
      CREATE USER app_user;
-     GRANT SELECT ON DATABASE bank TO app_user;
-     BACKUP INTO 'nodelocal://1/backups/cluster' AS OF SYSTEM TIME '-10s' WITH revision_history;"
+     GRANT CONNECT ON DATABASE bank TO app_user;"
    ```
-
-3. **Move the backup to B.** `nodelocal://` is node-local storage, so copy the files.
-   (With cloud storage this step disappears — that is the whole argument for cloud storage.)
    ```bash
-   cp -r /tmp/lab11/a1/extern/backups/cluster /tmp/lab11/b1/extern/backups-from-a
+   scripts/crdb sql -e "BACKUP INTO 'nodelocal://1/dr/cluster' AS OF SYSTEM TIME '-10s';"
+   ```
+   🔒 With a licence, add `WITH revision_history`.
+
+3. **Confirm cluster B can see the backup** — no copying required:
+   ```bash
+   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e \
+     "SHOW BACKUPS IN 'nodelocal://1/dr/cluster';"
    ```
 
 4. **Restore onto B and time it:**
    ```bash
-   time cockroach sql --insecure --url "$B" -e "
-     RESTORE FROM LATEST IN 'nodelocal://1/backups-from-a';"
+   time CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e \
+     "RESTORE FROM LATEST IN 'nodelocal://1/dr/cluster';"
    ```
-   > A full-cluster `RESTORE` must run into a fresh cluster with no user data — that is
-   > exactly the DR situation.
+   > A full-cluster `RESTORE` must run into a cluster with no user data — which is exactly
+   > the DR situation. If B already has the `bank` database from an earlier attempt, reset it
+   > with `CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb reset`.
 
 5. **Verify the restore, don't assume it:**
    ```bash
-   cockroach sql --insecure --url "$B" <<'SQL'
+   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e "
    SHOW DATABASES;
    SELECT count(*) AS accounts FROM bank.public.accounts;
    SELECT count(*) AS transfers FROM bank.public.transfers;
-   SELECT sum(balance) AS total_balance FROM bank.public.accounts;
-   SHOW USERS;
-   SHOW GRANTS ON DATABASE bank;
-   SQL
+   SELECT sum(balance) AS total_balance FROM bank.public.accounts;"
+   ```
+   ```bash
+   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e "SHOW USERS;"
    ```
 
 6. **Compare against A** — a DR drill without a comparison is theatre:
    ```bash
-   for URL in "$A" "$B"; do
-     cockroach sql --insecure --url "$URL" --format=tsv -e \
-       "SELECT count(*), sum(balance) FROM bank.public.accounts;"
-   done
+   echo "A:"; scripts/crdb sql --format=tsv -e \
+     "SELECT count(*), sum(balance) FROM bank.public.accounts;"
+   echo "B:"; CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql --format=tsv -e \
+     "SELECT count(*), sum(balance) FROM bank.public.accounts;"
    ```
+   The row count **and** the business checksum must match. One without the other proves nothing.
 
 7. **Fill in the drill record:**
 
@@ -412,12 +414,11 @@ Swap runbooks with another pair. Can they follow yours without asking you a ques
 ## Cleanup
 
 ```bash
-for p in 26257 26258 26259 26357 26358 26359; do
-  cockroach node drain --insecure --host=localhost:$p --drain-wait=10s 2>/dev/null
-done
-pkill -f "store=/tmp/lab11"
-rm -rf /tmp/lab11
+scripts/crdb down
+CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb down
 ```
+
+That also removes the shared `/backups` volume, so the next run of this lab starts clean.
 
 ## Lab 11 Deliverables
 

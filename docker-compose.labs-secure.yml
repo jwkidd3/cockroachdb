@@ -1,0 +1,66 @@
+# Lab 12: a TLS-secured single-node cluster.
+#
+#   docker compose -f docker-compose.labs-secure.yml up -d
+#   docker compose -f docker-compose.labs-secure.yml exec crdbs1 \
+#       ./cockroach sql --certs-dir=/certs --host=crdbs1
+#
+# Ports are deliberately different from the insecure lab cluster (SQL 26457,
+# DB Console 8280) so both can run at once.
+
+name: crdb-labs-secure
+
+volumes:
+  crdbs1-data:
+  crdbs-certs:
+
+services:
+  # One-shot: create the CA, the node certificate and a root client certificate.
+  # Re-running is safe — it only generates what is missing.
+  certs:
+    image: cockroachdb/cockroach:${CRDB_VERSION:-v23.2.5}
+    container_name: crdbs-certs
+    restart: "no"
+    volumes:
+      - crdbs-certs:/certs
+    entrypoint: ["/bin/bash", "-c"]
+    command: >
+      'set -e
+       if [ ! -f /certs/ca.crt ]; then
+         /cockroach/cockroach cert create-ca --certs-dir=/certs --ca-key=/certs/ca.key
+         echo "created CA"
+       fi
+       if [ ! -f /certs/node.crt ]; then
+         /cockroach/cockroach cert create-node crdbs1 localhost 127.0.0.1 \
+           --certs-dir=/certs --ca-key=/certs/ca.key
+         echo "created node certificate"
+       fi
+       if [ ! -f /certs/client.root.crt ]; then
+         /cockroach/cockroach cert create-client root --certs-dir=/certs --ca-key=/certs/ca.key
+         echo "created root client certificate"
+       fi
+       chmod 700 /certs; chmod 600 /certs/*.key
+       /cockroach/cockroach cert list --certs-dir=/certs'
+
+  crdbs1:
+    image: cockroachdb/cockroach:${CRDB_VERSION:-v23.2.5}
+    container_name: crdbs1
+    hostname: crdbs1
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    # Run the binary as PID 1 instead of the image's cockroach.sh wrapper, so that
+    # signals sent with `docker compose kill -s HUP` actually reach CockroachDB.
+    # Through the wrapper, SIGHUP is swallowed and certificate reload never happens.
+    entrypoint: ["/cockroach/cockroach"]
+    command: >
+      start-single-node --certs-dir=/certs
+      --advertise-addr=crdbs1
+      --http-addr=0.0.0.0:8080
+      --cache=.25 --max-sql-memory=.25
+    ports:
+      - "26457:26257"
+      - "8280:8080"
+    volumes:
+      - crdbs1-data:/cockroach/cockroach-data
+      - crdbs-certs:/certs
+      - ./lab12:/lab12

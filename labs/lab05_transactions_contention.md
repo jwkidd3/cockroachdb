@@ -15,26 +15,30 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Three terminals open side-by-side (two SQL sessions + one runner)
 - Optional but recommended: `python3` with `psycopg2-binary` for the retry-loop script
 
 ## Setup
 
 ```bash
-cockroach demo --nodes 3 --no-example-database --empty
+scripts/crdb up          # start the 3-node cluster (skip if it is already running)
+scripts/crdb sql         # open a SQL shell
 ```
+
+> Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
+> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
 
 Capture the connection URL from the demo banner:
 
 ```bash
-export CRDB_URL='postgresql://demo:demo-password@127.0.0.1:26257/bank?sslmode=require'
+export CRDB_URL='postgresql://root@localhost:26257/?sslmode=disable'
 ```
 
 Open a second terminal and connect:
 
 ```bash
-cockroach sql --url "$CRDB_URL"
+scripts/crdb sql
 ```
 
 Now create the lab schema (from either terminal — they share the cluster):
@@ -143,7 +147,7 @@ We'll write a contended UPDATE on the same row from two sessions and force a ser
    MAX=5
    FROM="$1" TO="$2" AMT="$3"
    for n in $(seq 1 $MAX); do
-     if cockroach sql --url "$CRDB_URL" --execute "
+     if scripts/crdb sql --execute "
        BEGIN;
        UPDATE accounts SET balance = balance - $AMT WHERE name = '$FROM';
        UPDATE accounts SET balance = balance + $AMT WHERE name = '$TO';
@@ -181,7 +185,7 @@ Reports that aggregate a big table will often contend with write traffic. The fi
 1. **Start a hot write loop in one terminal:**
    ```bash
    while true; do
-     cockroach sql --url "$CRDB_URL" \
+     scripts/crdb sql \
        --execute "UPDATE accounts SET balance = balance + 1 WHERE name = 'Alice';"
    done
    ```
@@ -295,7 +299,7 @@ Single-row counters (`UPDATE counters SET n = n + 1`) are a classic CockroachDB 
      ( for i in $(seq 1 25); do
          echo "UPDATE counter_shards SET n = n + 1
                WHERE name = 'page_views' AND shard = $((RANDOM % 16));"
-       done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1 ) &
+       done | scripts/crdb sql >/dev/null 2>&1 ) &
    done
    wait
    ```
@@ -376,7 +380,14 @@ For each scenario, predict whether you'll get 40001s, deadlocks, or smooth saili
 DROP DATABASE bank CASCADE;
 ```
 
-`\q` from each terminal.
+`\q` exits each SQL shell; the cluster keeps running.
+
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
+```
 
 ## Lab 5 Deliverables
 

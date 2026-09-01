@@ -20,8 +20,12 @@ By the end of this lab you will be able to:
 ## Setup
 
 ```bash
-cockroach demo --nodes 3 --no-example-database --empty
+scripts/crdb up          # start the 3-node cluster (skip if it is already running)
+scripts/crdb sql         # open a SQL shell
 ```
+
+> Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
+> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
 
 ```sql
 CREATE DATABASE shop;
@@ -310,6 +314,13 @@ Our `orders.payload` is JSONB. A query like "find all orders with `channel = 'mo
 
 ```sql
 DROP DATABASE shop CASCADE;
+```
+
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
 ```
 
 ## Lab 4 Deliverables

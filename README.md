@@ -35,43 +35,58 @@ Per learner:
 | --- | --- | --- |
 | RAM | 16 GB | **32 GB** |
 | Disk | 60 GB | **150 GB** |
-| Tools | `cockroach` binary | plus Docker, `kind`, `kubectl`, `psql`, `python3` |
+| Tools | Docker | plus `kind` + `kubectl` (Lab 16 only) |
 
 Instructors provisioning machines: see **[`setup/INSTRUCTOR_SETUP.md`](setup/INSTRUCTOR_SETUP.md)** —
 it ships a provisioning script, a verification script, and a teardown procedure.
 
-## Quick Start — Install the `cockroach` Binary
+## Quick Start — Start the Lab Cluster
 
-Labs 1–12 and 14 run against local `cockroach demo` / `cockroach start` clusters.
-Labs 13, 15, and 16 add Docker (Kafka, PostgreSQL, `kind`).
-
-### macOS (Homebrew)
-
-```bash
-brew install cockroachdb/tap/cockroach
-cockroach version
-```
-
-### macOS / Linux (manual)
+**The only prerequisite is Docker.** There is no `cockroach` binary to install: every node,
+and the SQL shell itself, runs in a container. The commands are identical on Windows, macOS
+and Linux.
 
 ```bash
-curl https://binaries.cockroachdb.com/cockroach-latest.darwin-11.0-amd64.tgz | tar -xz
-sudo mv cockroach-*/cockroach /usr/local/bin/
-cockroach version
+git clone https://github.com/jwkidd3/cockroachdb.git
+cd cockroachdb
+scripts/crdb.sh up          # macOS / Linux
+scripts\crdb.bat up         # Windows
 ```
 
-### Windows (PowerShell)
+You should see three live nodes and a DB Console link:
 
-Download the latest Windows zip from <https://www.cockroachlabs.com/docs/releases/> and add the
-extracted folder to `PATH`, then run `cockroach version`.
+```
+node_id  address       is_live
+1        crdb1:26257   t
+2        crdb2:26257   t
+3        crdb3:26257   t
 
-### Verify
-
-```bash
-cockroach demo --no-example-database --empty
+DB Console: http://localhost:8080   (node 2: 8081, node 3: 8082)
 ```
 
-You should land at a `defaultdb>` prompt. Type `\q` to exit.
+Open a SQL shell with `scripts/crdb sql`, and tear everything down with `scripts/crdb down`.
+
+| Command | What it does |
+| --- | --- |
+| `scripts/crdb up` | Start and initialise the 3-node cluster |
+| `scripts/crdb sql` | SQL shell on node 1 (`sql -e "..."` for one statement) |
+| `scripts/crdb run <args>` | Any `cockroach` subcommand inside the cluster |
+| `scripts/crdb stop N` / `start N` | Simulate a node failure and recovery |
+| `scripts/crdb add-node` | Start a 4th node |
+| `scripts/crdb status` / `ps` / `logs N` | Node status, containers, logs |
+| `scripts/crdb down` / `reset` | Remove the cluster / recreate it clean |
+
+Some labs bring up their own stacks alongside it:
+
+| File | Used by | Ports |
+| --- | --- | --- |
+| `docker-compose.labs.yml` | every lab | SQL 26257–26260, console 8080–8083 |
+| `docker-compose.labs-b.yml` | Lab 11 (cross-cluster DR) | SQL 26357+, console 8180+ |
+| `docker-compose.labs-secure.yml` | Lab 12 (TLS, RBAC, audit) | SQL 26457, console 8280 |
+| `docker-compose.labs.logging.yml` | Lab 9 (log channels) | overlay on the main cluster |
+
+Give Docker at least **4 GB** for Days 1–2, and **8 GB** for Days 3–4 (Lab 7's 9-node
+simulation and Lab 16's Kubernetes cluster are the heavy ones).
 
 ## Course Structure
 
@@ -196,7 +211,8 @@ Speaker notes: `S`. Overview: `O`. Print to PDF: append `?print-pdf` and use the
 - Each lab opens with **Learning Objectives**, **Prerequisites**, and a **Setup** block, and closes
   with **Cleanup**, **Deliverables**, **Challenge Exercises**, and a command **Reference** table.
 - Labs are self-contained — you can drop into any lab after completing its Setup block.
-- Commands assume a Unix-like shell; Windows variants are called out where the syntax differs.
+- Commands are identical on Windows, macOS and Linux, because everything runs in containers.
+  Where a lab writes `scripts/crdb`, use `scripts\crdb.bat` on Windows and `scripts/crdb.sh` elsewhere.
 - Between labs, `bash setup/reset_labs.sh` returns the machine to a known state.
 - To pick up lab corrections during the course, run `git pull` — or on Windows,
   double-click [`scripts\pull_latest.bat`](scripts/pull_latest.bat), which stashes your own

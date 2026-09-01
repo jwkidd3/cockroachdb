@@ -17,29 +17,23 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - `python3` with `psycopg2` (`pip install psycopg2-binary`)
 - Optional: Go 1.21+ for the Go variants
 
 ## Setup
 
 ```bash
-mkdir -p /tmp/lab14 && cd /tmp/lab14
-
-for i in 1 2 3; do
-  cockroach start --insecure \
-    --store=/tmp/lab14/n$i \
-    --listen-addr=localhost:$((26256+i)) \
-    --http-addr=localhost:$((8079+i)) \
-    --join=localhost:26257,localhost:26258,localhost:26259 \
-    --background
-done
-cockroach init --insecure --host=localhost:26257
+scripts/crdb up
 export DSN='postgresql://root@localhost:26257/shop?sslmode=disable'
 ```
 
+> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
+> From your machine it is `localhost:26257`; from inside another container it is
+> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
+
 ```bash
-cockroach sql --insecure --host=localhost:26257 <<'SQL'
+scripts/crdb sql <<'SQL'
 CREATE DATABASE shop;
 USE shop;
 
@@ -294,7 +288,7 @@ The fix: write the event into the same transaction as the business data, and let
    ```
    ```bash
    python3 /tmp/lab14/outbox.py
-   cockroach sql --insecure --host=localhost:26257 -e \
+   scripts/crdb sql -e \
      "SELECT topic, aggregate, payload FROM shop.events_outbox ORDER BY created DESC LIMIT 5;"
    ```
 
@@ -304,7 +298,7 @@ The fix: write the event into the same transaction as the business data, and let
    raise RuntimeError("simulated crash before commit")
    ```
    ```bash
-   cockroach sql --insecure --host=localhost:26257 -e "
+   scripts/crdb sql -e "
      SELECT (SELECT count(*) FROM shop.orders) AS orders,
             (SELECT count(*) FROM shop.events_outbox) AS events;"
    ```
@@ -587,13 +581,13 @@ Two ways to stop two users from overwriting each other. Measure both.
 
 1. **Under-pooled — the app queues:**
    ```bash
-   cockroach workload run kv --duration=30s --concurrency=64 --max-rate=0 \
+   scripts/crdb run workload run kv --duration=30s --concurrency=64 --max-rate=0 \
      'postgresql://root@localhost:26257?sslmode=disable' | tail -3
    ```
 
 2. **Over-pooled — the database queues:**
    ```bash
-   cockroach workload run kv --duration=30s --concurrency=512 --max-rate=0 \
+   scripts/crdb run workload run kv --duration=30s --concurrency=512 --max-rate=0 \
      'postgresql://root@localhost:26257?sslmode=disable' | tail -3
    ```
    Throughput barely moves; p99 multiplies. You moved the queue somewhere less observable.
@@ -620,11 +614,7 @@ Two ways to stop two users from overwriting each other. Measure both.
 ## Cleanup
 
 ```bash
-for i in 1 2 3; do
-  cockroach node drain --insecure --host=localhost:$((26256+i)) --drain-wait=10s 2>/dev/null
-done
-pkill -f "store=/tmp/lab14"
-rm -rf /tmp/lab14
+scripts/crdb down
 ```
 
 ## Lab 14 Deliverables

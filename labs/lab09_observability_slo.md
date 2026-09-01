@@ -13,7 +13,7 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Docker (for Prometheus + Grafana). A binary-only fallback is given in Part B.
 
 ## Setup — a Cluster That Emits Metrics
@@ -22,27 +22,24 @@ By the end of this lab you will be able to:
 real local cluster with fixed ports instead:
 
 ```bash
-mkdir -p /tmp/lab9 && cd /tmp/lab9
-
-for i in 1 2 3; do
-  cockroach start --insecure \
-    --store=/tmp/lab9/n$i \
-    --listen-addr=localhost:$((26256+i)) \
-    --http-addr=localhost:$((8079+i)) \
-    --join=localhost:26257,localhost:26258,localhost:26259 \
-    --background
-done
-
-cockroach init --insecure --host=localhost:26257
-cockroach sql --insecure --host=localhost:26257 -e "SELECT node_id, is_live FROM crdb_internal.gossip_nodes;"
+scripts/crdb up
 ```
+
+> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
+> From your machine it is `localhost:26257`; from inside another container it is
+> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
 
 Generate continuous load so the dashboards have something to show:
 
 ```bash
-cockroach workload init kv --drop 'postgresql://root@localhost:26257?sslmode=disable'
-cockroach workload run kv --duration=60m --concurrency=16 --read-percent=70 \
-  'postgresql://root@localhost:26257?sslmode=disable' > /tmp/lab9/workload.log 2>&1 &
+scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=disable'
+
+# Continuous background load so the dashboards have something to show.
+# -d detaches; stop it later with:  docker rm -f lab9-load
+docker run -d --name lab9-load --network crdb-labs_default \
+  cockroachdb/cockroach:v23.2.5 \
+  workload run kv --duration=60m --concurrency=16 --read-percent=70 \
+  'postgresql://root@crdb1:26257?sslmode=disable'
 ```
 
 ## Tasks
@@ -251,14 +248,14 @@ cockroach workload run kv --duration=60m --concurrency=16 --read-percent=70 \
 
 6. **Prove the dashboard works.** In another terminal, create contention deliberately:
    ```bash
-   cockroach sql --insecure --host=localhost:26257 -e "
+   scripts/crdb sql -e "
      CREATE TABLE IF NOT EXISTS kv.counter (name STRING PRIMARY KEY, n INT DEFAULT 0);
      UPSERT INTO kv.counter VALUES ('hot', 0);"
 
    for i in $(seq 1 20); do
      ( for j in $(seq 1 200); do
          echo "UPDATE kv.counter SET n = n + 1 WHERE name = 'hot';"
-       done | cockroach sql --insecure --host=localhost:26257 >/dev/null 2>&1 ) &
+       done | scripts/crdb sql >/dev/null 2>&1 ) &
    done
    wait
    ```
@@ -272,13 +269,15 @@ audit trail.
 
 1. **See the default configuration:**
    ```bash
-   cockroach debug check-log-config --store=/tmp/lab9/n1
+   scripts/crdb run debug check-log-config
    ```
 
-2. **Write a channel-split config** — `/tmp/lab9/logs.yaml`:
+2. **Write a channel-split config** — `lab9/logs.yaml` in the repo root
+   (`mkdir -p lab9` first). The path is inside the container; the overlay mounts
+   `./lab9` there, so the logs land on your machine where you can read them:
    ```yaml
    file-defaults:
-     dir: /tmp/lab9/logs
+     dir: /lab9/logs
      max-file-size: 10MiB
      max-group-size: 100MiB
      buffered-writes: true
@@ -303,38 +302,40 @@ audit trail.
 
    capture-stray-errors:
      enable: true
-     dir: /tmp/lab9/logs/stray
+     dir: /lab9/logs/stray
    ```
 
-3. **Restart node 1 with the config:**
+3. **Restart node 1 with the config.** A compose *overlay* adds the
+   `--log-config-file` flag and mounts `./lab9` — the base file stays untouched:
    ```bash
-   cockroach node drain --insecure --host=localhost:26257 --drain-wait=30s
-   pkill -f "store=/tmp/lab9/n1"
-
-   cockroach start --insecure \
-     --store=/tmp/lab9/n1 \
-     --listen-addr=localhost:26257 --http-addr=localhost:8080 \
-     --join=localhost:26257,localhost:26258,localhost:26259 \
-     --log-config-file=/tmp/lab9/logs.yaml \
-     --background
+   docker compose -f docker-compose.labs.yml -f docker-compose.labs.logging.yml up -d crdb1
    ```
+   ```bash
+   scripts/crdb sql -e "SELECT 1;"          # back up?
+   scripts/crdb logs 1                       # ...and reading its new config
+   ```
+
+   > Look at [`docker-compose.labs.logging.yml`](../docker-compose.labs.logging.yml): it
+   > redefines only `command` and `volumes` for `crdb1`. That is the production pattern too —
+   > one base definition, per-environment overlays, rather than editing the base file and
+   > forgetting to put it back.
 
 4. **Generate events in each channel and find them:**
    ```bash
-   cockroach sql --insecure --host=localhost:26257 -e "
+   scripts/crdb sql -e "
      CREATE USER lab9_auditor;                 -- USER_ADMIN
      GRANT SELECT ON kv.kv TO lab9_auditor;    -- PRIVILEGES
      ALTER TABLE kv.kv EXPERIMENTAL_AUDIT SET READ WRITE;  -- SENSITIVE_ACCESS enabled
      SELECT count(*) FROM kv.kv;               -- SENSITIVE_ACCESS event
    "
 
-   ls -la /tmp/lab9/logs/
-   grep -o '"EventType":"[^"]*"' /tmp/lab9/logs/cockroach-security*.log | sort | uniq -c
+   ls -la lab9/logs/
+   grep -o '"EventType":"[^"]*"' lab9/logs/cockroach-security*.log | sort | uniq -c
    ```
 
 5. **Read one structured event in full:**
    ```bash
-   grep 'sensitive_table_access' /tmp/lab9/logs/cockroach-security*.log | tail -1 | python3 -m json.tool
+   grep 'sensitive_table_access' lab9/logs/cockroach-security*.log | tail -1 | python3 -m json.tool
    ```
    Note the fields a SIEM cares about: `Timestamp`, `EventType`, `User`, `TableName`,
    `Statement`, `ApplicationName`.
@@ -343,13 +344,14 @@ audit trail.
 
 1. **Capture it:**
    ```bash
-   cockroach debug zip /tmp/lab9/debug.zip --insecure --host=localhost:26257
+   scripts/crdb run debug zip /tmp/debug.zip --insecure
+   scripts/crdb cp crdb1:/tmp/debug.zip ./debug.zip
    ```
 
 2. **Look inside before you hand it to anyone:**
    ```bash
-   unzip -l /tmp/lab9/debug.zip | head -40
-   unzip -l /tmp/lab9/debug.zip | wc -l
+   unzip -l ./debug.zip | head -40
+   unzip -l ./debug.zip | wc -l
    ```
 
 3. **The parts you will actually read:**
@@ -368,7 +370,8 @@ audit trail.
 4. **Redaction matters.** A raw `debug zip` can contain query text with literal values.
    For anything leaving your organization:
    ```bash
-   cockroach debug zip /tmp/lab9/debug-redacted.zip --insecure --host=localhost:26257 --redact
+   scripts/crdb run debug zip /tmp/debug-redacted.zip --insecure --redact
+   scripts/crdb cp crdb1:/tmp/debug-redacted.zip ./debug-redacted.zip
    ```
    Compare the sizes and spot-check that literals are gone.
 
@@ -382,14 +385,13 @@ audit trail.
 ## Cleanup
 
 ```bash
-docker rm -f lab9-prom lab9-grafana 2>/dev/null
-pkill -f "cockroach workload run kv"
-for i in 1 2 3; do
-  cockroach node drain --insecure --host=localhost:$((26256+i)) --drain-wait=10s 2>/dev/null
-done
-pkill -f "store=/tmp/lab9"
-rm -rf /tmp/lab9
+docker rm -f lab9-load lab9-prom lab9-grafana 2>/dev/null
+scripts/crdb down
+rm -rf lab9
 ```
+
+Node 1 goes back to its normal configuration next time you run `scripts/crdb up`, because the
+logging overlay is only applied when you name it on the command line.
 
 ## Lab 9 Deliverables
 

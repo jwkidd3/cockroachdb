@@ -19,8 +19,12 @@ By the end of this lab you will be able to:
 ## Setup
 
 ```bash
-cockroach demo --nodes 3 --no-example-database --empty
+scripts/crdb up          # start the 3-node cluster (skip if it is already running)
+scripts/crdb sql         # open a SQL shell
 ```
+
+> Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
+> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
 
 Load a moderate dataset:
 
@@ -206,7 +210,10 @@ WHERE o.placed > now() - INTERVAL '1 hour'
 GROUP BY p.category;
 ```
 
-The output prints a `cockroach demo` command to load the bundle, plus a path to the zip. The bundle contains the plan, the schema, statistics, and a small reproducible dataset — perfect for opening a support case or shipping a repro to your team's expert.
+The output prints a `cockroach demo` command to load the bundle, plus a path to the zip.
+(That command is CockroachDB's own suggestion; to run it here, use
+`scripts/crdb run demo --with-load ...` inside the container, or download the bundle from the
+DB Console and open it on a machine with the binary.) The bundle contains the plan, the schema, statistics, and a small reproducible dataset — perfect for opening a support case or shipping a repro to your team's expert.
 
 ### Part F: DistSQL & Vectorization (10 min)
 
@@ -253,6 +260,13 @@ If any of these fail, there's headroom. Walk through them for Q1, Q2, Q3 again w
 
 ```sql
 DROP DATABASE catalog CASCADE;
+```
+
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
 ```
 
 ## Lab 6 Deliverables

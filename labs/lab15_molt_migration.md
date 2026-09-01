@@ -13,7 +13,7 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Docker (for PostgreSQL source)
 - `psql` client
 - MOLT tools — download from <https://www.cockroachlabs.com/docs/molt/molt-fetch> (a
@@ -96,18 +96,13 @@ psql "$PG" -c "SELECT count(*) FROM customers; SELECT count(*) FROM orders; SELE
 ### 3. Target CockroachDB
 
 ```bash
-for i in 1 2 3; do
-  cockroach start --insecure \
-    --store=/tmp/lab15/n$i \
-    --listen-addr=localhost:$((26256+i)) \
-    --http-addr=localhost:$((8079+i)) \
-    --join=localhost:26257,localhost:26258,localhost:26259 \
-    --background
-done
-cockroach init --insecure --host=localhost:26257
+scripts/crdb up
 export CRDB='postgresql://root@localhost:26257/target?sslmode=disable'
-cockroach sql --insecure --host=localhost:26257 -e "CREATE DATABASE target;"
 ```
+
+> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
+> From your machine it is `localhost:26257`; from inside another container it is
+> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
 
 ## Tasks
 
@@ -116,7 +111,7 @@ cockroach sql --insecure --host=localhost:26257 -e "CREATE DATABASE target;"
 1. **Dump the source schema and try it verbatim:**
    ```bash
    pg_dump "$PG" --schema-only --no-owner --no-privileges > /tmp/lab15/schema.sql
-   cockroach sql --insecure --url "$CRDB" -f /tmp/lab15/schema.sql 2>&1 | tee /tmp/lab15/errors.log
+   scripts/crdb sql -f /tmp/lab15/schema.sql 2>&1 | tee /tmp/lab15/errors.log
    grep -i error /tmp/lab15/errors.log | head -20
    ```
 
@@ -257,17 +252,17 @@ cutover means another migration; changing it now costs nothing.
    psql "$PG" -c "\copy (SELECT id, order_id, event_type, occurred_at FROM order_events) TO '/tmp/lab15/order_events.csv' CSV"
    ```
    ```bash
-   cockroach sql --insecure --url "$CRDB" <<'SQL'
+   scripts/crdb sql <<'SQL'
    CREATE TABLE stage_customers (legacy_id INT PRIMARY KEY, tenant_id INT, email STRING, name STRING, created_at TIMESTAMPTZ);
    CREATE TABLE stage_orders (legacy_id INT PRIMARY KEY, customer_legacy INT, tenant_id INT, total DECIMAL(12,2), status STRING, metadata JSONB, created_at TIMESTAMPTZ);
    CREATE TABLE stage_events (legacy_id INT PRIMARY KEY, order_legacy INT, event_type STRING, occurred_at TIMESTAMPTZ);
    SQL
 
    for t in customers orders events; do
-     cockroach userfile upload /tmp/lab15/${t/events/order_events}.csv /lab15/$t.csv --url "$CRDB"
+     scripts/crdb run userfile upload /tmp/lab15/${t/events/order_events}.csv /lab15/$t.csv --url "$CRDB"
    done
 
-   cockroach sql --insecure --url "$CRDB" <<'SQL'
+   scripts/crdb sql <<'SQL'
    IMPORT INTO stage_customers CSV DATA ('userfile:///lab15/customers.csv');
    IMPORT INTO stage_orders    CSV DATA ('userfile:///lab15/orders.csv');
    IMPORT INTO stage_events    CSV DATA ('userfile:///lab15/events.csv');
@@ -301,7 +296,7 @@ cutover means another migration; changing it now costs nothing.
 
    # Business checksum, not just a row count
    psql "$PG" -tAc "SELECT sum(total)::numeric(20,2) FROM orders"
-   cockroach sql --insecure --url "$CRDB" --format=tsv -e "SELECT sum(total)::DECIMAL(20,2) FROM orders" | tail -1
+   scripts/crdb sql --format=tsv -e "SELECT sum(total)::DECIMAL(20,2) FROM orders" | tail -1
    ```
 
 5. **Add constraints after the load, not before:**
@@ -324,7 +319,7 @@ Migrations regress queries. Find out which ones before your users do.
 1. **Same query, both engines:**
    ```bash
    psql "$PG" -c "EXPLAIN ANALYZE SELECT * FROM orders WHERE tenant_id = 7 ORDER BY created_at DESC LIMIT 50;"
-   cockroach sql --insecure --url "$CRDB" -e "EXPLAIN ANALYZE SELECT * FROM orders WHERE tenant_id = 7 ORDER BY created_at DESC LIMIT 50;"
+   scripts/crdb sql -e "EXPLAIN ANALYZE SELECT * FROM orders WHERE tenant_id = 7 ORDER BY created_at DESC LIMIT 50;"
    ```
 
 2. **Run the comparison across a query set:**
@@ -441,11 +436,7 @@ Argue both sides for each. The honest answer is sometimes "stay on PostgreSQL".
 
 ```bash
 docker rm -f lab15-pg
-for i in 1 2 3; do
-  cockroach node drain --insecure --host=localhost:$((26256+i)) --drain-wait=10s 2>/dev/null
-done
-pkill -f "store=/tmp/lab15"
-rm -rf /tmp/lab15
+scripts/crdb down
 ```
 
 ## Lab 15 Deliverables

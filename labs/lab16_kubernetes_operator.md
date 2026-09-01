@@ -16,7 +16,7 @@ By the end of this lab you will be able to:
 - Docker with at least **6 GB** of memory allocated
 - `kind` — <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>
 - `kubectl` — <https://kubernetes.io/docs/tasks/tools/>
-- `cockroach` binary on `PATH` (for the client)
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 
 ```bash
 kind version && kubectl version --client && docker info | grep -i "total memory"
@@ -302,7 +302,6 @@ rather than decorative.
 
 ```bash
 kind delete cluster --name lab16
-rm -rf /tmp/lab16
 ```
 
 ## Lab 16 Deliverables

@@ -15,3 +15,11 @@ tests/scratch/
 *.aux
 *.log
 *.toc
+
+# Lab working directories (mounted into containers; contents are generated)
+/lab9/
+/lab12/*
+!/lab12/.gitkeep
+/lab13/
+/lab15/
+/lab16/

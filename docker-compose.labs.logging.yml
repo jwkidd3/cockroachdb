@@ -1,0 +1,20 @@
+# Lab 9 overlay: restart node 1 with a channel-splitting log configuration.
+#
+#   docker compose -f docker-compose.labs.yml -f docker-compose.labs.logging.yml up -d crdb1
+#
+# Write your logs.yaml to ./lab9/logs.yaml first. Logs land in ./lab9/logs on your machine,
+# so you can read them with your own editor.
+
+services:
+  crdb1:
+    command: >
+      start --insecure --advertise-addr=crdb1
+      --join=crdb1,crdb2,crdb3
+      --http-addr=0.0.0.0:8080
+      --cache=.25 --max-sql-memory=.25
+      --external-io-dir=/backups
+      --log-config-file=/lab9/logs.yaml
+    volumes:
+      - crdb1-data:/cockroach/cockroach-data
+      - crdb-backups:/backups
+      - ./lab9:/lab9

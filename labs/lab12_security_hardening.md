@@ -14,65 +14,79 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - `nc` (netcat) for the log-shipping step
 - Lab 9's log-channel configuration is reused here
 
 ## Setup
 
+Every command in this lab talks to the **secure** cluster, so export this once:
+
 ```bash
-mkdir -p /tmp/lab12/{certs,keys,data} && cd /tmp/lab12
+export CRDB_COMPOSE=docker-compose.labs-secure.yml
 ```
+
+(On Windows: `set CRDB_COMPOSE=docker-compose.labs-secure.yml`.)
 
 ## Tasks
 
 ### Part A: Certificates and a Secure Cluster (12 min)
 
-1. **Create the CA. The CA key never leaves this directory** — in production it lives in a
-   vault, not on the node:
+1. **Start it.** The stack generates its own CA, node certificate and root client
+   certificate the first time, then starts a TLS-only node:
    ```bash
-   cockroach cert create-ca \
-     --certs-dir=/tmp/lab12/certs \
-     --ca-key=/tmp/lab12/keys/ca.key
+   scripts/crdb up
+   ```
+   ```
+   Usage   Certificate File   Key File          Expires      Notes
+   CA      ca.crt                               2036/09/08   num certs: 1
+   Node    node.crt           node.key          2031/09/05   addresses: crdbs1,localhost,127.0.0.1
+   Client  client.root.crt    client.root.key   2031/09/05   user: root
    ```
 
-2. **Node certificate.** List *every* name and IP the node will be reached by — hostname,
-   load balancer, service DNS, and `localhost`:
+2. **Read what generated them** — the `certs` service in
+   [`docker-compose.labs-secure.yml`](../docker-compose.labs-secure.yml):
    ```bash
-   cockroach cert create-node \
-     localhost 127.0.0.1 \
-     --certs-dir=/tmp/lab12/certs \
-     --ca-key=/tmp/lab12/keys/ca.key
+   docker compose -f docker-compose.labs-secure.yml logs certs
+   ```
+   It runs the three commands you would run by hand in production:
+   ```
+   scripts/crdb run cert create-ca     --certs-dir=/certs --ca-key=/certs/ca.key
+   scripts/crdb run cert create-node   crdbs1 localhost 127.0.0.1 --certs-dir=/certs --ca-key=/certs/ca.key
+   scripts/crdb run cert create-client root --certs-dir=/certs --ca-key=/certs/ca.key
    ```
 
-3. **Client certificates** — one per SQL user, not one shared cert:
+   > **The node certificate lists every name the node will be reached by** — here `crdbs1`
+   > (inside Docker), `localhost` and `127.0.0.1` (from your machine). Miss one and clients
+   > using that name fail TLS verification. In production the list includes the load-balancer
+   > name and the service DNS name.
+   >
+   > **The CA key is the crown jewel.** This lab keeps `ca.key` beside the certificates for
+   > convenience; in production it lives in a vault or an offline host, and never on a node.
+
+3. **Inspect what you have:**
    ```bash
-   cockroach cert create-client root \
-     --certs-dir=/tmp/lab12/certs --ca-key=/tmp/lab12/keys/ca.key
+   scripts/crdb run cert list --certs-dir=/certs
+   ```
+   For the certificate's own details, use a container that has `openssl`
+   (the CockroachDB image does not):
+   ```bash
+   docker run --rm -v crdb-labs-secure_crdbs-certs:/certs postgres:16 \
+     openssl x509 -in /certs/node.crt -noout -text | grep -A2 'Validity\|Subject Alternative'
    ```
 
-4. **Inspect what you made:**
+4. **Connect — certificates required:**
    ```bash
-   cockroach cert list --certs-dir=/tmp/lab12/certs
-   openssl x509 -in /tmp/lab12/certs/node.crt -noout -text | grep -A2 'Validity\|Subject Alternative'
+   scripts/crdb sql -e "SELECT 'secure connection OK' AS status;"
    ```
 
-5. **Start the secure cluster:**
+5. **Prove insecure access is rejected:**
    ```bash
-   cockroach start-single-node \
-     --certs-dir=/tmp/lab12/certs \
-     --store=/tmp/lab12/data \
-     --listen-addr=localhost:26257 \
-     --http-addr=localhost:8080 \
-     --background
-
-   export S="--certs-dir=/tmp/lab12/certs --host=localhost:26257"
-   cockroach sql $S -e "SELECT 1;"
+   docker compose -f docker-compose.labs-secure.yml exec crdbs1 \
+     ./cockroach sql --insecure --host=crdbs1 -e "SELECT 1;"
    ```
-
-6. **Prove insecure access is rejected:**
-   ```bash
-   cockroach sql --insecure --host=localhost:26257 -e "SELECT 1;" && echo "PROBLEM" || echo "correctly rejected"
+   ```
+   ERROR: node is running secure mode, SSL connection required (SQLSTATE 08P01)
    ```
 
 ### Part B: Certificate Rotation Without Downtime (15 min)
@@ -82,43 +96,54 @@ on a schedule is how they don't.
 
 1. **Check the current expiry:**
    ```bash
-   openssl x509 -in /tmp/lab12/certs/node.crt -noout -dates
+   docker run --rm -v crdb-labs-secure_crdbs-certs:/certs postgres:16 \
+     openssl x509 -in /certs/node.crt -noout -dates
    ```
 
 2. **Issue a new node cert alongside the old one.** `--overwrite` regenerates it signed by the
    same CA:
    ```bash
-   cockroach cert create-node \
+   scripts/crdb run cert create-node \
      localhost 127.0.0.1 \
-     --certs-dir=/tmp/lab12/certs \
-     --ca-key=/tmp/lab12/keys/ca.key \
+     --certs-dir=/certs \
+     --ca-key=/certs/ca.key \
      --overwrite \
      --lifetime=48h
    ```
 
 3. **Signal the node to reload certificates — no restart needed:**
    ```bash
-   PID=$(pgrep -f "cockroach start-single-node --certs-dir=/tmp/lab12/certs")
-   kill -SIGHUP $PID
+   docker compose -f docker-compose.labs-secure.yml kill -s HUP crdbs1
    ```
+
+   > ⚠️ **This only works because the container runs the binary as PID 1.** The CockroachDB
+   > image's default entrypoint is a shell script (`cockroach.sh`), and a signal sent to the
+   > container goes to *that shell*, which never forwards it — the certificate is reissued on
+   > disk, `cert list` shows the new expiry, and the server keeps serving the old certificate.
+   > Look for `entrypoint: ["/cockroach/cockroach"]` in
+   > [`docker-compose.labs-secure.yml`](../docker-compose.labs-secure.yml).
+   >
+   > It is a containerisation trap worth remembering beyond CockroachDB: **any** process
+   > started through a shell wrapper stops receiving signals, so graceful reloads and
+   > shutdowns silently stop working.
 
 4. **Prove the rotation took:**
    ```bash
    sleep 2
-   openssl s_client -connect localhost:26257 -showcerts </dev/null 2>/dev/null \
-     | openssl x509 -noout -dates
+   docker run --rm --network crdb-labs-secure_default postgres:16 \
+     bash -c "echo | openssl s_client -connect crdbs1:26257 2>/dev/null | openssl x509 -noout -dates"
    ```
    The `notAfter` should now be ~48 hours out. Connections stayed open the whole time:
    ```bash
-   cockroach sql $S -e "SELECT 'still connected' AS status;"
+   scripts/crdb sql -e "SELECT 'still connected' AS status;"
    ```
 
 5. **Client cert rotation** follows the same shape — issue, distribute, SIGHUP (or restart the
    app's connection pool):
    ```bash
-   cockroach cert create-client root \
-     --certs-dir=/tmp/lab12/certs --ca-key=/tmp/lab12/keys/ca.key --overwrite --lifetime=48h
-   cockroach sql $S -e "SELECT 'client rotated' AS status;"
+   scripts/crdb run cert create-client root \
+     --certs-dir=/certs --ca-key=/certs/ca.key --overwrite --lifetime=48h
+   scripts/crdb sql -e "SELECT 'client rotated' AS status;"
    ```
 
 6. **The CA rotation problem.** Rotating the *CA* is harder — every node and client must trust
@@ -145,7 +170,7 @@ on a schedule is how they don't.
 
 1. **Create the application schema:**
    ```bash
-   cockroach sql $S <<'SQL'
+   scripts/crdb sql <<'SQL'
    CREATE DATABASE ledger;
    USE ledger;
    CREATE TABLE accounts (
@@ -211,7 +236,7 @@ on a schedule is how they don't.
    ```
    ```bash
    for u in report_user app_user migrate_user; do
-     cockroach cert create-client $u --certs-dir=/tmp/lab12/certs --ca-key=/tmp/lab12/keys/ca.key
+     scripts/crdb run cert create-client $u --certs-dir=/certs --ca-key=/certs/ca.key
    done
    ```
 
@@ -225,29 +250,29 @@ on a schedule is how they don't.
 6. **Negative tests — the half people skip:**
    ```bash
    # report_user can read...
-   cockroach sql $S --user=report_user -e "SELECT count(*) FROM ledger.public.accounts;"
+   scripts/crdb sql --user=report_user -e "SELECT count(*) FROM ledger.public.accounts;"
 
    # ...but must NOT be able to write
-   cockroach sql $S --user=report_user -e \
+   scripts/crdb sql --user=report_user -e \
      "UPDATE ledger.public.accounts SET balance = 0;" && echo "PROBLEM" || echo "correctly denied"
 
    # app_user can write...
-   cockroach sql $S --user=app_user -e \
+   scripts/crdb sql --user=app_user -e \
      "UPDATE ledger.public.accounts SET balance = balance + 1 WHERE name = 'Alice';"
 
    # ...but must NOT be able to create tables
-   cockroach sql $S --user=app_user -e "CREATE TABLE ledger.public.bogus (id INT);" \
+   scripts/crdb sql --user=app_user -e "CREATE TABLE ledger.public.bogus (id INT);" \
      && echo "PROBLEM" || echo "correctly denied"
 
    # migrate_user can create
-   cockroach sql $S --user=migrate_user -e \
+   scripts/crdb sql --user=migrate_user -e \
      "CREATE TABLE ledger.public.audit_notes (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), note STRING);"
    ```
 
 7. **Future privileges — and the part that trips everyone.** Try reading the table
    `migrate_user` just created:
    ```bash
-   cockroach sql $S --user=report_user -e "SELECT count(*) FROM ledger.public.audit_notes;"
+   scripts/crdb sql --user=report_user -e "SELECT count(*) FROM ledger.public.audit_notes;"
    # ERROR: user report_user does not have SELECT privilege on relation audit_notes
    ```
 
@@ -262,14 +287,14 @@ on a schedule is how they don't.
 
    Fix it — the migration role declares its own defaults (run this **as `migrate_user`**):
    ```bash
-   cockroach sql $S --user=migrate_user -d ledger -e "
+   scripts/crdb sql --user=migrate_user -d ledger -e "
      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ledger_ro;
      ALTER DEFAULT PRIVILEGES IN SCHEMA public
        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ledger_rw;"
    ```
    ```bash
-   cockroach sql $S --user=migrate_user -d ledger -e "CREATE TABLE audit_notes_v2 (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), note STRING);"
-   cockroach sql $S --user=report_user  -e "SELECT count(*) FROM ledger.public.audit_notes_v2;"   -- ✅ 0
+   scripts/crdb sql --user=migrate_user -d ledger -e "CREATE TABLE audit_notes_v2 (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), note STRING);"
+   scripts/crdb sql --user=report_user -e "SELECT count(*) FROM ledger.public.audit_notes_v2;"   -- ✅ 0
    ```
 
    Three ways to configure this, all verified:
@@ -289,7 +314,7 @@ on a schedule is how they don't.
    REVOKE ledger_rw FROM app_user;
    ```
    ```bash
-   cockroach sql $S --user=app_user -e "SELECT count(*) FROM ledger.public.accounts;" \
+   scripts/crdb sql --user=app_user -e "SELECT count(*) FROM ledger.public.accounts;" \
      && echo "PROBLEM" || echo "correctly denied"
    ```
    ```sql
@@ -363,7 +388,7 @@ on a schedule is how they don't.
    ALTER USER app_user NOLOGIN;   -- then check
    ```
    ```bash
-   cockroach sql $S --user=app_user -e "SELECT 1;" && echo "PROBLEM" || echo "correctly denied"
+   scripts/crdb sql --user=app_user -e "SELECT 1;" && echo "PROBLEM" || echo "correctly denied"
    ```
    ```sql
    ALTER USER app_user LOGIN;
@@ -371,10 +396,11 @@ on a schedule is how they don't.
 
 ### Part E: The Audit Pipeline (15 min)
 
-1. **Route security channels to their own auditable sink** — `/tmp/lab12/logs.yaml`:
+1. **Route security channels to their own auditable sink** — write `lab12/logs.yaml`
+   (the compose stack mounts `./lab12` at `/lab12` inside the node):
    ```yaml
    file-defaults:
-     dir: /tmp/lab12/data/logs
+     dir: /lab12/logs
    sinks:
      file-groups:
        security:
@@ -386,14 +412,10 @@ on a schedule is how they don't.
        filter: NONE
    ```
 
-2. **Restart with the log config:**
+2. **Restart with the log config** — an overlay adds the flag; the base file is untouched:
    ```bash
-   cockroach node drain $S --drain-wait=15s
-   pkill -f "cockroach start-single-node --certs-dir=/tmp/lab12/certs"
-   cockroach start-single-node \
-     --certs-dir=/tmp/lab12/certs --store=/tmp/lab12/data \
-     --listen-addr=localhost:26257 --http-addr=localhost:8080 \
-     --log-config-file=/tmp/lab12/logs.yaml --background
+   docker compose -f docker-compose.labs-secure.yml \
+                  -f docker-compose.labs-secure.logging.yml up -d crdbs1
    ```
 
 3. **Enable per-table audit on the table holding SSNs:**
@@ -403,16 +425,16 @@ on a schedule is how they don't.
 
 4. **Generate auditable activity:**
    ```bash
-   cockroach sql $S --user=report_user -e "SELECT name, ssn FROM ledger.public.accounts;"
-   cockroach sql $S --user=app_user    -e "UPDATE ledger.public.accounts SET balance = balance + 5 WHERE name = 'Bob';"
-   cockroach sql $S -e "CREATE USER temp_contractor; DROP USER temp_contractor;"
+   scripts/crdb sql --user=report_user -e "SELECT name, ssn FROM ledger.public.accounts;"
+   scripts/crdb sql --user=app_user -e "UPDATE ledger.public.accounts SET balance = balance + 5 WHERE name = 'Bob';"
+   scripts/crdb sql -e "CREATE USER temp_contractor; DROP USER temp_contractor;"
    ```
 
 5. **Read the audit trail:**
    ```bash
-   ls /tmp/lab12/data/logs/
-   grep -o '"EventType":"[^"]*"' /tmp/lab12/data/logs/cockroach-security*.log | sort | uniq -c
-   grep 'sensitive_table_access' /tmp/lab12/data/logs/cockroach-security*.log | tail -1 | python3 -m json.tool
+   ls lab12/logs/
+   grep -o '"EventType":"[^"]*"' lab12/logs/cockroach-security*.log | sort | uniq -c
+   grep 'sensitive_table_access' lab12/logs/cockroach-security*.log | tail -1 | python3 -m json.tool
    ```
 
    The fields that matter downstream:
@@ -476,11 +498,12 @@ Fill in which CockroachDB feature satisfies each control, and what evidence you'
 ## Cleanup
 
 ```bash
-cockroach node drain --certs-dir=/tmp/lab12/certs --host=localhost:26257 --drain-wait=15s
-pkill -f "cockroach start-single-node --certs-dir=/tmp/lab12/certs"
-pkill -f "nc -l 9999"
-rm -rf /tmp/lab12
+docker compose -f docker-compose.labs-secure.yml down -v
+rm -rf lab12/logs
 ```
+
+That removes the node, its data **and** the certificate volume, so the next run generates a
+fresh CA.
 
 ## Lab 12 Deliverables
 
@@ -514,10 +537,10 @@ rm -rf /tmp/lab12
 
 | Command | Purpose |
 | --- | --- |
-| `cockroach cert create-ca/node/client` | Issue certificates |
+| `scripts/crdb run cert create-ca/node/client` | Issue certificates |
 | `cockroach cert list --certs-dir=...` | Inspect issued certs and expiry |
-| `kill -SIGHUP <pid>` | Reload certs without restarting the node |
-| `openssl s_client -connect host:port` | Verify the cert actually served |
+| `docker compose kill -s HUP <svc>` | Reload certs without restarting the node (needs the binary as PID 1) |
+| `openssl s_client -connect host:port` (sidecar container) | Verify the cert actually served |
 | `GRANT <role> TO <role>` | Role inheritance |
 | `REVOKE CREATE ON SCHEMA x.public FROM public` | Close the default "anyone can create" grant |
 | `ALTER DEFAULT PRIVILEGES ...` | Future objects — **scoped to the creating role and the current database** |

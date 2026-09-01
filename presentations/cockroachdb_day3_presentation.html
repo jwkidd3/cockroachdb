@@ -466,11 +466,8 @@
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash"># Fixed ports so the scrape config is static
-for i in 1 2 3; do cockroach start --insecure --store=/tmp/lab9/n$i \
-  --listen-addr=localhost:$((26256+i)) --http-addr=localhost:$((8079+i)) \
-  --join=localhost:26257,localhost:26258,localhost:26259 --background; done
-cockroach init --insecure --host=localhost:26257</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up                     # 3 nodes, fixed names for the scrape config
+scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=disable'</code></pre>
                     </div>
 
                     <div class="highlight-box">
@@ -618,8 +615,10 @@ SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach workload fixtures import tpcc --warehouses=10 "$CRDB"
-cockroach workload run tpcc --warehouses=10 --ramp=30s --duration=3m "$CRDB"</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb run workload fixtures import tpcc --warehouses=10 \
+  'postgresql://root@crdb1:26257?sslmode=disable'
+scripts/crdb run workload run tpcc --warehouses=10 --ramp=30s --duration=3m \
+  'postgresql://root@crdb1:26257?sslmode=disable'</code></pre>
                     </div>
 
                     <div class="highlight-box">

@@ -8,15 +8,22 @@
 set -uo pipefail
 ALL="${1:-}"
 
-echo "==> stopping CockroachDB processes"
-pkill -f "cockroach start"        2>/dev/null || true
-pkill -f "cockroach demo"         2>/dev/null || true
-pkill -f "cockroach workload"     2>/dev/null || true
-sleep 2
-pkill -9 -f "cockroach"           2>/dev/null || true
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+echo "==> tearing down the lab clusters"
+for f in docker-compose.labs.yml docker-compose.labs-b.yml docker-compose.labs-secure.yml; do
+    [ -f "$REPO/$f" ] && (cd "$REPO" && docker compose -f "$f" --profile scale down -v 2>/dev/null) || true
+done
+
+echo "==> stopping any stray cockroach containers"
+docker ps -a --filter "ancestor=cockroachdb/cockroach" --format '{{.ID}}' 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+
+# Anything still running natively (from an older run of the course)
+pkill -f "cockroach start" 2>/dev/null || true
+pkill -f "cockroach demo"  2>/dev/null || true
 
 echo "==> removing lab data directories"
-rm -rf /tmp/lab9 /tmp/lab10 /tmp/lab11 /tmp/lab12 /tmp/lab13 /tmp/lab14 /tmp/lab15 /tmp/lab16
+rm -rf "$REPO"/lab9 "$REPO"/lab12/logs /tmp/lab13 /tmp/lab15 /tmp/lab16
 rm -rf /tmp/crdb-* /tmp/verify-crdb-* /tmp/load_test.csv
 rm -rf ./lab8-certs ./lab8-keys ./lab8-data ./cockroach-data 2>/dev/null || true
 

@@ -796,6 +796,8 @@ cockroach demo
 
 # 3-node empty cluster — what we'll use in labs
 cockroach demo --nodes 3 --no-example-database --empty
+# in this course, containerised:
+#   docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 ...
 
 # 9-node, 3-region cluster with simulated WAN latencies
 cockroach demo --global --nodes 9 --no-example-database --empty
@@ -915,13 +917,13 @@ cockroach start   →  --http-addr=<host>:<port>  (default 8080)
                             <li>Spin up a 3-node demo cluster and confirm it is healthy</li>
                             <li>Inspect node liveness, ranges, and replica placement</li>
                             <li>Kill a node and observe Raft's automatic recovery</li>
-                            <li>Connect with both <code>cockroach sql</code> and <code>psql</code></li>
+                            <li>Connect with <code>scripts/crdb sql</code>, <code>psql</code>, and a Python driver</li>
                         </ul>
                     </div>
 
                     <div class="highlight-box">
                         <h4>📊 Quick Start</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up          # 3-node cluster in Docker</code></pre>
                         <p style="font-size: 0.65em; margin: 0.2em 0;">When you see the <code>defaultdb&gt;</code> prompt, note the DB Console URL printed above it.</p>
                     </div>
 
@@ -993,14 +995,14 @@ FROM crdb_internal.cluster_sessions;
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
                         <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash"># Lab 1 cluster still running? Good. Otherwise:
-cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+scripts/crdb up          # 3-node cluster in Docker</code></pre>
                     </div>
 
                     <div class="highlight-box">
                         <h4>Lab Activities</h4>
                         <ul>
                             <li><strong>Part A:</strong> Tour Overview, Metrics, Databases, Jobs tabs</li>
-                            <li><strong>Part B:</strong> Run <code>cockroach workload run kv</code> to generate load and watch the dashboards react</li>
+                            <li><strong>Part B:</strong> Run <code>scripts/crdb run workload run kv</code> to generate load and watch the dashboards react</li>
                             <li><strong>Part C:</strong> Query <code>crdb_internal</code> to find the hottest ranges and slowest statements</li>
                         </ul>
                     </div>
@@ -1327,7 +1329,7 @@ CREATE INDEX ON events(account_id, created)
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up          # 3-node cluster in Docker</code></pre>
                     </div>
 
                     <div class="highlight-box">
@@ -1430,7 +1432,7 @@ SELECT customer_id, total, status FROM orders WHERE customer_id = 'abc';
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up          # 3-node cluster in Docker</code></pre>
                     </div>
 
                     <div class="highlight-box">

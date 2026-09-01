@@ -14,7 +14,7 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Docker (for Kafka). A webhook-sink fallback with `nc` is provided if Docker is unavailable.
 - `python3` for the consumer
 
@@ -49,26 +49,24 @@ docker compose logs -f kafka | grep -m1 "Kafka Server started"
 ### 2. Cluster
 
 ```bash
-for i in 1 2 3; do
-  cockroach start --insecure \
-    --store=/tmp/lab13/n$i \
-    --listen-addr=localhost:$((26256+i)) \
-    --http-addr=localhost:$((8079+i)) \
-    --join=localhost:26257,localhost:26258,localhost:26259 \
-    --background
-done
-cockroach init --insecure --host=localhost:26257
+scripts/crdb up
 export C='postgresql://root@localhost:26257?sslmode=disable'
 ```
+
+> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
+> From your machine it is `localhost:26257`; from inside another container it is
+> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
 
 > **Enterprise changefeeds need a license.** `cockroach demo` provides one automatically;
 > a local `cockroach start` cluster does not. If `CREATE CHANGEFEED ... INTO` is rejected,
 > either set a trial license (`SET CLUSTER SETTING enterprise.license = '...'`) or run this
-> lab inside `cockroach demo --nodes 3` and adjust the connection URL. Part A (Core
+> lab against a containerised demo cluster
+> (`docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 --no-example-database --empty`)
+> and adjust the connection URL. Part A (Core
 > changefeeds) works on any cluster.
 
 ```bash
-cockroach sql --insecure --url "$C" <<'SQL'
+scripts/crdb sql <<'SQL'
 SET CLUSTER SETTING kv.rangefeed.enabled = true;
 
 CREATE DATABASE shop;
@@ -93,12 +91,12 @@ guarantees beyond "this session is connected".
 
 1. **Terminal A:**
    ```bash
-   cockroach sql --insecure --url "$C" -e "EXPERIMENTAL CHANGEFEED FOR shop.orders WITH updated;"
+   scripts/crdb sql -e "EXPERIMENTAL CHANGEFEED FOR shop.orders WITH updated;"
    ```
 
 2. **Terminal B:**
    ```bash
-   cockroach sql --insecure --url "$C" -e "
+   scripts/crdb sql -e "
      INSERT INTO shop.orders (customer, total) VALUES ('alice', 42.00);
      UPDATE shop.orders SET status = 'paid' WHERE customer = 'alice';
      DELETE FROM shop.orders WHERE customer = 'alice';"
@@ -153,7 +151,7 @@ guarantees beyond "this session is connected".
 
 3. **Generate changes:**
    ```bash
-   cockroach sql --insecure --url "$C" <<'SQL'
+   scripts/crdb sql <<'SQL'
    USE shop;
    INSERT INTO orders (customer, total) SELECT 'cust-' || g, (g * 3.50)::DECIMAL(12,2)
    FROM generate_series(1, 20) g;
@@ -265,7 +263,7 @@ timestamp below this value*. Only then is a time window complete.
 
 4. **In another terminal, make changes and watch the frontier advance:**
    ```bash
-   cockroach sql --insecure --url "$C" -e "
+   scripts/crdb sql -e "
      USE shop;
      INSERT INTO orders (customer, total) VALUES ('frontier-test', 99.99);
      UPDATE orders SET status='shipped' WHERE customer='frontier-test';"
@@ -396,12 +394,8 @@ after a job restart, a lease transfer, or a rebalance, messages are re-emitted.
 ## Cleanup
 
 ```bash
-cd /tmp/lab13 && docker compose down -v
-for i in 1 2 3; do
-  cockroach node drain --insecure --host=localhost:$((26256+i)) --drain-wait=10s 2>/dev/null
-done
-pkill -f "store=/tmp/lab13"
-rm -rf /tmp/lab13
+cd lab13 && docker compose down -v && cd ..
+scripts/crdb down
 ```
 
 ## Lab 13 Deliverables

@@ -62,22 +62,8 @@ for src in /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys; do
 done
 
 # ---------------------------------------------------------------------- cockroach
-if ! command -v cockroach >/dev/null 2>&1 || [ "$(cockroach version --build-tag 2>/dev/null)" != "$CRDB_VERSION" ]; then
-    log "installing cockroach $CRDB_VERSION ($CRDB_ARCH)"
-    TARBALL="cockroach-${CRDB_VERSION}.linux-${CRDB_ARCH}.tgz"
-    SRCDIR="/tmp/cockroach-${CRDB_VERSION}.linux-${CRDB_ARCH}"
-    curl -fsSL "https://binaries.cockroachdb.com/${TARBALL}" -o "/tmp/${TARBALL}"
-    rm -rf "$SRCDIR"
-    tar -xz -C /tmp -f "/tmp/${TARBALL}"
-    install -m 755 "${SRCDIR}/cockroach" /usr/local/bin/cockroach
-    # Geo libraries enable the spatial features surveyed on Day 4.
-    if [ -d "${SRCDIR}/lib" ]; then
-        mkdir -p /usr/local/lib/cockroach
-        cp -f "${SRCDIR}/lib/"* /usr/local/lib/cockroach/ 2>/dev/null || true
-    fi
-    rm -rf "/tmp/${TARBALL}" "$SRCDIR"
-fi
-cockroach version | head -2
+# NOT installed: every lab runs CockroachDB in Docker via docker-compose.labs.yml.
+# The image is pre-pulled below so the first `scripts/crdb up` is instant.
 
 # ------------------------------------------------------------------------- docker
 if ! command -v docker >/dev/null 2>&1; then
@@ -196,9 +182,11 @@ done
 cat > "$STUDENT_HOME/.crdb_course_env" <<'ENVEOF'
 # CockroachDB course conveniences
 export CRDB_INSECURE='postgresql://root@localhost:26257?sslmode=disable'
-alias crsql='cockroach sql --insecure --host=localhost:26257'
-alias crdemo='cockroach demo --nodes 3 --no-example-database --empty'
-alias crnodes='cockroach node status --insecure --host=localhost:26257'
+# Everything runs in Docker; scripts/crdb drives the lab cluster.
+alias crdb='bash ~/cockroachdb-course/scripts/crdb.sh'
+alias crup='bash ~/cockroachdb-course/scripts/crdb.sh up'
+alias crsql='bash ~/cockroachdb-course/scripts/crdb.sh sql'
+alias crnodes='bash ~/cockroachdb-course/scripts/crdb.sh status'
 alias labreset='bash ~/cockroachdb-course/setup/reset_labs.sh'
 ENVEOF
 chown "$STUDENT_USER:$STUDENT_USER" "$STUDENT_HOME/.crdb_course_env"

@@ -20,19 +20,27 @@ By the end of this lab you will be able to:
 Start a 3-node demo cluster (or reuse Lab 1's):
 
 ```bash
-cockroach demo --nodes 3 --no-example-database --empty
+scripts/crdb up          # start the 3-node cluster (skip if it is already running)
+scripts/crdb sql         # open a SQL shell
 ```
 
-From the demo's startup banner, copy the `sql:` line — you'll feed it to `cockroach workload`. It looks like:
+> Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
+> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
+
+`cockroach workload` needs a connection string. There are two, and which one you use depends
+on where the command runs:
 
 ```text
-sql: postgresql://demo:demo-password@127.0.0.1:26257/?sslmode=require
+from your machine        postgresql://root@localhost:26257?sslmode=disable
+from inside the cluster  postgresql://root@crdb1:26257?sslmode=disable
 ```
+
+`scripts/crdb run ...` executes inside node 1's container, so it uses the second form.
 
 In **terminal B**, capture it:
 
 ```bash
-export CRDB_URL='postgresql://demo:demo-password@127.0.0.1:26257/?sslmode=require'
+export CRDB_URL='postgresql://root@localhost:26257/?sslmode=disable'
 ```
 
 Open the Web UI URL in your browser. Leave it open in a side window.
@@ -61,13 +69,13 @@ Write down the **node IDs**, **localities**, and the **default replication facto
 
 1. **In terminal B, initialize the workload schema:**
    ```bash
-   cockroach workload init kv --drop "$CRDB_URL"
+   scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=disable'
    ```
    This creates a `kv` database with one `kv` table.
 
 2. **Run a 30-second mixed workload:**
    ```bash
-   cockroach workload run kv \
+   scripts/crdb run workload run kv \
      --duration=30s \
      --concurrency=8 \
      --read-percent=50 \
@@ -81,7 +89,7 @@ Write down the **node IDs**, **localities**, and the **default replication facto
 
 4. **Run a write-heavy workload and compare write latency:**
    ```bash
-   cockroach workload run kv \
+   scripts/crdb run workload run kv \
      --duration=20s \
      --concurrency=16 \
      --read-percent=10 \
@@ -91,7 +99,7 @@ Write down the **node IDs**, **localities**, and the **default replication facto
 
 5. **Try a high-contention workload:**
    ```bash
-   cockroach workload run kv \
+   scripts/crdb run workload run kv \
      --duration=20s \
      --concurrency=16 \
      --read-percent=0 \
@@ -271,6 +279,13 @@ Otherwise:
 ```sql
 DROP DATABASE kv CASCADE;
 \q
+```
+
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
 ```
 
 ## Lab 2 Deliverables

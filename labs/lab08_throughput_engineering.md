@@ -18,7 +18,7 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Labs 3 (schema design) and 6 (`EXPLAIN ANALYZE`) — you'll reuse both
 - `psql` on `PATH` for the `COPY` part (optional; a fallback is provided)
 
@@ -27,8 +27,12 @@ By the end of this lab you will be able to:
 Start a 3-node demo cluster. Three nodes is the minimum that makes distribution visible.
 
 ```bash
-cockroach demo --nodes 3 --no-example-database --empty
+scripts/crdb up          # start the 3-node cluster (skip if it is already running)
+scripts/crdb sql         # open a SQL shell
 ```
+
+> Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
+> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
 
 ```sql
 CREATE DATABASE throughput;
@@ -41,8 +45,8 @@ Several parts of this lab drive the cluster from a **second terminal**. Copy the
 from the demo banner (the line starting `postgresql://demo@127.0.0.1:...`) and export it there:
 
 ```bash
-export CRDB_URL='postgresql://demo:<password>@127.0.0.1:26257/throughput?sslmode=require'
-cockroach sql --url "$CRDB_URL" -e "SELECT 1;"    # confirm before continuing
+export CRDB_URL='postgresql://root@localhost:26257/?sslmode=disable'
+scripts/crdb sql -e "SELECT 1;"    # confirm before continuing
 ```
 
 > Inside the demo shell, `\demo ls` reprints the connection parameters for every node if you
@@ -75,7 +79,7 @@ Because a per-row round trip is the point, run this from the shell, not from SQL
 # In a second terminal. --url comes from the demo banner (postgresql://...).
 time (for i in $(seq 1 2000); do
   echo "INSERT INTO throughput.load_test (tenant, amount, note) VALUES (1, 9.99, 'row');"
-done | cockroach sql --url "$CRDB_URL")
+done | scripts/crdb sql)
 ```
 
 2000 rows — not 100,000. Extrapolate:
@@ -119,7 +123,7 @@ time psql "$CRDB_URL" -c "TRUNCATE throughput.load_test" \
   -c "\copy throughput.load_test (id, tenant, amount, note, created) FROM '/tmp/load_test.csv' CSV"
 ```
 
-> No `psql`? Use `cockroach sql --url "$CRDB_URL" -e "\copy ..."` — the built-in shell
+> No `psql`? Use `scripts/crdb sql -e "\copy ..."` — the built-in shell
 > supports `\copy` with the same syntax.
 
 #### A4. `IMPORT INTO`
@@ -132,9 +136,15 @@ TRUNCATE load_test;
 ```
 
 ```bash
-# Upload the CSV to the cluster's userfile store
-cockroach userfile upload /tmp/load_test.csv /lab8/load_test.csv --url "$CRDB_URL"
+# The CSV is on your machine; the node is in a container and cannot see it.
+# Copy it in first, then upload it to the cluster's userfile store.
+scripts/crdb cp /tmp/load_test.csv crdb1:/tmp/load_test.csv
+scripts/crdb run userfile upload /tmp/load_test.csv /lab8/load_test.csv --insecure
 ```
+
+> **This two-step is the containerised version of "put the file where the database can read
+> it".** In production the same problem is solved by cloud storage — `IMPORT INTO … CSV DATA
+> ('s3://…')` — which is why real bulk loads point at S3/GCS rather than a local path.
 
 ```sql
 IMPORT INTO load_test (id, tenant, amount, note, created)
@@ -177,10 +187,10 @@ for BATCH in 1 10 100 1000 5000 10000; do
   START=$(date +%s.%N)
   for i in $(seq 1 $STMTS); do
     echo "INSERT INTO throughput.load_test (tenant, amount, note) SELECT g % 50, 1.00, 'b' FROM generate_series(1, $BATCH) g;"
-  done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1
+  done | scripts/crdb sql >/dev/null 2>&1
   END=$(date +%s.%N)
   echo "batch=$BATCH  elapsed=$(echo "$END - $START" | bc)s  rows/sec=$(echo "50000 / ($END - $START)" | bc)"
-  cockroach sql --url "$CRDB_URL" -e "TRUNCATE throughput.load_test" >/dev/null
+  scripts/crdb sql -e "TRUNCATE throughput.load_test" >/dev/null
 done
 ```
 
@@ -277,7 +287,7 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
      for w in $(seq 1 $WRITERS); do
        ( for i in $(seq 1 $((ROWS_PER_WRITER / 100))); do
            echo "INSERT INTO throughput.$TABLE (tenant, payload) SELECT g % 50, 'p' FROM generate_series(1,100) g;"
-         done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1 ) &
+         done | scripts/crdb sql >/dev/null 2>&1 ) &
      done
      wait
      END=$(date +%s.%N)
@@ -362,7 +372,7 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
    for i in $(seq 1 200); do
      echo "UPDATE throughput.counter_shards SET n = n + 1
            WHERE name = 'page_views' AND shard = (random()*16)::INT2;"
-   done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1
+   done | scripts/crdb sql >/dev/null 2>&1
    ```
    ```sql
    SELECT sum(n) AS should_be_200 FROM counter_shards WHERE name = 'page_views';
@@ -389,7 +399,7 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
      for w in $(seq 1 16); do
        ( for i in $(seq 1 100); do
            echo "UPDATE throughput.counter_single SET n = n + 1 WHERE name = 'page_views';"
-         done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1 ) &
+         done | scripts/crdb sql >/dev/null 2>&1 ) &
      done
      wait
      echo "single:  1600 increments in $(echo "$(date +%s.%N) - $START" | bc)s"
@@ -402,13 +412,13 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
            # the SHELL picks the shard — a literal by the time the server sees it
            echo "UPDATE throughput.counter_shards SET n = n + 1
                  WHERE name = 'page_views' AND shard = $((RANDOM % 16));"
-         done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1 ) &
+         done | scripts/crdb sql >/dev/null 2>&1 ) &
      done
      wait
      echo "sharded: 1600 increments in $(echo "$(date +%s.%N) - $START" | bc)s"
    }
 
-   cockroach sql --url "$CRDB_URL" -e \
+   scripts/crdb sql -e \
      "UPDATE throughput.counter_single SET n = 0; UPDATE throughput.counter_shards SET n = 0;"
    bump_single
    bump_sharded
@@ -451,7 +461,7 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
    ```bash
    ( while true; do
        echo "INSERT INTO throughput.pk_uuid (tenant, payload) SELECT g % 50, 'live' FROM generate_series(1,200) g;"
-     done | cockroach sql --url "$CRDB_URL" >/dev/null 2>&1 ) &
+     done | scripts/crdb sql >/dev/null 2>&1 ) &
    WRITER_PID=$!
    ```
 
@@ -499,11 +509,11 @@ Throughput plateaus long before latency does. Find the point where adding connec
 adds queueing.
 
 ```bash
-cockroach workload init kv --drop "$CRDB_URL"
+scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=disable'
 
 for C in 1 4 16 64 256; do
   echo "=== concurrency $C ==="
-  cockroach workload run kv \
+  scripts/crdb run workload run kv \
     --duration=30s --concurrency=$C \
     --read-percent=50 --max-rate=0 \
     "$CRDB_URL" 2>&1 | tail -4
@@ -555,6 +565,13 @@ rm -f /tmp/load_test.csv
 
 Then `\q` to exit the demo cluster.
 
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
+```
+
 ## Lab 8 Deliverables
 
 ✅ **Ingest ranking**: four load methods measured, with a stated decision rule for each
@@ -579,7 +596,8 @@ Then `\q` to exit the demo cluster.
    then find the batch size that starts failing. What error do you get, and what should the
    application do with it?
 
-4. **Re-run Part D on 9 nodes** (`cockroach demo --nodes 9`). Which PK design's advantage
+4. **Re-run Part D on more nodes.** Add `crdb5`…`crdb9` to `docker-compose.labs.yml`
+   (copy the `crdb4` block, bump the ports) and re-run. Which PK design's advantage
    grows with node count, and which one's shrinks?
 
 ## Reference
@@ -590,8 +608,9 @@ Then `\q` to exit the demo cluster.
 | `\copy t FROM 'file' CSV` | Fast bulk load; table stays online |
 | `ALTER TABLE t SPLIT AT SELECT ...` | Seed ranges before a bulk load |
 | `ALTER TABLE t UNSPLIT ALL` | Release manual splits so ranges can merge |
-| `cockroach userfile upload` | Stage a file in the cluster for `IMPORT` |
-| `cockroach workload run kv --concurrency=N` | Throughput/latency curve |
+| `scripts/crdb cp <file> crdb1:/tmp/` | Copy a host file into a node container |
+| `scripts/crdb run userfile upload` | Stage a file in the cluster for `IMPORT` |
+| `scripts/crdb run workload run kv --concurrency=N` | Throughput/latency curve |
 | `crdb_internal.statement_statistics` | Executions, retries, mean latency per statement |
 | Volatile functions (`random()`, `now()`) in a predicate | Re-evaluated **per row** — never use them to select a row |
 | `SHOW RANGES FROM TABLE t WITH DETAILS` | Range count, size, leaseholder placement |

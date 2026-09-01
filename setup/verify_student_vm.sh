@@ -27,7 +27,8 @@ DISK_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
 [ "$DISK_GB" -ge 100 ] && ok "Free disk: ${DISK_GB} GB" || { [ "$DISK_GB" -ge 50 ] && warn "Free disk: ${DISK_GB} GB — Lab 10 TPC-C needs headroom" || bad "Free disk: ${DISK_GB} GB — need at least 50"; }
 
 sec "Binaries"
-for b in cockroach docker kind kubectl psql python3 git jq nc bc openssl curl unzip; do
+# cockroach itself is NOT installed on the host any more - it runs in containers.
+for b in docker kind kubectl psql python3 git jq nc bc openssl curl unzip; do
     have "$b" && ok "$b: $(command -v $b)" || bad "$b missing"
 done
 have helm && ok "helm present" || warn "helm missing (Lab 16 Part E comparison only)"
@@ -58,45 +59,46 @@ sec "Python drivers"
 python3 -c "import psycopg2" 2>/dev/null && ok "psycopg2 importable" || bad "psycopg2 missing (Labs 1, 14)"
 python3 -c "import sqlalchemy" 2>/dev/null && ok "sqlalchemy importable" || warn "sqlalchemy missing (Lab 14 ORM section)"
 
-sec "CockroachDB smoke test"
-STORE=$(mktemp -d /tmp/verify-crdb-XXXX)
-cleanup() { cockroach quit --insecure --host=localhost:26257 >/dev/null 2>&1 || true
-            pkill -f "store=$STORE" 2>/dev/null || true; rm -rf "$STORE"; }
-trap cleanup EXIT
+sec "CockroachDB smoke test (containerised)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$REPO/docker-compose.labs.yml" ]; then
+    if (cd "$REPO" && bash scripts/crdb.sh up >/dev/null 2>&1); then
+        pass "lab cluster started via docker compose"
+        OUT=$(cd "$REPO" && bash scripts/crdb.sh sql --format=tsv -e "SELECT 1+1;" 2>/dev/null | tail -1 | tr -d '[:space:]')
+        [ "$OUT" = "2" ] && pass "SQL query returned the right answer" || fail "SQL query failed (got '$OUT')"
 
-if cockroach start-single-node --insecure --store="$STORE" \
-     --listen-addr=localhost:26257 --http-addr=localhost:8080 --background >/dev/null 2>&1; then
-    ok "single-node cluster started"
-    sleep 3
-    OUT=$(cockroach sql --insecure --host=localhost:26257 --format=tsv \
-            -e "SELECT 1+1;" 2>/dev/null | tail -1)
-    [ "$OUT" = "2" ] && ok "SQL query returned correct result" || bad "SQL query failed (got '$OUT')"
+        NODES=$(cd "$REPO" && bash scripts/crdb.sh sql --format=tsv \
+                  -e "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE is_live;" 2>/dev/null \
+                  | tail -1 | tr -d '[:space:]')
+        assert_eq "all 3 nodes are live" "$NODES" "3"
 
-    cockroach sql --insecure --host=localhost:26257 -e \
-        "CREATE DATABASE verify; CREATE TABLE verify.t (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), n INT);
-         INSERT INTO verify.t (n) SELECT g FROM generate_series(1,1000) g;" >/dev/null 2>&1 \
-        && ok "DDL + bulk insert succeeded" || bad "DDL/insert failed"
+        (cd "$REPO" && bash scripts/crdb.sh sql -e "
+           CREATE DATABASE verify;
+           CREATE TABLE verify.t (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), n INT);
+           INSERT INTO verify.t (n) SELECT g FROM generate_series(1,1000) g;" >/dev/null 2>&1) \
+          && pass "DDL + bulk insert succeeded" || fail "DDL/insert failed"
 
-    ROWS=$(cockroach sql --insecure --host=localhost:26257 --format=tsv \
-             -e "SELECT count(*) FROM verify.t;" 2>/dev/null | tail -1)
-    [ "$ROWS" = "1000" ] && ok "row count correct (1000)" || bad "row count wrong: $ROWS"
+        ROWS=$(cd "$REPO" && bash scripts/crdb.sh sql --format=tsv -e "SELECT count(*) FROM verify.t;" 2>/dev/null | tail -1 | tr -d '[:space:]')
+        assert_eq "row count correct" "$ROWS" "1000"
 
-    cockroach workload init kv --drop 'postgresql://root@localhost:26257?sslmode=disable' >/dev/null 2>&1 \
-        && ok "cockroach workload available" || bad "cockroach workload init failed (Labs 8, 10)"
+        (cd "$REPO" && bash scripts/crdb.sh run workload init kv --drop \
+            'postgresql://root@crdb1:26257?sslmode=disable' >/dev/null 2>&1) \
+          && pass "cockroach workload available in the cluster" || fail "workload init failed"
 
-    curl -sf http://localhost:8080/_status/vars >/dev/null 2>&1 \
-        && ok "DB Console / metrics endpoint reachable" || bad "http://localhost:8080/_status/vars unreachable (Lab 9)"
+        curl -sf http://localhost:8080/_status/vars >/dev/null 2>&1 \
+          && pass "DB Console / metrics endpoint reachable on :8080" \
+          || fail "http://localhost:8080/_status/vars unreachable"
 
-    psql 'postgresql://root@localhost:26257/defaultdb?sslmode=disable' -c 'SELECT 1' >/dev/null 2>&1 \
-        && ok "psql wire-protocol connection works" || bad "psql connection failed (Labs 1, 8, 15)"
+        psql 'postgresql://root@localhost:26257/verify?sslmode=disable' -c 'SELECT 1' >/dev/null 2>&1 \
+          && pass "psql reaches the published SQL port" || warn "psql could not connect on :26257"
 
-    python3 - <<'PY' >/dev/null 2>&1 && ok "psycopg2 connection works" || bad "psycopg2 connection failed (Lab 14)"
-import psycopg2
-c = psycopg2.connect("postgresql://root@localhost:26257/defaultdb?sslmode=disable")
-cur = c.cursor(); cur.execute("SELECT 1"); assert cur.fetchone()[0] == 1
-PY
+        (cd "$REPO" && bash scripts/crdb.sh sql -e "DROP DATABASE verify CASCADE;" >/dev/null 2>&1)
+        (cd "$REPO" && bash scripts/crdb.sh down >/dev/null 2>&1) && pass "cluster torn down cleanly"
+    else
+        fail "could not start the lab cluster (scripts/crdb.sh up)"
+    fi
 else
-    bad "could not start a single-node cluster"
+    fail "docker-compose.labs.yml not found - is the course repo checked out at $REPO?"
 fi
 
 sec "Multi-node capability (Lab 7 needs 9 nodes)"

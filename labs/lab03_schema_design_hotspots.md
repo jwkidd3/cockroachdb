@@ -17,7 +17,7 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Familiarity with `EXPLAIN` and basic SQL (Lab 4 will deep-dive `EXPLAIN`)
 
 ## Setup
@@ -25,8 +25,12 @@ By the end of this lab you will be able to:
 Start a fresh 3-node demo cluster so range counts are clean from the start:
 
 ```bash
-cockroach demo --nodes 3 --no-example-database --empty
+scripts/crdb up          # start the 3-node cluster (skip if it is already running)
+scripts/crdb sql         # open a SQL shell
 ```
+
+> Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
+> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
 
 Note the Web UI URL. We'll watch the **Hot Ranges** page (under Advanced Debug → Hot Ranges) live during inserts.
 
@@ -438,7 +442,14 @@ The classic dual-write problem: your app writes to the database AND publishes a 
 DROP DATABASE hotspots CASCADE;
 ```
 
-If done for the day: `\q`.
+`\q` exits the SQL shell; the cluster keeps running.
+
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
+```
 
 ## Lab 3 Deliverables
 

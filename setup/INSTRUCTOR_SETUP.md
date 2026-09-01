@@ -10,15 +10,19 @@ per delivery after that.
 
 Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 
+> **Everything runs in containers.** Students install nothing but Docker; the labs drive a
+> 3-node cluster through `scripts/crdb`. That removes the single biggest source of
+> "works on my machine" problems, and makes Windows laptops first-class.
+
 | Lab | Needs | Peak RAM | Peak disk | Notes |
 | --- | --- | --- | --- | --- |
-| 1–6 | `cockroach` only | ~4 GB | 5 GB | 3-node demo clusters |
-| 7 Multi-region | 9-node demo cluster | ~8 GB | 10 GB | `cockroach demo --global --nodes 9` |
+| 1–6 | Docker | ~4 GB | 5 GB | the shared 3-node compose cluster |
+| 7 Multi-region | 9-node demo, in a container | ~8 GB | 10 GB | `docker run ... demo --global --nodes 9` |
 | 8 Throughput | 3-node + `workload` + CSV | ~6 GB | 15 GB | 100k-row CSV, IMPORT |
 | 9 Observability | 3-node + Prometheus + Grafana | ~6 GB | 10 GB | Docker |
 | 10 TPC-C | 3-node + TPC-C at 40 warehouses | ~10 GB | 30 GB | Heaviest disk user |
-| 11 Backup/DR | **two** 3-node clusters | ~8 GB | 20 GB | Cross-cluster restore |
-| 12 Security | 1 secure node | ~2 GB | 5 GB | Certs, log sinks |
+| 11 Backup/DR | **two** compose clusters | ~8 GB | 20 GB | `docker-compose.labs-b.yml`, shared backup volume |
+| 12 Security | 1 secure node | ~2 GB | 5 GB | `docker-compose.labs-secure.yml`, auto-generated certs |
 | 13 CDC | 3-node + Kafka container | ~7 GB | 10 GB | Docker |
 | 14 Outbox | 3-node + Python | ~5 GB | 5 GB | psycopg2 |
 | 15 MOLT | 3-node + PostgreSQL container | ~7 GB | 15 GB | Docker |
@@ -78,8 +82,8 @@ ssh ubuntu@<builder-ip> 'sudo bash /tmp/provision_student_vm.sh'
 The script is in this repo at [`setup/provision_student_vm.sh`](provision_student_vm.sh).
 It installs and pre-warms:
 
-- `cockroach` (pinned version) + shell completions
 - Docker CE + Compose plugin, with the `student` user in the `docker` group
+  (**this is what runs CockroachDB** — no database binary is installed on the host)
 - `kind` + `kubectl` (Lab 16)
 - `psql` client, `python3`, `psycopg2`, `sqlalchemy-cockroachdb` (Labs 1, 14, 15)
 - `molt` fetch/verify binaries (Lab 15)
@@ -224,7 +228,7 @@ sudo systemctl restart ssh
 
 **Morning of Day 1**
 - [ ] Every VM reachable
-- [ ] `cockroach demo --nodes 3 --no-example-database --empty` succeeds on a spot-checked VM
+- [ ] `scripts/crdb.sh up` brings up 3 live nodes on a spot-checked VM
 - [ ] Docker daemon running on a spot-checked VM
 - [ ] A spare VM or two provisioned for late joiners and casualties
 

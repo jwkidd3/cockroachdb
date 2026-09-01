@@ -542,7 +542,7 @@ COMMIT;</code></pre>
                         <h4>Objectives</h4>
                         <ul>
                             <li>Trigger a 40001 retry from two concurrent sessions</li>
-                            <li>Implement a working retry loop in <code>cockroach sql</code> or psql</li>
+                            <li>Implement a working retry loop in <code>scripts/crdb sql</code> or psql</li>
                             <li>Use <code>AS OF SYSTEM TIME</code> to bypass contention for a report</li>
                             <li>Spot contention in the DB Console's <strong>Transactions</strong> dashboard</li>
                         </ul>
@@ -550,7 +550,7 @@ COMMIT;</code></pre>
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up          # 3-node cluster in Docker</code></pre>
                         <p style="font-size: 0.65em;">Lab walks you through opening <em>two</em> connected sessions side by side.</p>
                     </div>
 
@@ -737,7 +737,7 @@ EXPLAIN ANALYZE (DEBUG) SELECT ...;</code></pre>
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up          # 3-node cluster in Docker
 # Lab loads a ~100k-row orders dataset before tuning.</code></pre>
                     </div>
 
@@ -967,7 +967,7 @@ T+...   When every range is back to 3 replicas, the cluster is healthy again
                     <div class="objectives">
                         <h4>Objectives</h4>
                         <ul>
-                            <li>Spin up a simulated 3-region, 9-node cluster with <code>cockroach demo --global</code></li>
+                            <li>Spin up a simulated 3-region, 9-node cluster with a containerised <code>demo --global</code> cluster</li>
                             <li>Toggle survival between <code>ZONE FAILURE</code> and <code>REGION FAILURE</code> and measure write latency</li>
                             <li>Convert a table to <code>REGIONAL BY ROW</code> and verify local reads</li>
                             <li>Take a region offline and confirm the cluster keeps serving</li>
@@ -976,7 +976,8 @@ T+...   When every range is back to 3 replicas, the cluster is healthy again
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --global --nodes 9 --no-example-database --empty</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">docker run --rm -it -p 8090:8080 cockroachdb/cockroach:v23.2.5 \
+  demo --global --nodes 9 --no-example-database --empty --http-port=8080</code></pre>
                     </div>
 
                     <div class="highlight-box">
@@ -1258,7 +1259,7 @@ done</code></pre>
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">cockroach demo --nodes 3 --no-example-database --empty
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up          # 3-node cluster in Docker
 # Keep a results table open — the deliverable is the filled-in numbers,
 # not the individual commands.</code></pre>
                     </div>

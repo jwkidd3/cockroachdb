@@ -4,7 +4,7 @@
 
 By the end of this lab you will be able to:
 
-- Spin up a simulated 3-region, 9-node CockroachDB cluster with `cockroach demo --global` (or a real multi-node start with localities)
+- Spin up a simulated 3-region, 9-node cluster in Docker with `demo --global`, including inter-region latency
 - Toggle survival between `ZONE FAILURE` and `REGION FAILURE` and measure write latency
 - Convert tables to `REGIONAL BY TABLE`, `REGIONAL BY ROW`, and `GLOBAL` and observe per-region read latency
 - Take a region offline and confirm the cluster keeps serving
@@ -13,15 +13,29 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - Enough RAM to run 9 in-memory nodes (~6 GB)
 - Lab 5 / 6 not required, but Lab 1's concepts assumed
 
 ## Setup
 
 ```bash
-cockroach demo --global --nodes 9 --no-example-database --empty
+docker run --rm -it -p 8090:8080 \
+  cockroachdb/cockroach:v23.2.5 \
+  demo --global --nodes 9 --no-example-database --empty --http-port=8080
 ```
+
+That drops you straight into a SQL shell inside the container. The DB Console is at
+<http://localhost:8090>.
+
+> **Why `demo` here, and not the compose cluster?** This is the one lab that needs *simulated
+> inter-region latency* — `--global` inserts realistic round-trip delays between its nine
+> simulated regions, which is the whole point of measuring a cross-region write. Nine real
+> containers on one laptop would all be a sub-millisecond hop apart and the latency lesson
+> would vanish. `demo` also ships a temporary licence, which multi-region SQL requires.
+>
+> It is self-contained: nothing to install, and it disappears on exit. Stop the lab cluster
+> first if you want the RAM back (`scripts/crdb down`).
 
 > ⚠️ **Multi-region SQL is an enterprise feature.** `SET PRIMARY REGION`, `ADD REGION`,
 > `SURVIVE ... FAILURE`, `REGIONAL BY ROW`, and `LOCALITY GLOBAL` all require a licence, and
@@ -343,7 +357,14 @@ For each row, pick the locality and survival goal.
 DROP DATABASE shop CASCADE;
 ```
 
-`\q`.
+`\q` exits the SQL shell; the cluster keeps running.
+
+The cluster keeps running between labs — that is the point of it being persistent. To wipe
+everything and start fresh at any time:
+
+```bash
+scripts/crdb reset
+```
 
 ## Lab 7 Deliverables
 

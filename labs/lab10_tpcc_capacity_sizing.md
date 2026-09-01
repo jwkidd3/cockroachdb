@@ -16,28 +16,24 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH`
+- **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 - At least 8 GB of free RAM (TPC-C at 10 warehouses on 3 nodes is comfortable)
 - Lab 9's Prometheus/Grafana stack is useful here but not required
 
 ## Setup
 
 ```bash
-mkdir -p /tmp/lab10 && cd /tmp/lab10
-
-for i in 1 2 3; do
-  cockroach start --insecure \
-    --store=/tmp/lab10/n$i \
-    --listen-addr=localhost:$((26256+i)) \
-    --http-addr=localhost:$((8079+i)) \
-    --cache=.25 --max-sql-memory=.25 \
-    --join=localhost:26257,localhost:26258,localhost:26259 \
-    --background
-done
-cockroach init --insecure --host=localhost:26257
-
-export CRDB='postgresql://root@localhost:26257?sslmode=disable'
+scripts/crdb up
 ```
+
+Two connection strings, and it matters which you use:
+
+```text
+from your machine        postgresql://root@localhost:26257?sslmode=disable
+from inside the cluster  postgresql://root@crdb1:26257?sslmode=disable
+```
+
+`scripts/crdb run ...` executes inside node 1's container, so it uses the second form.
 
 > `--cache=.25 --max-sql-memory=.25` is the production-recommended split. The defaults
 > (128 MiB / 25%) are deliberately conservative for laptops; a real node should be told it
@@ -50,8 +46,8 @@ export CRDB='postgresql://root@localhost:26257?sslmode=disable'
 ```bash
 # There is no `workload list` subcommand — the generators are the subcommands
 # of `init` and `run`, so ask for their help:
-cockroach workload init --help
-cockroach workload run --help
+scripts/crdb run workload init --help
+scripts/crdb run workload run --help
 ```
 
 | Workload | Shape | Use it to answer |
@@ -79,10 +75,10 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
 
 1. **Load the dataset:**
    ```bash
-   time cockroach workload fixtures import tpcc --warehouses=10 "$CRDB"
+   time scripts/crdb run workload fixtures import tpcc --warehouses=10 'postgresql://root@crdb1:26257?sslmode=disable'
    ```
    > `fixtures import` uses `IMPORT INTO` under the hood — the same mechanism you measured in
-   > Lab 8 Part A. If it is unavailable offline, use `cockroach workload init tpcc --warehouses=10 "$CRDB"`,
+   > Lab 8 Part A. If it is unavailable offline, use `scripts/crdb run workload init tpcc --warehouses=10 'postgresql://root@crdb1:26257?sslmode=disable'`,
    > which is slower because it inserts through the SQL layer.
 
 2. **Look at what TPC-C's schema does right** — this is a schema-design lesson disguised as a
@@ -97,7 +93,7 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
 
 3. **Warm up, then measure:**
    ```bash
-   cockroach workload run tpcc --warehouses=10 --ramp=30s --duration=3m \
+   scripts/crdb run workload run tpcc --warehouses=10 --ramp=30s --duration=3m \
      --display-every=15s "$CRDB" | tee /tmp/lab10/tpcc-10.log
    ```
 
@@ -117,8 +113,8 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
 5. **Push until it breaks.** Increase warehouses until efficiency drops below 85%:
    ```bash
    for W in 20 40; do
-     cockroach workload fixtures import tpcc --warehouses=$W "$CRDB"
-     cockroach workload run tpcc --warehouses=$W --ramp=30s --duration=2m "$CRDB" \
+     scripts/crdb run workload fixtures import tpcc --warehouses=$W 'postgresql://root@crdb1:26257?sslmode=disable'
+     scripts/crdb run workload run tpcc --warehouses=$W --ramp=30s --duration=2m 'postgresql://root@crdb1:26257?sslmode=disable' \
        | tail -3 | tee -a /tmp/lab10/tpcc-sweep.log
    done
    ```
@@ -173,10 +169,10 @@ you defend in a design review.
 
 1. **Measure your laptop's per-node ceiling with `kv`:**
    ```bash
-   cockroach workload init kv --drop "$CRDB"
-   cockroach workload run kv --duration=60s --concurrency=64 --read-percent=95 "$CRDB" | tail -3
-   cockroach workload run kv --duration=60s --concurrency=64 --read-percent=50 "$CRDB" | tail -3
-   cockroach workload run kv --duration=60s --concurrency=64 --read-percent=0  "$CRDB" | tail -3
+   scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=disable'
+   scripts/crdb run workload run kv --duration=60s --concurrency=64 --read-percent=95 'postgresql://root@crdb1:26257?sslmode=disable' | tail -3
+   scripts/crdb run workload run kv --duration=60s --concurrency=64 --read-percent=50 'postgresql://root@crdb1:26257?sslmode=disable' | tail -3
+   scripts/crdb run workload run kv --duration=60s --concurrency=64 --read-percent=0  'postgresql://root@crdb1:26257?sslmode=disable' | tail -3
    ```
 
    | Read % | ops/sec | p99 (ms) | ops/sec per node |
@@ -212,10 +208,10 @@ you defend in a design review.
 
 2. **Overload the cluster deliberately** — a big analytical scan alongside the OLTP workload:
    ```bash
-   cockroach workload run tpcc --warehouses=10 --duration=3m "$CRDB" > /tmp/lab10/oltp.log 2>&1 &
+   scripts/crdb run workload run tpcc --warehouses=10 --duration=3m 'postgresql://root@crdb1:26257?sslmode=disable' > /tmp/lab10/oltp.log 2>&1 &
 
    for i in $(seq 1 8); do
-     cockroach sql --insecure --host=localhost:26257 -e "
+     scripts/crdb sql -e "
        SELECT count(*), sum(ol_amount) FROM tpcc.order_line;
        SELECT count(*) FROM tpcc.stock a JOIN tpcc.stock b ON a.s_i_id = b.s_i_id LIMIT 1;" &
    done
@@ -302,12 +298,7 @@ the one schema decision that most changes the answer.
 ## Cleanup
 
 ```bash
-pkill -f "cockroach workload"
-for i in 1 2 3; do
-  cockroach node drain --insecure --host=localhost:$((26256+i)) --drain-wait=10s 2>/dev/null
-done
-pkill -f "store=/tmp/lab10"
-rm -rf /tmp/lab10
+scripts/crdb down
 ```
 
 ## Lab 10 Deliverables

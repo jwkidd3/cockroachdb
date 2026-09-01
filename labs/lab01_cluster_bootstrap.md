@@ -4,46 +4,50 @@
 
 By the end of this lab you will be able to:
 
-- Start a 3-node CockroachDB cluster two ways: via `cockroach demo` and via `cockroach start` with a real init step
+- Start a real 3-node CockroachDB cluster and confirm it is healthy
+- Explain how the nodes found each other: `--join`, `--advertise-addr`, and `cockroach init`
 - Inspect node liveness, range distribution, and leaseholders from SQL
-- Kill nodes and observe Raft's automatic re-replication
-- Drive a graceful **decommission** of a node — and discover why it needs `replication factor + 1` nodes
-- Connect to the cluster with three different clients: built-in `cockroach sql`, `psql`, and a quick Python script
-- Diagnose a common "cluster won't start" error class — port collisions, join-list typos, version skew
+- Kill a node and watch Raft keep serving reads and writes
+- Restart a node and watch it rejoin with its data intact
+- Drive a graceful **decommission** — and discover why it needs `replication factor + 1` nodes
+- Connect three ways: the built-in shell, `psql`, and a Python driver
+- Diagnose the common "my cluster won't start" failures
 
 ## Prerequisites
 
-- `cockroach` binary on `PATH` (`cockroach version` works)
-- Modern browser for the DB Console
-- Optional: `psql` and `python3` for the connectivity exercise (steps that need them are marked optional)
+- **Docker Desktop** (or Docker Engine) running, with at least 4 GB available to it
+- A modern browser for the DB Console
+- Nothing else. There is no `cockroach` binary to install — every node, and the SQL
+  shell itself, runs in a container.
 
-Open **two terminal windows** before starting — the demo cluster pins one terminal, and you'll need the other for `psql` / Python / killing processes.
+> **Windows, macOS, Linux.** The commands below are identical everywhere. Use
+> `scripts\crdb.bat` on Windows and `scripts/crdb.sh` on macOS/Linux — this lab writes
+> `scripts/crdb` to mean "whichever of those two you have".
 
 ## Setup
 
-Pick a working directory for any artifacts:
+From the repository root:
 
 ```bash
-mkdir -p ~/crdb-lab1 && cd ~/crdb-lab1
+scripts/crdb up
 ```
+
+That starts three nodes (`crdb1`, `crdb2`, `crdb3`), runs `cockroach init` once, and prints
+the node list. It takes about 20 seconds the first time while the image downloads.
+
+Open a SQL shell whenever the lab asks for one:
+
+```bash
+scripts/crdb sql
+```
+
+And the DB Console at <http://localhost:8080>.
 
 ## Tasks
 
-### Part A: `cockroach demo` — Fast Path (15 min)
+### Part A: A Healthy Cluster (15 min)
 
-The demo cluster is in-memory; it's perfect for exploration but disappears on exit.
-
-1. **Start it (terminal A):**
-   ```bash
-   cockroach demo --nodes 3 --no-example-database --empty
-   ```
-
-2. **From the very first line of output, capture three things:**
-   - The `Web UI:` URL (paste into your browser)
-   - The `sql:` URL (you'll feed it to `psql` later)
-   - The node localities printed in the startup banner
-
-3. **Confirm cluster size and identity:**
+1. **Confirm cluster size and identity** — in a SQL shell (`scripts/crdb sql`):
    ```sql
    SHOW CLUSTER SETTING version;
 
@@ -55,7 +59,7 @@ The demo cluster is in-memory; it's perfect for exploration but disappears on ex
    ```
    You should see three live nodes and ~30–50 system ranges (no user data yet).
 
-4. **Create a small dataset:**
+2. **Create a small dataset:**
    ```sql
    CREATE DATABASE lab1;
    USE lab1;
@@ -73,162 +77,134 @@ The demo cluster is in-memory; it's perfect for exploration but disappears on ex
    ```
    Expected count: 1000.
 
-5. **Find the leaseholder:**
+3. **Find the leaseholder:**
    ```sql
    SHOW RANGES FROM TABLE notes WITH DETAILS;
    ```
-   Note the `lease_holder` column — typically a single range for 1000 rows.
+   Note the `lease_holder` column — typically a single range for 1000 rows. Every read and
+   write for that range goes through exactly one node; the other two hold replicas.
 
-6. **Look at the Web UI:**
+4. **Look at the DB Console** (<http://localhost:8080>):
    - **Overview** — 3 live nodes, all green
    - **Databases** → `lab1` → `notes` — row count, size
-   - **Hot Ranges** — should be quiet (no traffic right now)
+   - **Hot Ranges** — quiet right now; you'll come back to this in Lab 3
 
-### Part B: Kill a Follower, Watch Recovery (10 min)
+> **Where is the data?** Each node writes to a Docker named volume
+> (`crdb-labs_crdb1-data` and friends), so a container can stop and start without losing
+> anything. `scripts/crdb down` removes the volumes as well — that is the "start over" button.
 
-The demo shell has a `\demo` meta-command that drives node lifecycle.
+### Part B: How This Cluster Was Formed (10 min)
 
-1. **List demo nodes:**
-   ```text
-   \demo ls
+Read [`docker-compose.labs.yml`](../docker-compose.labs.yml) while answering these. Everything
+a production deployment does, this file does in miniature.
+
+1. **Find the three flags that let the nodes find each other:**
+   ```
+   --join=crdb1,crdb2,crdb3     every node is told the same set of peers
+   --advertise-addr=crdbN       the address a node tells the others to reach it on
+   --insecure                   no TLS (Lab 12 does it properly)
+   ```
+   > `--join` is not "the leader". There is no leader to point at — each node just needs
+   > enough addresses to find the gossip network. Listing all three is the normal pattern.
+
+2. **Find the `init` service.** Starting nodes is not the same as having a cluster: until
+   something runs `cockroach init`, the nodes sit waiting, logging that they are not
+   initialised. `init` runs exactly once, against one node, and the cluster comes alive.
+   ```bash
+   scripts/crdb run node status --insecure
    ```
 
-2. **Identify a victim** — pick a node that is **not** the leaseholder for `notes`. We're testing follower recovery first.
+3. **Prove init is one-time.** Run it again by hand:
+   ```bash
+   docker compose -f docker-compose.labs.yml exec crdb1 ./cockroach init --insecure
+   ```
+   It refuses — the cluster is already initialised. This is why the `init` service in the
+   compose file exits 0 either way.
 
-3. **Kill it:**
-   ```text
-   \demo shutdown 3
+4. **Where the DB Console ports come from:** each node publishes `8080` inside the container;
+   compose maps them to `8080`, `8081`, `8082` on your machine. The SQL port `26257` maps to
+   `26257`, `26258`, `26259`. Check with:
+   ```bash
+   scripts/crdb ps
    ```
 
-4. **Verify the cluster keeps serving:**
+### Part C: Kill a Follower, Watch Recovery (10 min)
+
+1. **Note which node holds the lease for `notes`:**
    ```sql
-   SELECT count(*) FROM notes;          -- still 1000
-   INSERT INTO notes (body) VALUES ('survives a follower outage');
-   SELECT count(*) FROM notes;          -- 1001
+   SELECT range_id, lease_holder FROM [SHOW RANGES FROM TABLE lab1.notes WITH DETAILS];
    ```
 
-5. **Watch the impact in the Web UI:**
-   - **Overview** — node 3 marked unhealthy
-   - **Metrics → Replication** — under-replicated may spike briefly
-
-6. **Restart node 3:**
-   ```text
-   \demo restart 3
+2. **Stop a node that is *not* the leaseholder** (say the lease is on node 1, stop node 3):
+   ```bash
+   scripts/crdb stop 3
    ```
-   Wait ~10 seconds and refresh the Replication dashboard. Under-replicated returns to 0.
 
-### Part C: Kill the Leaseholder (5 min)
-
-Same drill, but on the leaseholder. The lease has to transfer before reads resume.
-
-1. **Identify the current leaseholder:**
+3. **Reads and writes keep working** — the remaining two nodes are a quorum of three:
    ```sql
-   SELECT lease_holder FROM [SHOW RANGES FROM TABLE notes WITH DETAILS] LIMIT 1;
+   SELECT count(*) FROM lab1.notes;
+   INSERT INTO lab1.notes (body) VALUES ('written while a node was down');
+   SELECT count(*) FROM lab1.notes;
    ```
 
-2. **Kill that node:**
-   ```text
-   \demo shutdown <that node id>
-   ```
-
-3. **Time a query immediately after** — expect a brief stall (≤9 s):
+4. **Watch the cluster notice:**
    ```sql
-   \timing on
-   SELECT count(*) FROM notes;
+   SELECT node_id, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;
    ```
+   The stopped node flips to `false` within a few seconds. In the DB Console the node turns
+   red, and **Metrics → Replication** shows under-replicated ranges.
 
-4. **Re-check the leaseholder:**
+5. **Bring it back:**
+   ```bash
+   scripts/crdb start 3
+   ```
    ```sql
-   SHOW RANGES FROM TABLE notes WITH DETAILS;
+   SELECT node_id, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;
    ```
-   It's now a surviving node. Cockroach Raft did the failover for you.
+   It rejoins with the **same node ID** and its existing data, then catches up on what it
+   missed. That is why the volume matters: without it the node would come back empty and
+   every range would have to be re-replicated to it from scratch.
 
-5. **Restart the node:**
-   ```text
-   \demo restart <that node id>
-   ```
-
-### Part D: Real Multi-Process Cluster With `cockroach start` (15 min)
-
-Demo mode is convenient but hides the setup steps you'd do in production. Let's run a "real" 3-node cluster on this one machine.
-
-1. **Exit the demo** (`\q`).
-
-2. **Pick a workdir and three port pairs:**
-   ```bash
-   cd ~/crdb-lab1
-   mkdir -p node1 node2 node3 logs
-   ```
-
-3. **Start node 1 in the background:**
-   ```bash
-   cockroach start --insecure \
-     --store=node1 \
-     --listen-addr=localhost:26257 \
-     --http-addr=localhost:8080 \
-     --join=localhost:26257,localhost:26258,localhost:26259 \
-     --background
-   ```
-   Note that node 1 *does not* have data yet — it's waiting for cluster init.
-
-4. **Start nodes 2 and 3:**
-   ```bash
-   cockroach start --insecure \
-     --store=node2 \
-     --listen-addr=localhost:26258 \
-     --http-addr=localhost:8081 \
-     --join=localhost:26257,localhost:26258,localhost:26259 \
-     --background
-
-   cockroach start --insecure \
-     --store=node3 \
-     --listen-addr=localhost:26259 \
-     --http-addr=localhost:8082 \
-     --join=localhost:26257,localhost:26258,localhost:26259 \
-     --background
-   ```
-
-5. **Initialize the cluster — one time only:**
-   ```bash
-   cockroach init --insecure --host=localhost:26257
-   ```
-
-6. **Connect:**
-   ```bash
-   cockroach sql --insecure --host=localhost:26257
-   ```
-
-7. **Confirm topology:**
+6. **Wait for full replication before moving on:**
    ```sql
-   SELECT node_id, address, locality, is_live
-   FROM crdb_internal.gossip_nodes
-   ORDER BY node_id;
+   SELECT count(*) AS under_replicated
+   FROM crdb_internal.ranges_no_leases
+   WHERE array_length(replicas, 1) < 3;
    ```
+   Keep running it until it reports 0.
 
-8. **Recreate the lab1 schema** (because this is a fresh cluster):
+### Part D: Kill the Leaseholder (5 min)
+
+1. **Find the current leaseholder for `notes` and stop *that* node:**
    ```sql
-   CREATE DATABASE lab1;
-   USE lab1;
-   CREATE TABLE notes (
-     id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-     body  STRING NOT NULL,
-     made  TIMESTAMPTZ DEFAULT now()
-   );
-   INSERT INTO notes (body) SELECT 'note ' || g FROM generate_series(1,500) g;
+   SELECT range_id, lease_holder FROM [SHOW RANGES FROM TABLE lab1.notes WITH DETAILS];
+   ```
+   ```bash
+   scripts/crdb stop <that-node-number>
    ```
 
-### Part E: Graceful Decommission (10 min)
+2. **Query again immediately:**
+   ```sql
+   SELECT count(*) FROM lab1.notes;
+   ```
+   The first query may pause for a moment while a surviving replica takes over the lease,
+   then succeeds. **No data was lost and no human intervened.** That pause — a few hundred
+   milliseconds to a couple of seconds — is what "multi-active availability" costs you on a
+   node failure.
 
-Decommissioning is how you shrink a cluster in production — different from a kill, because the cluster waits for every range to have a replacement replica before declaring the node gone.
-
-1. **From a second terminal, watch the live status of node 3:**
+3. **Restart it:**
    ```bash
-   cockroach node status --host=localhost:26257 --insecure
+   scripts/crdb start <that-node-number>
    ```
 
-2. **Try to decommission node 3 — and watch it be refused:**
+### Part E: Decommission Needs Spare Capacity (15 min)
+
+Decommissioning is how you *shrink* a cluster on purpose — different from a kill, because
+the cluster moves every replica off the node before letting it leave.
+
+1. **Try to decommission node 3 — and watch it be refused:**
    ```bash
-   cockroach node decommission 3 --host=localhost:26257 --insecure
+   scripts/crdb run node decommission 3 --insecure
    ```
    ```
    ranges blocking decommission detected
@@ -238,147 +214,170 @@ Decommissioning is how you shrink a cluster in production — different from a k
    ERROR: Cannot decommission nodes.
    ```
 
-   > **This is the lesson.** Decommissioning moves every replica off the node *before* it leaves.
-   > With 3 nodes and a replication factor of 3, each range already has a replica on all three —
-   > there is nowhere for node 3's replicas to go, so the cluster refuses rather than dropping
-   > below its replication target.
+   > **This is the lesson.** With 3 nodes and a replication factor of 3, every range already
+   > has a replica on all three — there is nowhere for node 3's replicas to go, so the
+   > cluster refuses rather than dropping below its replication target.
    >
-   > **You need spare capacity to shrink: at least `replication factor + 1` nodes.** This is the
-   > single most common surprise when someone tries to scale a 3-node cluster down, and it is why
-   > the Kubernetes lab (Lab 16) insists on decommissioning *before* reducing the replica count —
-   > the same constraint, one layer up.
+   > **You need `replication factor + 1` nodes to shrink.** This is the most common surprise
+   > when someone tries to scale a 3-node cluster down, and it is why Lab 16 insists on
+   > decommissioning *before* reducing the Kubernetes replica count — the same constraint,
+   > one layer up.
 
-3. **Add a fourth node so the replicas have somewhere to go:**
+2. **Add a fourth node so the replicas have somewhere to go:**
    ```bash
-   cockroach start --insecure \
-     --store=lab1-data/n4 \
-     --listen-addr=localhost:26260 --http-addr=localhost:8083 \
-     --join=localhost:26257,localhost:26258,localhost:26259 \
-     --background
-   ```
-   ```bash
-   cockroach node status --host=localhost:26257 --insecure     # 4 nodes now
+   scripts/crdb add-node
+   scripts/crdb run node status --insecure
    ```
 
-4. **Decommission node 3 again — now it works:**
+3. **Decommission node 3 again — now it works:**
    ```bash
-   cockroach node decommission 3 --host=localhost:26257 --insecure
+   scripts/crdb run node decommission 3 --insecure
    ```
-   The command blocks until every range with a replica on node 3 has a replacement elsewhere.
-   On a cluster this small that's seconds; on a real production node it can take many minutes.
+   The command blocks until every replica on node 3 has a home elsewhere. On a cluster this
+   small that is seconds; on a production node it can be many minutes.
 
-5. **Confirm:**
+4. **Confirm:**
    ```sql
    SELECT node_id, membership FROM crdb_internal.kv_node_liveness ORDER BY node_id;
    ```
-   Node 3 reports `decommissioned`; nodes 1, 2, and 4 are `active`. Reads and writes keep
-   working throughout, and no data was lost.
+   Node 3 reports `decommissioned`; the others are `active`. Reads and writes worked
+   throughout.
 
-6. **Note what recommission can and cannot do:**
+5. **What recommission can and cannot do:**
    ```bash
-   cockroach node recommission 3 --host=localhost:26257 --insecure
+   scripts/crdb run node recommission 3 --insecure
    ```
    Recommission reverses a decommission that is still *in progress*. Once a node reaches
-   `decommissioned`, it is permanently out of the cluster — bringing that capacity back means
-   starting a new node, which joins with a new node ID.
+   `decommissioned` it is permanently out; bringing that capacity back means starting a new
+   node, which joins with a new node ID.
+
+6. **Reset for the next part:**
+   ```bash
+   scripts/crdb reset
+   ```
 
 ### Part F: Three Ways to Connect (10 min)
 
-CockroachDB speaks PostgreSQL wire — any PG client works. Try at least the first two.
+CockroachDB speaks the PostgreSQL wire protocol, and the lab cluster publishes port `26257`
+on your machine — so any PostgreSQL client works, containerised or not.
 
-1. **`cockroach sql`** (you've been using it):
+1. **The built-in shell** (what you have been using):
    ```bash
-   cockroach sql --insecure --host=localhost:26257 \
-     --execute "SELECT count(*) FROM lab1.notes;"
+   scripts/crdb sql -e "SELECT count(*) FROM lab1.notes;"
    ```
 
-2. **`psql`** (optional — needs `psql` on `PATH`):
+2. **`psql`** — if you have it locally:
    ```bash
-   psql "postgresql://root@localhost:26257/lab1?sslmode=disable" \
-     -c "SELECT count(*) FROM notes;"
+   psql "postgresql://root@localhost:26257/lab1?sslmode=disable" -c "SELECT count(*) FROM notes;"
    ```
-   The same wire protocol. Both tools see the same data.
-
-3. **Python with `psycopg2`** (optional — needs `pip install psycopg2-binary`):
+   No local `psql`? Run one in a container instead:
    ```bash
-   python3 - <<'PY'
+   docker run --rm --network crdb-labs_default postgres:16 \
+     psql "postgresql://root@crdb1:26257/lab1?sslmode=disable" -c "SELECT count(*) FROM notes;"
+   ```
+
+3. **Python** — again, no local install needed:
+   ```bash
+   docker run --rm --network crdb-labs_default -e PGPASSWORD= python:3.12-slim bash -c \
+     "pip install -q psycopg2-binary && python -c \"
    import psycopg2
-   conn = psycopg2.connect("postgresql://root@localhost:26257/lab1?sslmode=disable")
-   with conn.cursor() as cur:
-       cur.execute("SELECT count(*) FROM notes;")
-       print("count =", cur.fetchone()[0])
-   conn.close()
-   PY
+   c = psycopg2.connect('postgresql://root@crdb1:26257/lab1?sslmode=disable')
+   cur = c.cursor(); cur.execute('SELECT count(*) FROM notes'); print('rows:', cur.fetchone()[0])\""
    ```
 
-4. **CockroachDB-specific built-in from `psql`:**
+   > **Two addresses, one cluster.** From your machine it is `localhost:26257` (the published
+   > port). From another container on the same Docker network it is `crdb1:26257`. Mixing
+   > them up is the most common connection error in the rest of this course.
+
+### Part G: Troubleshooting a Cluster That Won't Start (10 min)
+
+Break it deliberately — these are the failures you will actually meet.
+
+1. **Port already in use.** Something else on your machine holds 26257:
    ```bash
-   psql "postgresql://root@localhost:26257?sslmode=disable" \
-     -c "SELECT crdb_internal.cluster_id();"
+   docker run --rm -p 26257:26257 alpine sleep 30 &
+   scripts/crdb reset
    ```
-   These functions don't exist in PostgreSQL — but the wire protocol doesn't care.
-
-### Part G: Troubleshooting Common Startup Errors (10 min)
-
-You will hit these in production. Learn to recognize them now.
-
-1. **Port already in use:**
+   You get `port is already allocated`. Fix: stop the other process, or change the published
+   port in `docker-compose.labs.yml`.
    ```bash
-   cockroach start --insecure --store=tmp_node --listen-addr=localhost:26257 \
-     --join=localhost:26257 --background 2>&1 | head -20
+   docker ps | grep alpine    # find and stop it
    ```
-   You should see `address already in use`. Fix: change `--listen-addr` to a free port, or stop the conflicting process.
 
-2. **Wrong join list (typo):**
+2. **Nodes start but the cluster never comes up.** Simulate it by starting a node with a
+   `--join` list nobody else shares:
    ```bash
-   cockroach start --insecure --store=tmp_node2 --listen-addr=localhost:26260 \
-     --http-addr=localhost:8090 \
-     --join=localhost:26999 --background 2>&1 | head -20
+   docker run --rm --network crdb-labs_default cockroachdb/cockroach:v23.2.5 \
+     start --insecure --advertise-addr=lonely --join=nosuchnode:26257 --http-addr=0.0.0.0:8080
    ```
-   The new node starts but doesn't join. It logs "no resolved addresses available" repeatedly. Fix: use the correct addresses, or include `localhost:26257` in the join list.
+   It logs that it cannot reach its join targets and waits forever. A node with a wrong
+   `--join` never errors out — it *hangs*, which is why this one is hard to spot in production.
+   Ctrl+C to stop it.
 
-3. **Killing & restarting your test garbage:**
+3. **Reading the logs:**
    ```bash
-   pkill -f "cockroach start --insecure --store=tmp_node" 2>/dev/null
-   rm -rf tmp_node tmp_node2
+   scripts/crdb logs 1
+   ```
+   Look for `node starting`, `initialized`, and any `join` warnings. Ctrl+C to stop tailing.
+
+4. **When a node is unhealthy, check it directly:**
+   ```bash
+   scripts/crdb ps
+   docker compose -f docker-compose.labs.yml exec crdb1 ./cockroach node status --insecure --all
    ```
 
 ## Cleanup
 
 ```bash
-# Stop the 3-node real cluster
-cockroach quit --insecure --host=localhost:26257
-cockroach quit --insecure --host=localhost:26258
-cockroach quit --insecure --host=localhost:26259
-
-# Wipe the stores
-cd ~ && rm -rf ~/crdb-lab1
+scripts/crdb down
 ```
 
-If you used the demo cluster only: just type `\q` to exit.
+That stops all four nodes and deletes their volumes. The next lab starts from a clean
+`scripts/crdb up`.
+
+To keep the data and just stop the containers, use `docker compose -f docker-compose.labs.yml stop`.
 
 ## Lab 1 Deliverables
 
-✅ **Cluster started two ways**: `cockroach demo` and 3-process `cockroach start`+`init`
-✅ **Live topology inspected**: identified leaseholders, locality, range count from `crdb_internal`
-✅ **Failure tolerance verified**: killed a follower, killed the leaseholder, watched Raft recover both
-✅ **Graceful decommission**: drove a clean node removal; observed a "stuck" decommission and recovered with recommission
-✅ **PG wire compatibility**: connected with `cockroach sql`, `psql`, and Python
-✅ **Common errors triggered**: recognized port conflicts and bad join lists by their log signatures
+✅ **A running 3-node cluster** in Docker, with 1000 rows and a known leaseholder
+✅ **Cluster formation understood** — `--join`, `--advertise-addr`, and one-time `cockroach init`
+✅ **Follower failure** survived; reads and writes continued
+✅ **Leaseholder failure** survived, with the lease-transfer pause observed
+✅ **Node restart** rejoined with the same node ID and its data
+✅ **Decommission** refused at 3 nodes, then completed at 4 — with the reason understood
+✅ **Three client paths** — built-in shell, `psql`, Python driver
+✅ **Two failure modes** reproduced: port conflict and a bad `--join`
 
 ## Challenge Exercises
 
-1. **Kill two of three nodes simultaneously.** Why do queries against the third node hang? What setting controls how long they hang before erroring? *Hint:* `kv.raft.election_timeout_ticks`.
+1. **Kill two of three nodes.** What happens to reads? To writes? Explain it in terms of
+   quorum, then bring them back and confirm nothing was lost.
 
-2. **Add a fourth node** to the running 3-node cluster from Part D. Watch the ranges rebalance in the Web UI. Why doesn't the cluster automatically replicate every range to 4 nodes? (*Hint:* default replication factor.)
+2. **Change the replication factor to 5** on a 3-node cluster
+   (`ALTER RANGE default CONFIGURE ZONE USING num_replicas = 5;`) and watch
+   `SHOW RANGES`. What does the cluster do, and what does the DB Console say about it?
 
-3. **Tune the replication factor.** Try `ALTER RANGE default CONFIGURE ZONE USING num_replicas = 5;` on the 4-node cluster. What happens? Now try the same with a 3-node cluster — why does the cluster refuse to go above 3 there?
+3. **Add a `--locality` flag** to each node in `docker-compose.labs.yml`
+   (`--locality=region=us-east1,zone=a` and so on), `scripts/crdb reset`, and confirm
+   `crdb_internal.gossip_nodes` shows it. This is the setup Lab 7 builds on.
+
+4. **Make node 2 the leaseholder for `notes` on purpose.** Find the syntax
+   (`ALTER RANGE ... RELOCATE LEASE`), and verify with `SHOW RANGES`.
 
 ## Reference
 
-- **Web UI default port:** 8080
-- **SQL default port:** 26257
-- **Stop a node:** `cockroach quit --insecure --host=<host:port>`
-- **Tail logs:** they're in `<store>/logs/` once the node is running
-- **Decommission state:** `SELECT * FROM crdb_internal.gossip_liveness;`
-- **Lease state:** `SHOW RANGES FROM TABLE <t> WITH DETAILS;` shows the current leaseholder
+| Command | Purpose |
+| --- | --- |
+| `scripts/crdb up` | Start and initialise the 3-node cluster |
+| `scripts/crdb sql` | SQL shell on node 1 |
+| `scripts/crdb sql -e "..."` | Run one statement non-interactively |
+| `scripts/crdb sql-on 2` | SQL shell on a specific node |
+| `scripts/crdb run <args>` | Any `cockroach` subcommand on node 1 |
+| `scripts/crdb stop N` / `start N` | Simulate a node failure and recovery |
+| `scripts/crdb add-node` | Start a 4th node |
+| `scripts/crdb status` / `ps` / `logs N` | Node status, container status, logs |
+| `scripts/crdb down` | Delete the cluster and its data |
+| `scripts/crdb reset` | `down` then `up` |
+| `crdb_internal.gossip_nodes` | Node liveness and locality |
+| `SHOW RANGES FROM TABLE t WITH DETAILS` | Ranges, sizes, leaseholders |
+| `crdb_internal.kv_node_liveness` | Membership: active / decommissioning / decommissioned |
