@@ -273,7 +273,7 @@ audit trail.
    ```
 
 2. **Write a channel-split config** — `lab9/logs.yaml` in the repo root
-   (`mkdir -p lab9` first). The path is inside the container; the overlay mounts
+   (`mkdir -p lab9` first, so the directory belongs to you rather than to Docker). The path is inside the container; the overlay mounts
    `./lab9` there, so the logs land on your machine where you can read them:
    ```yaml
    file-defaults:

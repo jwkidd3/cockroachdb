@@ -18,8 +18,7 @@ tests/scratch/
 
 # Lab working directories (mounted into containers; contents are generated)
 /lab9/
-/lab12/*
-!/lab12/.gitkeep
+/lab12/
 /lab13/
 /lab15/
 /lab16/

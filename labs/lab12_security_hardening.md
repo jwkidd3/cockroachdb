@@ -397,6 +397,7 @@ on a schedule is how they don't.
 ### Part E: The Audit Pipeline (15 min)
 
 1. **Route security channels to their own auditable sink** — write `lab12/logs.yaml`
+   (`mkdir -p lab12` first, so the directory belongs to you rather than to Docker)
    (the compose stack mounts `./lab12` at `/lab12` inside the node):
    ```yaml
    file-defaults:
