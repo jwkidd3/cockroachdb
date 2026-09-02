@@ -308,14 +308,14 @@ audit trail.
 3. **Restart node 1 with the config.** A compose *overlay* adds the
    `--log-config-file` flag and mounts `./lab9` — the base file stays untouched:
    ```bash
-   docker compose -f docker-compose.labs.yml -f docker-compose.labs.logging.yml up -d crdb1
+   docker compose -f docker/labs.yml -f docker/labs.logging.yml up -d crdb1
    ```
    ```bash
    scripts/crdb sql -e "SELECT 1;"          # back up?
    scripts/crdb logs 1                       # ...and reading its new config
    ```
 
-   > Look at [`docker-compose.labs.logging.yml`](../docker-compose.labs.logging.yml): it
+   > Look at [`docker/labs.logging.yml`](../docker/labs.logging.yml): it
    > redefines only `command` and `volumes` for `crdb1`. That is the production pattern too —
    > one base definition, per-environment overlays, rather than editing the base file and
    > forgetting to put it back.

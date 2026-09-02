@@ -61,7 +61,7 @@ python3 -c "import sqlalchemy" 2>/dev/null && ok "sqlalchemy importable" || warn
 
 sec "CockroachDB smoke test (containerised)"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [ -f "$REPO/docker-compose.labs.yml" ]; then
+if [ -f "$REPO/docker/labs.yml" ]; then
     if (cd "$REPO" && bash scripts/crdb.sh up >/dev/null 2>&1); then
         pass "lab cluster started via docker compose"
         OUT=$(cd "$REPO" && bash scripts/crdb.sh sql --format=tsv -e "SELECT 1+1;" 2>/dev/null | tail -1 | tr -d '[:space:]')
@@ -98,7 +98,7 @@ if [ -f "$REPO/docker-compose.labs.yml" ]; then
         fail "could not start the lab cluster (scripts/crdb.sh up)"
     fi
 else
-    fail "docker-compose.labs.yml not found - is the course repo checked out at $REPO?"
+    fail "docker/labs.yml not found - is the course repo checked out at $REPO?"
 fi
 
 sec "Multi-node capability (Lab 7 needs 9 nodes)"

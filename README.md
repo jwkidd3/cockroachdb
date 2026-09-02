@@ -5,7 +5,7 @@ A **4-day** course on CockroachDB's distributed SQL architecture, with an emphas
 throughput instead of guessing at it, and how those decisions turn into dashboards, node
 counts, and a hardware bill.
 
-Built from the outline in [`cockroachdb_4day.md`](cockroachdb_4day.md).
+Built from the outline in [`outline/cockroachdb_4day.md`](outline/cockroachdb_4day.md).
 
 ## Course Objectives
 
@@ -80,10 +80,10 @@ Some labs bring up their own stacks alongside it:
 
 | File | Used by | Ports |
 | --- | --- | --- |
-| `docker-compose.labs.yml` | every lab | SQL 26257–26260, console 8080–8083 |
-| `docker-compose.labs-b.yml` | Lab 11 (cross-cluster DR) | SQL 26357+, console 8180+ |
-| `docker-compose.labs-secure.yml` | Lab 12 (TLS, RBAC, audit) | SQL 26457, console 8280 |
-| `docker-compose.labs.logging.yml` | Lab 9 (log channels) | overlay on the main cluster |
+| `docker/labs.yml` | every lab | SQL 26257–26260, console 8080–8083 |
+| `docker/labs-b.yml` | Lab 11 (cross-cluster DR) | SQL 26357+, console 8180+ |
+| `docker/labs-secure.yml` | Lab 12 (TLS, RBAC, audit) | SQL 26457, console 8280 |
+| `docker/labs.logging.yml` | Lab 9 (log channels) | overlay on the main cluster |
 
 Give Docker at least **4 GB** for Days 1–2, and **8 GB** for Days 3–4 (Lab 7's 9-node
 simulation and Lab 16's Kubernetes cluster are the heavy ones).
@@ -138,35 +138,22 @@ a **Measure it** block showing how to prove it works.
 
 ```
 cockroachdb/
-├── README.md                                  # this file
-├── cockroachdb.txt                            # original 2-day outline
-├── cockroachdb_4day.md / .html / .pdf / .txt  # the 4-day outline this course implements
-├── presentations/
-│   ├── cockroachdb_day1_presentation.html     # Reveal.js slides — Day 1
-│   ├── cockroachdb_day2_presentation.html     # Day 2
-│   ├── cockroachdb_day3_presentation.html     # Day 3
-│   └── cockroachdb_day4_presentation.html     # Day 4
-├── labs/
-│   ├── SCHEMA_PATTERNS_PLAYBOOK.md            # take-home pattern catalog
-│   └── lab01..lab16_*.md                      # 16 labs
+├── README.md
+├── docker-compose.yml          # test runner (docker compose run --rm tests)
+├── docker/                     # the lab clusters
+│   ├── labs.yml                #   main 3-node cluster
+│   ├── labs-b.yml              #   Lab 11 standby
+│   ├── labs-secure.yml         #   Lab 12 TLS cluster
+│   ├── labs.logging.yml        #   Lab 9 overlay
+│   └── labs-secure.logging.yml #   Lab 12 overlay
 ├── scripts/
-│   └── pull_latest.bat                        # Windows: pull the latest materials
-├── setup/                                     # instructor: student VM provisioning
-│   ├── INSTRUCTOR_SETUP.md                    # sizing, image build, launch, teardown
-│   ├── provision_student_vm.sh                # builds the golden image
-│   ├── verify_student_vm.sh                   # proves a VM can run every lab
-│   ├── reset_labs.sh                          # clean state between labs
-│   ├── run_on_all.sh / verify_all.sh          # fleet operations
-│   ├── make_student_sheet.sh                  # connection sheet generator
-│   ├── cloud-init-student.yaml                # per-instance setup
-│   └── hosts.txt                              # VM inventory
-├── tests/                                     # automated lab tests
-│   ├── README.md
-│   ├── Dockerfile                             # multi-arch test runner image
-│   ├── run_all.sh                             # DAY=N for one day's labs
-│   ├── lib/{common,cluster}.sh
-│   └── lab01..lab16_test.sh
-└── docker-compose.yml                         # `docker compose run --rm tests`
+│   ├── crdb.sh / crdb.bat      # drive the lab cluster
+│   └── pull_latest.bat         # Windows: pull the latest materials
+├── labs/                       # 16 labs + the Schema Patterns Playbook
+├── presentations/              # Reveal.js decks, one per day
+├── outline/                    # course outlines (source + rendered)
+├── setup/                      # instructor: student VM provisioning
+└── tests/                      # automated lab tests
 ```
 
 ## Running the Automated Tests
@@ -220,7 +207,7 @@ Speaker notes: `S`. Overview: `O`. Print to PDF: append `?print-pdf` and use the
 
 ## Running the 2-Day Version
 
-Days 1–2 stand alone as the 2-day course described in [`cockroachdb.txt`](cockroachdb.txt), with one
+Days 1–2 stand alone as the 2-day course described in [`outline/cockroachdb.txt`](outline/cockroachdb.txt), with one
 change: Day 2 now ends with **Lab 8 — Throughput Engineering** instead of backup/CDC/security, which
 moved to Days 3–4. If you are delivering the 2-day course and need backup and security coverage,
 substitute Labs 11 and 12 for Lab 8 and cut the throughput section.
@@ -229,4 +216,4 @@ substitute Labs 11 and 12 for Lab 8 and cut the throughput section.
 
 - Official docs: <https://www.cockroachlabs.com/docs/>
 - Community forum: <https://forum.cockroachlabs.com/>
-- Outlines: [`cockroachdb_4day.md`](cockroachdb_4day.md) (current) and [`cockroachdb.txt`](cockroachdb.txt) (original 2-day)
+- Outlines: [`outline/cockroachdb_4day.md`](outline/cockroachdb_4day.md) (current) and [`outline/cockroachdb.txt`](outline/cockroachdb.txt) (original 2-day)

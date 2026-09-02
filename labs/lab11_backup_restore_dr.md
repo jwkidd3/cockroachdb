@@ -297,11 +297,11 @@ The drill that matters: cluster A is gone, bring the data up on cluster B.
 1. **Start the standby cluster.** It is the same compose stack under a second project name,
    on different ports (SQL 26357, console 8180), so both clusters run side by side:
    ```bash
-   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb up
+   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb up
    ```
    ```bash
    scripts/crdb ps                                              # cluster A
-   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb ps       # cluster B
+   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb ps       # cluster B
    ```
 
    > **Both clusters mount the same backup volume** at `/backups` (node 1 of each, via
@@ -323,36 +323,36 @@ The drill that matters: cluster A is gone, bring the data up on cluster B.
 
 3. **Confirm cluster B can see the backup** — no copying required:
    ```bash
-   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e \
+   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb sql -e \
      "SHOW BACKUPS IN 'nodelocal://1/dr/cluster';"
    ```
 
 4. **Restore onto B and time it:**
    ```bash
-   time CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e \
+   time CRDB_COMPOSE=docker/labs-b.yml scripts/crdb sql -e \
      "RESTORE FROM LATEST IN 'nodelocal://1/dr/cluster';"
    ```
    > A full-cluster `RESTORE` must run into a cluster with no user data — which is exactly
    > the DR situation. If B already has the `bank` database from an earlier attempt, reset it
-   > with `CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb reset`.
+   > with `CRDB_COMPOSE=docker/labs-b.yml scripts/crdb reset`.
 
 5. **Verify the restore, don't assume it:**
    ```bash
-   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e "
+   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb sql -e "
    SHOW DATABASES;
    SELECT count(*) AS accounts FROM bank.public.accounts;
    SELECT count(*) AS transfers FROM bank.public.transfers;
    SELECT sum(balance) AS total_balance FROM bank.public.accounts;"
    ```
    ```bash
-   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql -e "SHOW USERS;"
+   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb sql -e "SHOW USERS;"
    ```
 
 6. **Compare against A** — a DR drill without a comparison is theatre:
    ```bash
    echo "A:"; scripts/crdb sql --format=tsv -e \
      "SELECT count(*), sum(balance) FROM bank.public.accounts;"
-   echo "B:"; CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb sql --format=tsv -e \
+   echo "B:"; CRDB_COMPOSE=docker/labs-b.yml scripts/crdb sql --format=tsv -e \
      "SELECT count(*), sum(balance) FROM bank.public.accounts;"
    ```
    The row count **and** the business checksum must match. One without the other proves nothing.
@@ -415,7 +415,7 @@ Swap runbooks with another pair. Can they follow yours without asking you a ques
 
 ```bash
 scripts/crdb down
-CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb down
+CRDB_COMPOSE=docker/labs-b.yml scripts/crdb down
 ```
 
 That also removes the shared `/backups` volume, so the next run of this lab starts clean.

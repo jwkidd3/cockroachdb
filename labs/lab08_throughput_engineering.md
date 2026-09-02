@@ -596,7 +596,7 @@ scripts/crdb reset
    then find the batch size that starts failing. What error do you get, and what should the
    application do with it?
 
-4. **Re-run Part D on more nodes.** Add `crdb5`…`crdb9` to `docker-compose.labs.yml`
+4. **Re-run Part D on more nodes.** Add `crdb5`…`crdb9` to `docker/labs.yml`
    (copy the `crdb4` block, bump the ports) and re-run. Which PK design's advantage
    grows with node count, and which one's shrinks?
 

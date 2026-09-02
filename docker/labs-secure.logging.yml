@@ -1,9 +1,9 @@
 # Lab 12 Part E overlay: restart the secure node with an auditable log sink.
 #
-#   docker compose -f docker-compose.labs-secure.yml \
-#                  -f docker-compose.labs-secure.logging.yml up -d crdbs1
+#   docker compose -f docker/labs-secure.yml \
+#                  -f docker/labs-secure.logging.yml up -d crdbs1
 #
-# Write ./lab12/logs.yaml first; audit records appear in ./lab12/logs on your machine.
+# Write lab12/logs.yaml in the repo root; audit records appear in lab12/logs.
 
 services:
   crdbs1:

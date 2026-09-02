@@ -23,10 +23,10 @@ rem ============================================================================
 set "RC=0"
 pushd "%~dp0.." >nul 2>&1 || (echo [ERROR] cannot find the repository folder & exit /b 1)
 rem CRDB_COMPOSE selects which cluster to drive:
-rem   docker-compose.labs.yml         the main 3-node cluster (default)
-rem   docker-compose.labs-b.yml       Lab 11's standby cluster
-rem   docker-compose.labs-secure.yml  Lab 12's TLS cluster
-if "%CRDB_COMPOSE%"=="" set "CRDB_COMPOSE=docker-compose.labs.yml"
+rem   docker/labs.yml         the main 3-node cluster (default)
+rem   docker/labs-b.yml       Lab 11's standby cluster
+rem   docker/labs-secure.yml  Lab 12's TLS cluster
+if "%CRDB_COMPOSE%"=="" set "CRDB_COMPOSE=docker/labs.yml"
 set "COMPOSE=docker compose -f %CRDB_COMPOSE%"
 
 set "NODE=crdb"
@@ -194,9 +194,9 @@ echo   scripts\crdb.bat down           remove the cluster AND its data
 echo   scripts\crdb.bat reset          down, then up
 echo.
 echo Set CRDB_COMPOSE to pick a different cluster:
-echo   docker-compose.labs.yml         main 3-node cluster (default)
-echo   docker-compose.labs-b.yml       Lab 11 standby cluster
-echo   docker-compose.labs-secure.yml  Lab 12 TLS cluster
+echo   docker/labs.yml         main 3-node cluster (default)
+echo   docker/labs-b.yml       Lab 11 standby cluster
+echo   docker/labs-secure.yml  Lab 12 TLS cluster
 echo.
 goto :done
 

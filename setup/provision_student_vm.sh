@@ -62,7 +62,7 @@ for src in /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys; do
 done
 
 # ---------------------------------------------------------------------- cockroach
-# NOT installed: every lab runs CockroachDB in Docker via docker-compose.labs.yml.
+# NOT installed: every lab runs CockroachDB in Docker via docker/labs.yml.
 # The image is pre-pulled below so the first `scripts/crdb up` is instant.
 
 # ------------------------------------------------------------------------- docker

@@ -34,7 +34,7 @@ bare machine — but they only *prove* the lab when the dependency is present.
 | Enterprise features (BACKUP, IMPORT, enterprise changefeeds) | License | Detected at runtime; those assertions are skipped with a warning |
 
 > **Labs vs tests.** The *labs* now run CockroachDB in Docker via
-> [`docker-compose.labs.yml`](../docker-compose.labs.yml) and `scripts/crdb`. This *test
+> [`docker/labs.yml`](../docker/labs.yml) and `scripts/crdb`. This *test
 > suite* is separate: it starts its own throwaway clusters with the `cockroach` binary
 > inside the test image. Same binary, same SQL, but the tests do not exercise the
 > `scripts/crdb` wrappers — they verify the SQL and the behaviour the labs teach.

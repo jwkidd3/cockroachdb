@@ -21,8 +21,8 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 | 8 Throughput | 3-node + `workload` + CSV | ~6 GB | 15 GB | 100k-row CSV, IMPORT |
 | 9 Observability | 3-node + Prometheus + Grafana | ~6 GB | 10 GB | Docker |
 | 10 TPC-C | 3-node + TPC-C at 40 warehouses | ~10 GB | 30 GB | Heaviest disk user |
-| 11 Backup/DR | **two** compose clusters | ~8 GB | 20 GB | `docker-compose.labs-b.yml`, shared backup volume |
-| 12 Security | 1 secure node | ~2 GB | 5 GB | `docker-compose.labs-secure.yml`, auto-generated certs |
+| 11 Backup/DR | **two** compose clusters | ~8 GB | 20 GB | `docker/labs-b.yml`, shared backup volume |
+| 12 Security | 1 secure node | ~2 GB | 5 GB | `docker/labs-secure.yml`, auto-generated certs |
 | 13 CDC | 3-node + Kafka container | ~7 GB | 10 GB | Docker |
 | 14 Outbox | 3-node + Python | ~5 GB | 5 GB | psycopg2 |
 | 15 MOLT | 3-node + PostgreSQL container | ~7 GB | 15 GB | Docker |

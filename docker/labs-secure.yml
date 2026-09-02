@@ -1,7 +1,7 @@
 # Lab 12: a TLS-secured single-node cluster.
 #
-#   docker compose -f docker-compose.labs-secure.yml up -d
-#   docker compose -f docker-compose.labs-secure.yml exec crdbs1 \
+#   docker compose -f docker/labs-secure.yml up -d
+#   docker compose -f docker/labs-secure.yml exec crdbs1 \
 #       ./cockroach sql --certs-dir=/certs --host=crdbs1
 #
 # Ports are deliberately different from the insecure lab cluster (SQL 26457,
@@ -63,4 +63,4 @@ services:
     volumes:
       - crdbs1-data:/cockroach/cockroach-data
       - crdbs-certs:/certs
-      - ./lab12:/lab12
+      - ../lab12:/lab12

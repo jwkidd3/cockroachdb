@@ -19,8 +19,8 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # CRDB_COMPOSE selects which cluster to drive. Lab 11 uses the standby:
-#   CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb.sh up
-CRDB_COMPOSE="${CRDB_COMPOSE:-docker-compose.labs.yml}"
+#   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb.sh up
+CRDB_COMPOSE="${CRDB_COMPOSE:-docker/labs.yml}"
 COMPOSE=(docker compose -f "$CRDB_COMPOSE")
 # Service names are crdb1..4 in the main cluster, crdbb1..4 in the standby.
 case "$CRDB_COMPOSE" in

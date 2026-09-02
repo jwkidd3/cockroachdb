@@ -23,10 +23,10 @@ By the end of this lab you will be able to:
 Every command in this lab talks to the **secure** cluster, so export this once:
 
 ```bash
-export CRDB_COMPOSE=docker-compose.labs-secure.yml
+export CRDB_COMPOSE=docker/labs-secure.yml
 ```
 
-(On Windows: `set CRDB_COMPOSE=docker-compose.labs-secure.yml`.)
+(On Windows: `set CRDB_COMPOSE=docker/labs-secure.yml`.)
 
 ## Tasks
 
@@ -45,9 +45,9 @@ export CRDB_COMPOSE=docker-compose.labs-secure.yml
    ```
 
 2. **Read what generated them** — the `certs` service in
-   [`docker-compose.labs-secure.yml`](../docker-compose.labs-secure.yml):
+   [`docker/labs-secure.yml`](../docker/labs-secure.yml):
    ```bash
-   docker compose -f docker-compose.labs-secure.yml logs certs
+   docker compose -f docker/labs-secure.yml logs certs
    ```
    It runs the three commands you would run by hand in production:
    ```
@@ -82,7 +82,7 @@ export CRDB_COMPOSE=docker-compose.labs-secure.yml
 
 5. **Prove insecure access is rejected:**
    ```bash
-   docker compose -f docker-compose.labs-secure.yml exec crdbs1 \
+   docker compose -f docker/labs-secure.yml exec crdbs1 \
      ./cockroach sql --insecure --host=crdbs1 -e "SELECT 1;"
    ```
    ```
@@ -113,7 +113,7 @@ on a schedule is how they don't.
 
 3. **Signal the node to reload certificates — no restart needed:**
    ```bash
-   docker compose -f docker-compose.labs-secure.yml kill -s HUP crdbs1
+   docker compose -f docker/labs-secure.yml kill -s HUP crdbs1
    ```
 
    > ⚠️ **This only works because the container runs the binary as PID 1.** The CockroachDB
@@ -121,7 +121,7 @@ on a schedule is how they don't.
    > container goes to *that shell*, which never forwards it — the certificate is reissued on
    > disk, `cert list` shows the new expiry, and the server keeps serving the old certificate.
    > Look for `entrypoint: ["/cockroach/cockroach"]` in
-   > [`docker-compose.labs-secure.yml`](../docker-compose.labs-secure.yml).
+   > [`docker/labs-secure.yml`](../docker/labs-secure.yml).
    >
    > It is a containerisation trap worth remembering beyond CockroachDB: **any** process
    > started through a shell wrapper stops receiving signals, so graceful reloads and
@@ -415,8 +415,8 @@ on a schedule is how they don't.
 
 2. **Restart with the log config** — an overlay adds the flag; the base file is untouched:
    ```bash
-   docker compose -f docker-compose.labs-secure.yml \
-                  -f docker-compose.labs-secure.logging.yml up -d crdbs1
+   docker compose -f docker/labs-secure.yml \
+                  -f docker/labs-secure.logging.yml up -d crdbs1
    ```
 
 3. **Enable per-table audit on the table holding SSNs:**
@@ -499,7 +499,7 @@ Fill in which CockroachDB feature satisfies each control, and what evidence you'
 ## Cleanup
 
 ```bash
-docker compose -f docker-compose.labs-secure.yml down -v
+docker compose -f docker/labs-secure.yml down -v
 rm -rf lab12/logs
 ```
 

@@ -95,7 +95,7 @@ And the DB Console at <http://localhost:8080>.
 
 ### Part B: How This Cluster Was Formed (10 min)
 
-Read [`docker-compose.labs.yml`](../docker-compose.labs.yml) while answering these. Everything
+Read [`docker/labs.yml`](../docker/labs.yml) while answering these. Everything
 a production deployment does, this file does in miniature.
 
 1. **Find the three flags that let the nodes find each other:**
@@ -116,7 +116,7 @@ a production deployment does, this file does in miniature.
 
 3. **Prove init is one-time.** Run it again by hand:
    ```bash
-   docker compose -f docker-compose.labs.yml exec crdb1 ./cockroach init --insecure
+   docker compose -f docker/labs.yml exec crdb1 ./cockroach init --insecure
    ```
    It refuses — the cluster is already initialised. This is why the `init` service in the
    compose file exits 0 either way.
@@ -299,7 +299,7 @@ Break it deliberately — these are the failures you will actually meet.
    scripts/crdb reset
    ```
    You get `port is already allocated`. Fix: stop the other process, or change the published
-   port in `docker-compose.labs.yml`.
+   port in `docker/labs.yml`.
    ```bash
    docker ps | grep alpine    # find and stop it
    ```
@@ -323,7 +323,7 @@ Break it deliberately — these are the failures you will actually meet.
 4. **When a node is unhealthy, check it directly:**
    ```bash
    scripts/crdb ps
-   docker compose -f docker-compose.labs.yml exec crdb1 ./cockroach node status --insecure --all
+   docker compose -f docker/labs.yml exec crdb1 ./cockroach node status --insecure --all
    ```
 
 ## Cleanup
@@ -335,7 +335,7 @@ scripts/crdb down
 That stops all four nodes and deletes their volumes. The next lab starts from a clean
 `scripts/crdb up`.
 
-To keep the data and just stop the containers, use `docker compose -f docker-compose.labs.yml stop`.
+To keep the data and just stop the containers, use `docker compose -f docker/labs.yml stop`.
 
 ## Lab 1 Deliverables
 
@@ -357,7 +357,7 @@ To keep the data and just stop the containers, use `docker compose -f docker-com
    (`ALTER RANGE default CONFIGURE ZONE USING num_replicas = 5;`) and watch
    `SHOW RANGES`. What does the cluster do, and what does the DB Console say about it?
 
-3. **Add a `--locality` flag** to each node in `docker-compose.labs.yml`
+3. **Add a `--locality` flag** to each node in `docker/labs.yml`
    (`--locality=region=us-east1,zone=a` and so on), `scripts/crdb reset`, and confirm
    `crdb_internal.gossip_nodes` shows it. This is the setup Lab 7 builds on.
 

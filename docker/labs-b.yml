@@ -1,7 +1,7 @@
 # The STANDBY cluster for Lab 11 (cross-cluster DR drill).
-# Same shape as docker-compose.labs.yml, different project name and ports:
+# Same shape as docker/labs.yml, different project name and ports:
 #   SQL 26357-26359, DB Console 8180-8182.
-# Drive it with:  CRDB_COMPOSE=docker-compose.labs-b.yml scripts/crdb.sh up
+# Drive it with:  CRDB_COMPOSE=docker/labs-b.yml scripts/crdb.sh up
 #
 # Every lab in this course runs against this. It is identical on Windows, macOS
 # and Linux, so there is nothing to install but Docker.

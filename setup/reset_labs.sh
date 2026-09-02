@@ -11,7 +11,7 @@ ALL="${1:-}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> tearing down the lab clusters"
-for f in docker-compose.labs.yml docker-compose.labs-b.yml docker-compose.labs-secure.yml; do
+for f in docker/labs.yml docker/labs-b.yml docker/labs-secure.yml; do
     [ -f "$REPO/$f" ] && (cd "$REPO" && docker compose -f "$f" --profile scale down -v 2>/dev/null) || true
 done
 
