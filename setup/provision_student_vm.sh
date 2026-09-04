@@ -170,7 +170,7 @@ log "pre-pulling container images (this is what saves lab time)"
 for img in \
     "prom/prometheus:latest" \
     "grafana/grafana:latest" \
-    "bitnami/kafka:3.7" \
+    "apache/kafka:3.9.0" \
     "postgres:16" \
     "$KIND_NODE_IMAGE" \
     "cockroachdb/cockroach:${CRDB_VERSION}" ; do

@@ -8,29 +8,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab09"
-BASE_SQL_PORT=26407
-BASE_HTTP_PORT=8153
 source "$SCRIPT_DIR/lib/cluster.sh"
 
-LOGDIR="${STORE_BASE}/logs"
-ZIP="${STORE_BASE}/debug.zip"
+# The logging overlay mounts ./lab9 into the node at /lab9, so logs written
+# inside the container land here where the test (and a student) can read them.
+LAB9_DIR="$REPO_ROOT/lab9"
+LOGDIR="$LAB9_DIR/logs"
+ZIP="$STORE_BASE/debug.zip"
 
 cleanup_all() {
-    pkill -f "cockroach workload run kv --duration" 2>/dev/null || true
-    docker rm -f lab09-prom >/dev/null 2>&1 || true
+    docker rm -f lab09-prom lab9-load >/dev/null 2>&1 || true
+    ( cd "$REPO_ROOT" && docker compose -f docker/labs.yml -f docker/labs.logging.yml down -v >/dev/null 2>&1 ) || true
     stop_cluster
+    [ "${KEEP_ON_FAIL:-0}" != "1" ] && rm -rf "$LAB9_DIR"
+    return 0
 }
 trap cleanup_all EXIT INT TERM
 
 section "Setup — 3-node cluster with load"
 start_cluster 3
-URL="postgresql://root@localhost:${BASE_SQL_PORT}?sslmode=disable"
 
-cockroach workload init kv --drop "$URL" >/dev/null 2>&1 \
+crdb_run workload init kv --drop "$URL" >/dev/null 2>&1 \
     && pass "kv workload initialized" || fail "workload init failed"
 
-cockroach workload run kv --duration=90s --concurrency=8 --read-percent=70 "$URL" \
-    >"${STORE_BASE}/workload.log" 2>&1 &
+docker rm -f lab9-load >/dev/null 2>&1 || true
+docker run -d --name lab9-load --network crdb-labs_default \
+    cockroachdb/cockroach:${CRDB_VERSION:-v23.2.5} \
+    workload run kv --duration=90s --concurrency=8 --read-percent=70 "$URL" \
+    >/dev/null 2>&1 || warn "background load generator did not start"
 sleep 5
 
 section "Part A — the metrics endpoint"
@@ -71,9 +76,12 @@ scrape_configs:
   - job_name: cockroachdb
     metrics_path: /_status/vars
     static_configs:
-      - targets: ['localhost:${BASE_HTTP_PORT}']
+      - targets: ['crdb1:8080', 'crdb2:8080', 'crdb3:8080']
 YML
-    if docker run -d --name lab09-prom --network=host \
+    # On the cluster network to reach the nodes, publishing 9090 to reach its
+    # API. `--network=host` would work on Linux only, and students use macOS too.
+    if docker run -d --name lab09-prom -p 9090:9090 \
+         --network crdb-labs_default \
          -v "${STORE_BASE}/prometheus.yml:/etc/prometheus/prometheus.yml" \
          prom/prometheus >/dev/null 2>&1; then
         wait_for "prometheus API up" 45 "curl -sf http://localhost:9090/-/ready"
@@ -82,6 +90,8 @@ YML
         assert_contains "prometheus scraped the cockroach target" "$TARGETS" "cockroachdb"
         UP=$(curl -s 'http://localhost:9090/api/v1/query?query=up' | grep -o '"value":\[[^]]*\]' | head -1)
         assert_contains "target reports up=1" "$UP" "1"
+        HEALTHY=$(curl -s 'http://localhost:9090/api/v1/targets' | grep -c '"health":"up"' || true)
+        assert_ge "all three nodes are healthy targets" "$HEALTHY" "1"
         docker rm -f lab09-prom >/dev/null 2>&1
     else
         warn "could not start prometheus container (host networking may be unavailable); skipping"
@@ -92,10 +102,11 @@ fi
 
 section "Part D — structured log channels"
 
-mkdir -p "$LOGDIR"
-cat > "${STORE_BASE}/logs.yaml" <<YML
+# mkdir first so the directory belongs to the user rather than to Docker.
+mkdir -p "$LAB9_DIR"
+cat > "$LAB9_DIR/logs.yaml" <<'YML'
 file-defaults:
-  dir: ${LOGDIR}
+  dir: /lab9/logs
   buffered-writes: true
 sinks:
   file-groups:
@@ -113,27 +124,19 @@ sinks:
     filter: NONE
 YML
 
-CHECK=$(cockroach debug check-log-config --log-config-file="${STORE_BASE}/logs.yaml" 2>&1 || true)
+CHECK=$(crdb_run debug check-log-config --log-config-file=/lab9/logs.yaml 2>&1 || true)
 if echo "$CHECK" | grep -qi "SENSITIVE_ACCESS"; then
     pass "log config parses and routes SENSITIVE_ACCESS"
 else
     warn "check-log-config output did not mention SENSITIVE_ACCESS; flag support varies by version"
 fi
 
-# Restart node 1 with the channel-splitting config.
-kill_node 1
-cockroach start --insecure \
-    --store="${STORE_BASE}/n1" \
-    --listen-addr="localhost:${BASE_SQL_PORT}" \
-    --http-addr="localhost:${BASE_HTTP_PORT}" \
-    --join="localhost:${BASE_SQL_PORT},localhost:$((BASE_SQL_PORT+1)),localhost:$((BASE_SQL_PORT+2))" \
-    --pid-file="${STORE_BASE}/n1.pid" \
-    --log-config-file="${STORE_BASE}/logs.yaml" \
-    --background >>"${STORE_BASE}/n1.out" 2>&1 \
-    || fail "node 1 failed to restart with the log config"
-CLUSTER_PIDS[1]=$(cat "${STORE_BASE}/n1.pid")
-wait_for "node 1 back with log config" 40 \
-    "cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --execute 'SELECT 1;'"
+# Restart node 1 with the channel-splitting config, the way the lab does: a
+# compose overlay adds --log-config-file and mounts ./lab9. The base file is
+# never edited.
+( cd "$REPO_ROOT" && docker compose -f docker/labs.yml -f docker/labs.logging.yml up -d crdb1 ) >/dev/null 2>&1 \
+    || fail "node 1 failed to restart with the logging overlay"
+wait_for "node 1 back with the log config" 60 "sql_quiet 'SELECT 1;'"
 pass "node restarted with channel-split logging"
 
 # Generate events on the security channels.
@@ -163,8 +166,10 @@ fi
 
 section "Part E — debug zip and statement diagnostics"
 
-if cockroach debug zip "$ZIP" --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1; then
-    assert_file_exists "debug zip created" "$ZIP"
+mkdir -p "$STORE_BASE"
+if crdb_run debug zip /tmp/debug.zip --insecure >/dev/null 2>&1 \
+   && crdb_cp crdb1:/tmp/debug.zip "$ZIP" >/dev/null 2>&1; then
+    assert_file_exists "debug zip created and copied out with scripts/crdb cp" "$ZIP"
     if command -v unzip >/dev/null 2>&1; then
         CONTENTS=$(unzip -l "$ZIP" 2>/dev/null)
         assert_contains "zip contains per-node status" "$CONTENTS" "nodes/"
@@ -175,7 +180,8 @@ if cockroach debug zip "$ZIP" --insecure --host="localhost:${BASE_SQL_PORT}" >/d
         warn "unzip not installed; cannot inspect the debug zip contents"
     fi
 
-    if cockroach debug zip "${ZIP}.redacted" --insecure --host="localhost:${BASE_SQL_PORT}" --redact >/dev/null 2>&1; then
+    if crdb_run debug zip /tmp/debug-redacted.zip --insecure --redact >/dev/null 2>&1 \
+       && crdb_cp crdb1:/tmp/debug-redacted.zip "${ZIP}.redacted" >/dev/null 2>&1; then
         assert_file_exists "redacted debug zip created" "${ZIP}.redacted"
     else
         warn "--redact unsupported on this version"

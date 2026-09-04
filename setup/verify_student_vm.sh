@@ -50,7 +50,7 @@ else
 fi
 
 sec "Pre-pulled images"
-for img in prom/prometheus grafana/grafana bitnami/kafka postgres kindest/node; do
+for img in prom/prometheus grafana/grafana apache/kafka postgres kindest/node; do
     docker image ls --format '{{.Repository}}' 2>/dev/null | grep -q "^${img}$" \
         && ok "image cached: $img" || warn "image not cached: $img (first use will download)"
 done

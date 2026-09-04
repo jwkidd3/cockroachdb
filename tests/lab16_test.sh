@@ -100,8 +100,13 @@ PY
 
 section "Live cluster (needs docker + kind + kubectl)"
 
+# What matters is the memory Docker itself has, not the host's — on macOS and
+# Windows the daemon runs in a VM with its own (usually smaller) allocation, and
+# /proc/meminfo does not exist at all.
 MEM_GB=0
-if [ -r /proc/meminfo ]; then
+if docker info >/dev/null 2>&1; then
+    MEM_GB=$(( $(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
+elif [ -r /proc/meminfo ]; then
     MEM_GB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
 fi
 
@@ -143,15 +148,35 @@ pass "cockroach-operator is running"
 CRD=$(kubectl get crd crdbclusters.crdb.cockroachlabs.com -o name 2>/dev/null)
 assert_contains "CrdbCluster CRD registered" "$CRD" "crdbclusters"
 
+# `rollout status` says the operator's Pod is ready; it does NOT say the
+# admission webhook is reachable. Applying in that gap fails with
+# `failed calling webhook "mcrdbcluster.kb.io" ... connection refused`.
+wait_for "operator webhook has ready endpoints" 180 \
+    "[ -n \"\$(kubectl -n cockroach-operator-system get endpoints cockroach-operator-webhook-service -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)\" ]"
+pass "admission webhook is reachable"
+
 info "deploying the CockroachDB cluster"
-kubectl apply -f "$WORK/crdb.yaml" >/dev/null 2>&1 || fail "CrdbCluster apply failed"
+APPLY_OUT=""
+for attempt in $(seq 1 12); do
+    if APPLY_OUT=$(kubectl apply -f "$WORK/crdb.yaml" 2>&1); then
+        APPLIED=1; break
+    fi
+    APPLIED=0
+    grep -q "failed calling webhook" <<<"$APPLY_OUT" || break
+    info "webhook not serving yet (attempt $attempt); retrying"
+    sleep 5
+done
+[ "${APPLIED:-0}" = "1" ] || fail "CrdbCluster apply failed: $APPLY_OUT"
 
 wait_for "3 crdb pods running" 600 \
     "[ \$(kubectl get pods -l app.kubernetes.io/instance=crdb --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l) -ge 3 ]"
 pass "3 CockroachDB pods are running"
 
-STS=$(kubectl get statefulset crdb -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
-assert_eq "statefulset reports 3 ready replicas" "${STS:-0}" "3"
+# Running is not Ready: the readiness probe only passes once the node has joined
+# and is serving SQL, which is a little after the Pod reaches Running.
+wait_for "statefulset reports 3 ready replicas" 600 \
+    "[ \"\$(kubectl get statefulset crdb -o jsonpath='{.status.readyReplicas}' 2>/dev/null)\" = '3' ]"
+pass "statefulset has 3 ready replicas"
 
 PVCS=$(kubectl get pvc --no-headers 2>/dev/null | wc -l | tr -d ' ')
 assert_ge "one PVC per pod" "$PVCS" "3"

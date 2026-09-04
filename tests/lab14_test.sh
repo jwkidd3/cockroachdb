@@ -8,8 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab14"
-BASE_SQL_PORT=26467
-BASE_HTTP_PORT=8213
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 trap 'stop_cluster' EXIT INT TERM

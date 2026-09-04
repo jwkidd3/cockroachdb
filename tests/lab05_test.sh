@@ -11,8 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab05"
-BASE_SQL_PORT=26337
-BASE_HTTP_PORT=8113
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 trap 'stop_cluster' EXIT INT TERM
@@ -45,26 +43,25 @@ section "Part A — Force a 40001 by interleaving two transactions"
 #
 # We do this by holding a pipe-backed `cockroach sql` open as session A.
 
-URL="postgresql://root@localhost:${BASE_SQL_PORT}/bank?sslmode=disable"
 FIFO="${STORE_BASE}/sessA.fifo"
 mkfifo "$FIFO"
 # Order matters: opening a FIFO for WRITE blocks until a reader has it open.
 # Start the reader (session A) first, then open the write end, or the script
 # deadlocks here before session A ever exists.
-cockroach sql --url "$URL" <"$FIFO" >"${STORE_BASE}/sessA.out" 2>&1 &
+crdb sql --database=bank <"$FIFO" >"${STORE_BASE}/sessA.out" 2>&1 &
 SESS_A_PID=$!
 exec 3>"$FIFO"
 sleep 1
 
 # Begin txn A and read
-echo "BEGIN; SELECT balance FROM accounts WHERE name = 'Alice';" >&3
+echo "BEGIN; SELECT balance FROM accounts WHERE name = 'Alice';" >&3 || warn "session A closed early"
 sleep 1
 
 # Session B writes (auto-commit)
 sql "USE bank; UPDATE accounts SET balance = balance - 100 WHERE name = 'Alice';" >/dev/null
 
 # Session A tries to write and commit; should fail with 40001
-echo "UPDATE accounts SET balance = balance - 50 WHERE name = 'Alice'; COMMIT;" >&3
+echo "UPDATE accounts SET balance = balance - 50 WHERE name = 'Alice'; COMMIT;" >&3 || warn "session A closed early"
 sleep 2
 
 # Close session A. Bounded wait: a wedged session must never hang the suite.
@@ -97,13 +94,15 @@ sql "USE bank; UPDATE accounts SET balance = CASE name WHEN 'Alice' THEN 1000 WH
 section "Part B — Retry loop succeeds under heavy concurrent contention"
 # Use a bash retry loop (no python dep required for tests).
 RETRY_SCRIPT="${STORE_BASE}/transfer.sh"
+# This runs as its own process, so it calls scripts/crdb.sh directly — the
+# crdb() helper is a shell function and does not survive into a child script.
 cat > "$RETRY_SCRIPT" <<EOF
 #!/usr/bin/env bash
 set -u
 MAX=8
 FROM="\$1" TO="\$2" AMT="\$3"
 for n in \$(seq 1 \$MAX); do
-  if cockroach sql --url "$URL" --execute "
+  if bash "${REPO_ROOT}/scripts/crdb.sh" sql --database=bank -e "
     BEGIN;
     UPDATE accounts SET balance = balance - \$AMT WHERE name = '\$FROM';
     UPDATE accounts SET balance = balance + \$AMT WHERE name = '\$TO';
@@ -143,14 +142,14 @@ section "Part C — AS OF SYSTEM TIME runs without conflict"
 # Generate write traffic in the background
 (
   for i in {1..100}; do
-    cockroach sql --url "$URL" --execute "UPDATE accounts SET balance = balance + 1 WHERE name = 'Alice';" >/dev/null 2>&1
+    crdb sql --database=bank -e "UPDATE accounts SET balance = balance + 1 WHERE name = 'Alice';" >/dev/null 2>&1
   done
 ) &
 WRITE_PID=$!
 
 # Read at the follower timestamp — must succeed
 sleep 1
-AOS_TOTAL=$(cockroach sql --url "$URL" --format=tsv \
+AOS_TOTAL=$(crdb sql --database=bank --format=tsv \
     --execute "SELECT sum(balance) FROM accounts AS OF SYSTEM TIME follower_read_timestamp();" 2>/dev/null \
     | tail -n +2 | head -1 | awk '{print $1}')
 [ -n "$AOS_TOTAL" ] && pass "AS OF SYSTEM TIME query returned a sum ($AOS_TOTAL)" \
@@ -166,7 +165,7 @@ section "Part D — SELECT FOR UPDATE acquires a row lock"
 # but we CAN verify the syntax succeeds and that explicit locks coordinate writes.
 sql "USE bank; BEGIN; SELECT balance FROM accounts WHERE name = 'Alice' FOR UPDATE; UPDATE accounts SET balance = balance - 50 WHERE name = 'Alice'; COMMIT;" >/dev/null
 assert_command_succeeds "SELECT FOR UPDATE syntax executes" \
-    cockroach sql --url "$URL" --execute "SELECT balance FROM accounts WHERE name = 'Alice' FOR UPDATE;"
+    crdb sql --database=bank -e "SELECT balance FROM accounts WHERE name = 'Alice' FOR UPDATE;"
 
 section "Part E — Sharded counter eliminates single-row hotspot"
 sql "USE bank;
@@ -184,7 +183,7 @@ assert_eq "16 shards pre-created" "$SHARD_COUNT" "16"
 for w in $(seq 1 8); do
   ( for i in $(seq 1 25); do
       echo "UPDATE counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = $(( RANDOM % 16 ));"
-    done | cockroach sql --url "$URL" >/dev/null 2>&1 ) &
+    done | crdb sql --database=bank >/dev/null 2>&1 ) &
 done
 wait
 

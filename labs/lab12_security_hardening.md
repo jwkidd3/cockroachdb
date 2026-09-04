@@ -104,12 +104,18 @@ on a schedule is how they don't.
    same CA:
    ```bash
    scripts/crdb run cert create-node \
-     localhost 127.0.0.1 \
+     crdbs1 localhost 127.0.0.1 \
      --certs-dir=/certs \
      --ca-key=/certs/ca.key \
      --overwrite \
      --lifetime=48h
    ```
+
+   > **List every name again — the reissue replaces the SAN list, it does not extend it.**
+   > Drop `crdbs1` here and the certificate is still perfectly valid, but `scripts/crdb sql`
+   > (which connects with `--host=crdbs1`) fails TLS verification the moment the node reloads
+   > it. Locking yourself out with a *correctly issued* certificate is one of the more
+   > memorable ways to end a maintenance window.
 
 3. **Signal the node to reload certificates — no restart needed:**
    ```bash

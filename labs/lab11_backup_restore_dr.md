@@ -317,8 +317,16 @@ The drill that matters: cluster A is gone, bring the data up on cluster B.
      GRANT CONNECT ON DATABASE bank TO app_user;"
    ```
    ```bash
+   # `AS OF SYSTEM TIME '-10s'` reads the cluster as it was ten seconds ago — which is
+   # before you created app_user. Wait the window out, or the restore comes back without
+   # the user you just added and step 5 looks like a restore bug.
+   sleep 12
    scripts/crdb sql -e "BACKUP INTO 'nodelocal://1/dr/cluster' AS OF SYSTEM TIME '-10s';"
    ```
+
+   > **A historical backup is historical about *everything*,** users and grants included. This
+   > is the same trap in production: back up "as of ten minutes ago" right after an emergency
+   > grant, and the grant is not in the backup.
    🔒 With a licence, add `WITH revision_history`.
 
 3. **Confirm cluster B can see the backup** — no copying required:

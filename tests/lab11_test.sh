@@ -7,22 +7,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab11"
-BASE_SQL_PORT=26427
-BASE_HTTP_PORT=8173
 source "$SCRIPT_DIR/lib/cluster.sh"
 
-# Cluster B lives outside cluster.sh's bookkeeping.
-B_STORE="${STORE_BASE}-b"
-B_SQL_PORT=26437
-B_HTTP_PORT=8183
+# Cluster B is the standby stack, started exactly as the lab does:
+#   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb up
+B_COMPOSE="docker/labs-b.yml"
 
-b_sql()   { cockroach sql --insecure --host="localhost:${B_SQL_PORT}" --execute "$1"; }
-b_value() { cockroach sql --insecure --host="localhost:${B_SQL_PORT}" --format=tsv --execute "$1" 2>/dev/null | tail -n +2 | head -1 | awk '{print $1}'; }
+b_crdb()  { ( cd "$REPO_ROOT" && CRDB_COMPOSE="$B_COMPOSE" bash scripts/crdb.sh "$@" ); }
+b_sql()   { b_crdb sql -e "$1"; }
+b_value() { b_crdb sql --format=tsv -e "$1" 2>/dev/null | tail -n +2 | head -1 | awk '{print $1}'; }
 
 cleanup_all() {
-    cockroach node drain --insecure --host="localhost:${B_SQL_PORT}" --drain-wait=5s >/dev/null 2>&1 || true
-    pkill -f "cockroach start --insecure --store=${B_STORE}" 2>/dev/null || true
-    [ "${KEEP_ON_FAIL:-0}" != "1" ] && rm -rf "$B_STORE"
+    b_crdb down >/dev/null 2>&1 || true
     stop_cluster
 }
 trap cleanup_all EXIT INT TERM
@@ -183,61 +179,49 @@ fi
 
 section "Part D — cross-cluster DR drill"
 
-info "starting standby cluster B"
-rm -rf "$B_STORE"; mkdir -p "$B_STORE"
-B_JOIN="localhost:${B_SQL_PORT},localhost:$((B_SQL_PORT+1)),localhost:$((B_SQL_PORT+2))"
-for i in 1 2 3; do
-    cockroach start --insecure \
-        --store="${B_STORE}/n${i}" \
-        --listen-addr="localhost:$((B_SQL_PORT+i-1))" \
-        --http-addr="localhost:$((B_HTTP_PORT+i-1))" \
-        --join="$B_JOIN" \
-        --pid-file="${B_STORE}/n${i}.pid" \
-        --log="{sinks: {stderr: {filter: NONE}}}" \
-        --background >>"${B_STORE}/n${i}.out" 2>&1 \
-        || fail "cluster B node $i failed to start"
-done
-cockroach init --insecure --host="localhost:${B_SQL_PORT}" >/dev/null 2>&1 || fail "cluster B init failed"
-wait_for "cluster B SQL ready" 40 \
-    "cockroach sql --insecure --host=localhost:${B_SQL_PORT} --execute 'SELECT 1;'"
+info "starting standby cluster B (CRDB_COMPOSE=docker/labs-b.yml scripts/crdb up)"
+b_crdb down >/dev/null 2>&1 || true
+b_crdb up >/dev/null 2>&1 || fail "standby cluster B failed to start"
+B_LIVE=$(b_value "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE is_live;")
+assert_eq "cluster B has 3 live nodes" "$B_LIVE" "3"
 pass "standby cluster B is up"
 
 # Full cluster backup on A (includes users and grants).
 sql "CREATE USER app_user;" >/dev/null 2>&1 || true
 sql "GRANT CONNECT ON DATABASE bank TO app_user;" >/dev/null 2>&1 || true
-sql "BACKUP INTO 'nodelocal://1/backups/cluster' AS OF SYSTEM TIME '-5s' WITH revision_history;" >/dev/null
+# A full-cluster BACKUP (users, roles, settings) is free; revision_history is not.
+# The AOST window must cover the CREATE USER above, or the restore arrives
+# without it — a historical backup is historical about users too.
+sleep 12
+sql "BACKUP INTO 'nodelocal://1/dr/cluster' AS OF SYSTEM TIME '-10s';" >/dev/null \
+    || fail "full-cluster BACKUP failed on A"
 pass "full-cluster BACKUP taken on A"
 
-# Move the backup files to B's nodelocal store.
-A_EXTERN="${STORE_BASE}/n1/extern/backups/cluster"
-B_EXTERN="${B_STORE}/n1/extern/backups-from-a"
-if [ -d "$A_EXTERN" ]; then
-    mkdir -p "$(dirname "$B_EXTERN")"
-    cp -r "$A_EXTERN" "$B_EXTERN"
-    pass "backup files transferred to cluster B"
+# Both stacks mount the same `crdb-shared-backups` volume at /backups, standing
+# in for the cloud bucket two real clusters would share. No copying required —
+# which is the point: the drill exercises RESTORE, not scp.
+SHOW_B=$(b_sql "SHOW BACKUPS IN 'nodelocal://1/dr/cluster';" 2>&1)
+assert_not_contains "cluster B can see A's backup with no file copying" "$SHOW_B" "ERROR"
 
-    T0=$(date +%s)
-    RESTORE_OUT=$(b_sql "RESTORE FROM LATEST IN 'nodelocal://1/backups-from-a';" 2>&1 || true)
-    T1=$(date +%s)
-    if echo "$RESTORE_OUT" | grep -qiE "error|ERROR"; then
-        fail "cross-cluster RESTORE failed: $(echo "$RESTORE_OUT" | head -3)"
-    fi
-    info "measured RTO for this dataset: $((T1 - T0))s"
-    pass "cross-cluster RESTORE completed"
-
-    B_COUNT=$(b_value "SELECT count(*) FROM bank.public.accounts;")
-    A_COUNT=$(sql_value "SELECT count(*) FROM bank.accounts;")
-    assert_eq "row counts match between A and B" "$B_COUNT" "$A_COUNT"
-
-    B_SUM=$(b_value "SELECT sum(balance)::DECIMAL(20,2) FROM bank.public.accounts;")
-    A_SUM=$(sql_value "SELECT sum(balance)::DECIMAL(20,2) FROM bank.accounts;")
-    assert_eq "business checksum matches between A and B" "$B_SUM" "$A_SUM"
-
-    B_USERS=$(b_sql "SHOW USERS;")
-    assert_contains "users restored onto the standby" "$B_USERS" "app_user"
-else
-    warn "nodelocal extern dir not found at $A_EXTERN; skipping the cross-cluster drill"
+T0=$(date +%s)
+RESTORE_OUT=$(b_sql "RESTORE FROM LATEST IN 'nodelocal://1/dr/cluster';" 2>&1 || true)
+T1=$(date +%s)
+if echo "$RESTORE_OUT" | grep -qiE "^ERROR|ERROR:"; then
+    fail "cross-cluster RESTORE failed: $(echo "$RESTORE_OUT" | head -3)"
 fi
+info "measured RTO for this dataset: $((T1 - T0))s"
+pass "cross-cluster RESTORE completed"
+
+B_COUNT=$(b_value "SELECT count(*) FROM bank.public.accounts;")
+A_COUNT=$(sql_value "SELECT count(*) FROM bank.accounts;")
+assert_eq "row counts match between A and B" "$B_COUNT" "$A_COUNT"
+
+B_SUM=$(b_value "SELECT sum(balance)::DECIMAL(20,2) FROM bank.public.accounts;")
+A_SUM=$(sql_value "SELECT sum(balance)::DECIMAL(20,2) FROM bank.accounts;")
+assert_eq "business checksum matches between A and B" "$B_SUM" "$A_SUM"
+
+B_USERS=$(b_sql "SHOW USERS;")
+assert_contains "users restored onto the standby" "$B_USERS" "app_user"
 
 section "Done"
 echo "Lab 11: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed."

@@ -107,15 +107,19 @@ docker run -d --name lab9-load --network crdb-labs_default \
        metrics_path: /_status/vars
        static_configs:
          - targets:
-             - host.docker.internal:8080
-             - host.docker.internal:8081
-             - host.docker.internal:8082
+             - crdb1:8080
+             - crdb2:8080
+             - crdb3:8080
            labels:
              cluster: lab9
    ```
 
-   > On Linux, replace `host.docker.internal` with `172.17.0.1`, or run the container with
-   > `--network=host` and use `localhost`.
+   > **Scrape the nodes by their container names, on the cluster's own network.** Prometheus
+   > joins `crdb-labs_default` below, so `crdb1:8080` resolves the same way on macOS, Windows
+   > and Linux. `host.docker.internal` works only on Docker Desktop, and `--network=host`
+   > works only on Linux — reaching for either is how this step becomes "works on my machine".
+   > Note the port: **8080 inside the container** for every node, not the published
+   > 8080/8081/8082 you use from your browser.
 
 2. **Recording and alerting rules** — `/tmp/lab9/rules.yml`:
    ```yaml
@@ -189,14 +193,14 @@ docker run -d --name lab9-load --network crdb-labs_default \
 3. **Run Prometheus:**
    ```bash
    docker run -d --name lab9-prom -p 9090:9090 \
+     --network crdb-labs_default \
      -v /tmp/lab9/prometheus.yml:/etc/prometheus/prometheus.yml \
      -v /tmp/lab9/rules.yml:/etc/prometheus/rules.yml \
      prom/prometheus
    ```
 
-   > **No Docker?** Download the Prometheus binary and run
-   > `prometheus --config.file=/tmp/lab9/prometheus.yml`, replacing `host.docker.internal`
-   > with `localhost` in the config.
+   > Prometheus is on the cluster network (so it can reach `crdb1:8080`) *and* publishes 9090
+   > to your machine (so you can reach its UI). A container can do both.
 
 4. **Verify the targets are up** — <http://localhost:9090/targets>. All three nodes should be
    `UP`. Then check the rules loaded: <http://localhost:9090/rules>.

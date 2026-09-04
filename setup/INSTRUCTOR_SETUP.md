@@ -89,7 +89,7 @@ It installs and pre-warms:
 - `molt` fetch/verify binaries (Lab 15)
 - Go toolchain (optional — Lab 14 Go variants)
 - `jq`, `nc`, `lsof`, `bc`, `openssl`, `unzip`, `git`, `tmux`, `htop`
-- **Pre-pulled container images** — `prom/prometheus`, `grafana/grafana`, `bitnami/kafka`,
+- **Pre-pulled container images** — `prom/prometheus`, `grafana/grafana`, `apache/kafka`,
   `postgres:16`, `kindest/node`, `cockroachdb/cockroach` — so no lab waits on a download
 - The course repo cloned to `/home/student/cockroachdb-course`
 - Kernel/ulimit tuning (`nofile=65536`, `vm.max_map_count`) that CockroachDB and kind need
@@ -249,7 +249,7 @@ setup/run_on_all.sh 'cd /home/student && cockroach start-single-node --insecure 
 ```bash
 setup/run_on_all.sh 'docker pull kindest/node:v1.29.2; \
   docker pull cockroachdb/cockroach:v23.2.5; \
-  docker pull bitnami/kafka:3.7; docker pull postgres:16'
+  docker pull apache/kafka:3.9.0; docker pull postgres:16'
 ```
 
 ---

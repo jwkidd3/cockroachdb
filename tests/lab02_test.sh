@@ -10,37 +10,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab02"
-BASE_SQL_PORT=26277
-BASE_HTTP_PORT=8083
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 trap 'stop_cluster' EXIT INT TERM
 
 section "Setup — 3-node cluster"
 start_cluster 3
-CRDB_URL="postgresql://root@localhost:${BASE_SQL_PORT}/?sslmode=disable"
 
 section "Part B — Initialize and run kv workload"
-cockroach workload init kv --drop "$CRDB_URL" >/dev/null 2>&1
+crdb_run workload init kv --drop "$CRDB_URL" >/dev/null 2>&1
 assert_command_succeeds "kv workload init succeeded" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    crdb sql \
     --execute "SELECT count(*) FROM kv.kv;"
 
 # Short workload run — read/write mix
 info "running 10s read-heavy kv workload (50/50 r/w, concurrency 4)"
-cockroach workload run kv \
+crdb_run workload run kv \
     --duration=10s --concurrency=4 --read-percent=50 \
     "$CRDB_URL" >/dev/null 2>&1
 KV_ROWS=$(sql_value "SELECT count(*) FROM kv.kv;")
 assert_gt "workload produced rows in kv.kv" "$KV_ROWS" "0"
 
 info "running 8s write-heavy kv workload (10/90 r/w, concurrency 8)"
-cockroach workload run kv \
+crdb_run workload run kv \
     --duration=8s --concurrency=8 --read-percent=10 \
     "$CRDB_URL" >/dev/null 2>&1
 
 info "running 8s high-contention workload (--cycle-length=10)"
-cockroach workload run kv \
+crdb_run workload run kv \
     --duration=8s --concurrency=8 --read-percent=0 \
     --batch=1 --cycle-length=10 \
     "$CRDB_URL" >/dev/null 2>&1
@@ -98,7 +95,7 @@ assert_ge "schema change recorded as a job" "$JOB_COUNT" "1"
 
 # Wait for it to finish
 wait_for "schema change job completes" 30 \
-    "cockroach sql --insecure --host=localhost:${BASE_SQL_PORT} --format=tsv --execute \"SELECT count(*) FROM [SHOW JOBS] WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE') AND status NOT IN ('succeeded','failed','canceled');\" | tail -n +2 | grep -q '^0\$'"
+    "crdb sql --format=tsv -e \"SELECT count(*) FROM [SHOW JOBS] WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE') AND status NOT IN ('succeeded','failed','canceled');\" | tail -n +2 | grep -q '^0\$'"
 
 section "Part F — Session inspection"
 SESSIONS_LIST=$(sql "SELECT node_id, application_name, client_address FROM crdb_internal.cluster_sessions WHERE status = 'active';")

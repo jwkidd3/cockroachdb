@@ -28,7 +28,7 @@ fail() {
     echo "${C_RED}FAIL${C_RESET} $*" >&2
     if [ "${KEEP_ON_FAIL:-0}" = "1" ]; then
         warn "KEEP_ON_FAIL=1 set; leaving cluster running for inspection"
-        warn "Manual cleanup: pkill -f 'cockroach start --insecure --store=${STORE_BASE:-?}'"
+        warn "Manual cleanup: scripts/crdb down  (and CRDB_COMPOSE=docker/labs-b.yml scripts/crdb down for Lab 11)"
     fi
     exit 1
 }
@@ -42,6 +42,15 @@ assert_eq() {
         pass "$desc (= $expected)"
     else
         fail "$desc — expected '$expected', got '$actual'"
+    fi
+}
+
+assert_not_eq() {
+    local desc="$1" actual="$2" unwanted="$3"
+    if [ "$actual" != "$unwanted" ]; then
+        pass "$desc (got '$actual', not '$unwanted')"
+    else
+        fail "$desc — value is still '$unwanted'"
     fi
 }
 
@@ -135,11 +144,9 @@ assert_command_fails() {
 
 # ---- Prerequisite checks --------------------------------------------------
 
-require_cockroach() {
-    if ! command -v cockroach >/dev/null 2>&1; then
-        fail "cockroach binary not on PATH (install per README)"
-    fi
-}
+# Kept as an alias so an older test that still calls it does the right thing.
+# Nothing in this course installs a cockroach binary; the cluster runs in Docker.
+require_cockroach() { require_docker; }
 
 # ---- Misc helpers ---------------------------------------------------------
 
@@ -148,12 +155,32 @@ wait_for() {
     local desc="$1" timeout="$2" cmd="$3"
     local i
     for i in $(seq 1 "$timeout"); do
-        if bash -c "$cmd" >/dev/null 2>&1; then
+        # eval, not `bash -c`: conditions need the sql()/crdb() helpers from
+        # lib/cluster.sh, which a child shell would not inherit.
+        if eval "$cmd" >/dev/null 2>&1; then
             return 0
         fi
         sleep 1
     done
     fail "$desc — condition not met within ${timeout}s: $cmd"
+}
+
+# macOS ships no coreutils `timeout`, and students run these labs on macOS as
+# often as on Linux. Run a command for at most N seconds and echo its output.
+run_for() {
+    local secs="$1"; shift
+    local tmp; tmp=$(mktemp)
+    ( "$@" >"$tmp" 2>&1 ) &
+    local pid=$! i
+    for i in $(seq 1 "$secs"); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+    pkill -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    cat "$tmp"
+    rm -f "$tmp"
 }
 
 # Random free port in a range. Useful when running multiple test suites in parallel.

@@ -8,8 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab15"
-BASE_SQL_PORT=26477
-BASE_HTTP_PORT=8223
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 PG_NAME="lab15-pg"
@@ -25,7 +23,6 @@ trap cleanup_all EXIT INT TERM
 
 section "Setup — target cluster"
 start_cluster 3
-URL="postgresql://root@localhost:${BASE_SQL_PORT}?sslmode=disable"
 sql "CREATE DATABASE target;" >/dev/null
 
 section "Source PostgreSQL (optional)"
@@ -89,7 +86,7 @@ fi
 
 section "Part B — redesigned target schema"
 
-cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" <<'SQL' >/dev/null
+crdb sql <<'SQL' >/dev/null
 USE target;
 CREATE TABLE customers (
   id UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -135,7 +132,7 @@ if [ "$HAVE_PG" = "1" ]; then
     psql "$PG" -q -c "\copy (SELECT id, order_id, event_type, occurred_at FROM order_events) TO '${STORE_BASE}/events.csv' CSV"
     assert_file_exists "customers CSV exported" "${STORE_BASE}/customers.csv"
 
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" <<'SQL' >/dev/null
+    crdb sql <<'SQL' >/dev/null
 USE target;
 CREATE TABLE stage_customers (legacy_id INT PRIMARY KEY, tenant_id INT, email STRING, name STRING, created_at TIMESTAMPTZ);
 CREATE TABLE stage_orders (legacy_id INT PRIMARY KEY, customer_legacy INT, tenant_id INT, total DECIMAL(12,2), status STRING, metadata JSONB, created_at TIMESTAMPTZ);
@@ -145,7 +142,11 @@ SQL
     LOADED=1
     for pair in "customers:stage_customers" "orders:stage_orders" "events:stage_events"; do
         f="${pair%%:*}"; t="${pair##*:}"
-        if cockroach userfile upload "${STORE_BASE}/${f}.csv" "/lab15/${f}.csv" --url "$URL" >/dev/null 2>&1; then
+        # The CSVs were exported by psql onto this machine; the node cannot see
+        # them. Copy each into the container before staging it in userfile.
+        crdb_cp "${STORE_BASE}/${f}.csv" "crdb1:/tmp/${f}.csv" >/dev/null 2>&1 \
+            || { warn "scripts/crdb cp failed for ${f}.csv"; LOADED=0; continue; }
+        if crdb_run userfile upload "/tmp/${f}.csv" "/lab15/${f}.csv" --insecure >/dev/null 2>&1; then
             OUT=$(sql "IMPORT INTO target.public.${t} CSV DATA ('userfile:///lab15/${f}.csv');" 2>&1 || true)
             if echo "$OUT" | grep -qi "use of this feature\|enterprise"; then
                 warn "IMPORT INTO gated by license; falling back to COPY for ${t}"
@@ -159,7 +160,7 @@ SQL
 
     if [ "$LOADED" = "1" ]; then
         pass "staging tables loaded"
-        cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" <<'SQL' >/dev/null
+        crdb sql <<'SQL' >/dev/null
 USE target;
 INSERT INTO customers (tenant_id, email, name, created_at, legacy_id)
 SELECT tenant_id, email, name, created_at, legacy_id FROM stage_customers;
@@ -185,7 +186,7 @@ SQL
 
         section "Part C.5 — constraints after the load"
         assert_command_succeeds "FK added post-load" \
-            cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" --execute \
+            crdb sql -e \
             "ALTER TABLE target.public.orders ADD CONSTRAINT orders_customer_fk
              FOREIGN KEY (tenant_id, customer_id) REFERENCES target.public.customers (tenant_id, id);"
         FKS=$(sql "SHOW CONSTRAINTS FROM target.public.orders;")
@@ -198,7 +199,7 @@ SQL
     fi
 else
     # No PostgreSQL: synthesize rows so the plan comparison still has data.
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" <<'SQL' >/dev/null
+    crdb sql <<'SQL' >/dev/null
 USE target;
 INSERT INTO customers (tenant_id, email, name, legacy_id)
 SELECT (g % 20) + 1, 'user' || g || '@example.com', 'User ' || g, g FROM generate_series(1, 2000) g;

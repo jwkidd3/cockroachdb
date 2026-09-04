@@ -7,8 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab13"
-BASE_SQL_PORT=26457
-BASE_HTTP_PORT=8203
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 KAFKA_NAME="lab13-kafka"
@@ -44,7 +42,9 @@ CDC_OUT="${STORE_BASE}/core_cdc.csv"
 #   --format=csv  : the default `table` format buffers everything to size columns
 #   stdbuf -oL    : line-buffer stdout, or nothing is flushed before we kill it
 # stderr is kept (2>&1) so a failed changefeed shows up instead of an empty file.
-( stdbuf -oL cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" --format=csv \
+# stdbuf takes a *command*, and crdb() is a shell function it cannot see — call
+# the wrapper script directly here, or stdbuf fails and the capture is empty.
+( stdbuf -oL bash "$REPO_ROOT/scripts/crdb.sh" sql --format=csv \
     --execute "EXPERIMENTAL CHANGEFEED FOR shop.orders WITH updated;" \
     >"$CDC_OUT" 2>&1 ) &
 CDC_PID=$!
@@ -56,10 +56,13 @@ sql "USE shop; DELETE FROM orders WHERE customer = 'alice';" >/dev/null
 
 # Poll rather than guess: rangefeed startup on a multi-node cluster is not
 # instantaneous, and a fixed sleep makes this test flaky.
+# Poll for a hex-encoded payload line, not just "any comma" — the CSV header
+# `table,key,value` has a comma and would end the wait before a row arrives.
 for _ in $(seq 1 30); do
-    [ -s "$CDC_OUT" ] && grep -q 'alice\|,' "$CDC_OUT" 2>/dev/null && break
+    grep -q '\\x' "$CDC_OUT" 2>/dev/null && break
     sleep 1
 done
+sleep 3   # let the update and the delete land too
 kill "$CDC_PID" 2>/dev/null || true
 pkill -f "EXPERIMENTAL CHANGEFEED FOR shop.orders" 2>/dev/null || true
 wait "$CDC_PID" 2>/dev/null || true
@@ -95,23 +98,30 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
 else
     info "starting single-broker Kafka"
     docker rm -f "$KAFKA_NAME" >/dev/null 2>&1 || true
-    if docker run -d --name "$KAFKA_NAME" --network=host \
-        -e KAFKA_CFG_NODE_ID=0 \
-        -e KAFKA_CFG_PROCESS_ROLES=controller,broker \
-        -e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
-        -e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 \
-        -e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@localhost:9093 \
-        -e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-        -e KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
-        -e KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true \
-        -e ALLOW_PLAINTEXT_LISTENER=yes \
-        bitnami/kafka:3.7 >/dev/null 2>&1; then
+    # Kafka joins the lab cluster's network: the changefeed is dialled by the
+    # database node, so the sink must be reachable from inside that container.
+    # `--network=host` would also break on macOS, where students run this.
+    if docker run -d --name "$KAFKA_NAME" --hostname kafka \
+        --network crdb-labs_default \
+        -e KAFKA_NODE_ID=0 \
+        -e KAFKA_PROCESS_ROLES=controller,broker \
+        -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+        -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 \
+        -e KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:9093 \
+        -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+        -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+        -e KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+        -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+        -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+        -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+        -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=true \
+        apache/kafka:3.9.0 >/dev/null 2>&1; then
 
-        wait_for "kafka broker listening" 90 "nc -z localhost 9092"
+        wait_for "kafka broker listening" 90 "docker exec \"$KAFKA_NAME\" bash -c '</dev/tcp/localhost/9092'"
         sleep 5
         pass "kafka broker is up"
 
-        CF=$(sql "CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://localhost:9092'
+        CF=$(sql "CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://kafka:9092'
                   WITH updated, resolved = '5s', diff, key_in_value;" 2>&1 || true)
         if echo "$CF" | grep -qi "use of this feature\|enterprise"; then
             warn "enterprise changefeed is license-gated on this cluster; skipping the sink assertions"
@@ -125,7 +135,7 @@ else
             sql "USE shop; UPDATE orders SET status = 'paid' WHERE total > 40;" >/dev/null
             sleep 15
 
-            MSGS=$(docker exec "$KAFKA_NAME" kafka-console-consumer.sh \
+            MSGS=$(docker exec "$KAFKA_NAME" /opt/kafka/bin/kafka-console-consumer.sh \
                 --bootstrap-server localhost:9092 --topic orders \
                 --from-beginning --timeout-ms 20000 2>/dev/null || true)
             if [ -n "$MSGS" ]; then
@@ -186,7 +196,7 @@ section "Part E/F — schema change policy and lag metric"
 
 # Additive schema change must not break the table or the feed contract.
 assert_command_succeeds "additive schema change accepted" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    crdb sql \
     --execute "ALTER TABLE shop.orders ADD COLUMN shipped_at TIMESTAMPTZ;"
 
 COLS=$(sql "SHOW COLUMNS FROM shop.orders;")

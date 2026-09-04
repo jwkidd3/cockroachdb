@@ -9,8 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab06"
-BASE_SQL_PORT=26357
-BASE_HTTP_PORT=8123
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 trap 'stop_cluster' EXIT INT TERM
@@ -130,7 +128,7 @@ assert_contains "EXPLAIN reports vectorized" "$PLAN_GRP" "vectorized"
 
 # Toggle vectorize and back; both must succeed
 assert_command_succeeds "vectorize off works" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" --execute "SET vectorize = 'off'; SELECT category, count(*) FROM catalog.products GROUP BY category; SET vectorize = 'on';"
+    crdb sql -e "SET vectorize = 'off'; SELECT category, count(*) FROM catalog.products GROUP BY category; SET vectorize = 'on';"
 
 section "Done"
 echo "Lab 6: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed."

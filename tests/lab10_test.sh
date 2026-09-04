@@ -8,21 +8,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab10"
-BASE_SQL_PORT=26417
-BASE_HTTP_PORT=8163
 source "$SCRIPT_DIR/lib/cluster.sh"
 
-cleanup_all() { pkill -f "cockroach workload run" 2>/dev/null || true; stop_cluster; }
+# Workloads run inside the node container now, so `scripts/crdb down` is what
+# stops them — there is no host process to kill.
+cleanup_all() { stop_cluster; }
 trap cleanup_all EXIT INT TERM
 
 section "Setup — 3-node cluster"
 start_cluster 3
-URL="postgresql://root@localhost:${BASE_SQL_PORT}?sslmode=disable"
 
 section "Part A — the workload suite"
 
-# `cockroach workload list` does not exist; generators are subcommands of init/run.
-LIST=$(cockroach workload init --help 2>&1)
+# `crdb_run workload list` does not exist; generators are subcommands of init/run.
+LIST=$(crdb_run workload init --help 2>&1)
 for w in kv tpcc ycsb movr bank; do
     assert_contains "workload generator available: $w" "$LIST" "$w"
 done
@@ -30,7 +29,7 @@ done
 section "Part B — TPC-C"
 
 # fixtures import needs network access to the fixtures bucket; init always works.
-if cockroach workload init tpcc --warehouses=1 "$URL" >/dev/null 2>&1; then
+if crdb_run workload init tpcc --warehouses=1 "$URL" >/dev/null 2>&1; then
     pass "TPC-C schema loaded (1 warehouse)"
 else
     fail "TPC-C init failed"
@@ -45,16 +44,16 @@ assert_contains "stock primary key leads with s_w_id" "$STOCK_PK" "s_w_id"
 TABLES=$(sql_value "SELECT count(*) FROM [SHOW TABLES FROM tpcc];")
 assert_ge "TPC-C created its 9 tables" "$TABLES" "9"
 
-TPCC_OUT=$(cockroach workload run tpcc --warehouses=1 --ramp=5s --duration=30s "$URL" 2>&1 | tail -6)
+TPCC_OUT=$(crdb_run workload run tpcc --warehouses=1 --ramp=5s --duration=30s "$URL" 2>&1 | tail -6)
 echo "$TPCC_OUT" | sed 's/^/    /'
 assert_contains "TPC-C run reported tpmC" "$TPCC_OUT" "tpmC"
 
 section "Part C — per-node ceiling at three read/write mixes"
 
-cockroach workload init kv --drop "$URL" >/dev/null 2>&1 || fail "kv init failed"
+crdb_run workload init kv --drop "$URL" >/dev/null 2>&1 || fail "kv init failed"
 
 for RP in 95 50 0; do
-    OUT=$(cockroach workload run kv --duration=15s --concurrency=16 --read-percent=$RP "$URL" 2>&1 | tail -3)
+    OUT=$(crdb_run workload run kv --duration=15s --concurrency=16 --read-percent=$RP "$URL" 2>&1 | tail -3)
     OPS=$(echo "$OUT" | tail -1 | awk '{print $3}')
     if echo "$OUT" | grep -qE '[0-9]'; then
         pass "kv run at read-percent=$RP produced a throughput figure"
@@ -73,10 +72,10 @@ done
 
 # QoS session settings the lab uses to deprioritize analytics.
 assert_command_succeeds "background QoS accepted" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    crdb sql \
     --execute "SET default_transaction_quality_of_service = 'background'; SELECT 1;"
 assert_command_succeeds "critical QoS accepted" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    crdb sql \
     --execute "SET default_transaction_quality_of_service = 'critical'; SELECT 1;"
 
 # The metrics used to identify the bottleneck must exist.

@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 # Run every lab test in sequence. Print a summary table at the end.
 # Exit 0 iff all tests pass.
+#
+# The tests drive the same Docker stacks students drive (docker/labs*.yml
+# through scripts/crdb), so they run on the host and need the Docker daemon.
+# They share one compose project per stack and are therefore sequential.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+if ! docker info >/dev/null 2>&1; then
+    echo "ERROR: Docker is not running." >&2
+    echo "These tests drive the lab clusters in Docker, exactly as the labs do." >&2
+    echo "Start Docker Desktop (or dockerd) and try again." >&2
+    exit 2
+fi
 
 # Day 1: labs 1-4   Day 2: labs 5-8   Day 3: labs 9-12   Day 4: labs 13-16
 # Run a subset with DAY=3 ./run_all.sh, or LABS_OVERRIDE="lab08_test.sh lab10_test.sh" ./run_all.sh
@@ -23,6 +34,13 @@ case "${DAY:-all}" in
     all) LABS=("${ALL_LABS[@]}") ;;
     *) echo "DAY must be 1-4 or unset"; exit 2 ;;
 esac
+
+# The student path (docker/labs*.yml via scripts/crdb) is covered by its own test.
+# It needs the Docker daemon, so it skips cleanly inside the test image. Run it with
+# the full suite only; a per-day run is scoped to that day's labs.
+if [ "${DAY:-all}" = "all" ]; then
+    LABS+=("lab_cluster_test.sh")
+fi
 
 # Explicit override: LABS="lab08_test.sh lab13_test.sh" ./run_all.sh
 if [ -n "${LABS_OVERRIDE:-}" ]; then

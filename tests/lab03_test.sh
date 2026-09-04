@@ -9,8 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab03"
-BASE_SQL_PORT=26297
-BASE_HTTP_PORT=8093
 source "$SCRIPT_DIR/lib/cluster.sh"
 
 trap 'stop_cluster' EXIT INT TERM
@@ -216,8 +214,7 @@ CREATE TABLE events_outbox (
 pass "orders_v2 and events_outbox created"
 
 # Atomic write — business row + outbox event in a single transaction
-URL="postgresql://root@localhost:${BASE_SQL_PORT}/hotspots?sslmode=disable"
-cockroach sql --url "$URL" <<'SQL' >/dev/null
+crdb sql --database=hotspots <<'SQL' >/dev/null
 BEGIN;
 WITH new_order AS (
   INSERT INTO orders_v2 (customer, total)
@@ -246,14 +243,14 @@ assert_eq "failed txn left no orphan orders" "$ORDER_AFTER_FAIL" "0"
 
 # Core changefeed streams from the outbox table — capture briefly
 CDC_OUT="${STORE_BASE}/outbox-cdc.json"
-( cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+( crdb sql \
     --database=hotspots \
     --execute "EXPERIMENTAL CHANGEFEED FOR events_outbox;" \
     >"$CDC_OUT" 2>/dev/null ) &
 CDC_PID=$!
 sleep 3
 
-cockroach sql --url "$URL" <<'SQL' >/dev/null
+crdb sql --database=hotspots <<'SQL' >/dev/null
 BEGIN;
 WITH new_order AS (
   INSERT INTO orders_v2 (customer, total) VALUES ('Charlie', 200.00) RETURNING id

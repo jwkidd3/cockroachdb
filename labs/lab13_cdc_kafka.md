@@ -28,23 +28,52 @@ mkdir -p /tmp/lab13 && cd /tmp/lab13
 cat > docker-compose.yml <<'YML'
 services:
   kafka:
-    image: bitnami/kafka:3.7
-    ports: ["9092:9092"]
+    image: apache/kafka:3.9.0
+    container_name: kafka
+    hostname: kafka
+    # Kafka joins the lab cluster's network, because the *database* is what
+    # connects to it. A changefeed sink is dialled by the CockroachDB node, not
+    # by your shell.
+    networks: [crdb]
     environment:
-      KAFKA_CFG_NODE_ID: "0"
-      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_NODE_ID: "0"
+      KAFKA_PROCESS_ROLES: "controller,broker"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+networks:
+  crdb:
+    external: true
+    name: crdb-labs_default
 YML
 
 docker compose up -d
 docker compose logs -f kafka | grep -m1 "Kafka Server started"
 ```
+
+> **The official `apache/kafka` image, not `bitnami/kafka`.** Bitnami withdrew its versioned
+> Docker Hub tags, so `bitnami/kafka:3.7` now fails to pull. The Apache image drops the
+> `_CFG` infix from every environment variable and keeps its CLI tools in `/opt/kafka/bin`
+> rather than on `PATH` — which is why the commands below spell out the full path.
+
+> ⚠️ **Start the lab cluster first** (`scripts/crdb up`) — this compose file joins the network
+> that stack creates, and will refuse to start if it does not exist yet.
+>
+> **Why `kafka:9092` and not `localhost:9092`?** The changefeed is opened *by the database
+> node*, inside its own container. `localhost` there is the node itself, not your machine, so
+> a sink of `kafka://localhost:9092` fails with a connection refused that looks baffling until
+> you remember whose `localhost` it is. Advertising `kafka:9092` on the shared network is what
+> makes the sink reachable from where it is actually dialled. Every `kafka-console-consumer`
+> command below runs *inside* the Kafka container (`docker compose exec kafka …`), which is
+> why those still say `localhost:9092`.
 
 ### 2. Cluster
 
@@ -108,7 +137,7 @@ guarantees beyond "this session is connected".
    > `--format=table` buffers all output to compute column widths, so a stream that never ends
    > never prints. Use a streaming format when the output is not a terminal:
    > ```bash
-   > stdbuf -oL cockroach sql --format=csv --url "$C" \
+   > stdbuf -oL scripts/crdb sql --format=csv \
    >   -e "EXPERIMENTAL CHANGEFEED FOR shop.orders WITH updated;" > /tmp/cdc.csv
    > ```
    > **Both parts matter.** `--format=csv` avoids the column-sizing buffer, and `stdbuf -oL`
@@ -137,7 +166,7 @@ guarantees beyond "this session is connected".
 1. **Create the changefeed:**
    ```sql
    CREATE CHANGEFEED FOR TABLE shop.orders
-     INTO 'kafka://localhost:9092'
+     INTO 'kafka://kafka:9092'
      WITH updated, resolved = '10s', diff, key_in_value,
           min_checkpoint_frequency = '10s';
    ```
@@ -145,7 +174,7 @@ guarantees beyond "this session is connected".
 
 2. **Confirm the topic exists:**
    ```bash
-   docker compose exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+   docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
    ```
    The topic is named after the table: `orders`.
 
@@ -162,7 +191,7 @@ guarantees beyond "this session is connected".
 
 4. **Consume raw:**
    ```bash
-   docker compose exec kafka kafka-console-consumer.sh \
+   docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
      --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 15000
    ```
 
@@ -201,7 +230,7 @@ timestamp below this value*. Only then is a time window complete.
 
 1. **Watch the resolved messages arrive:**
    ```bash
-   docker compose exec kafka kafka-console-consumer.sh \
+   docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
      --bootstrap-server localhost:9092 --topic orders --timeout-ms 40000 \
      | grep resolved
    ```
@@ -256,7 +285,7 @@ timestamp below this value*. Only then is a time window complete.
 
 3. **Run it against the live topic:**
    ```bash
-   docker compose exec -T kafka kafka-console-consumer.sh \
+   docker compose exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
      --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 60000 \
      | python3 /tmp/lab13/consumer.py
    ```
@@ -281,7 +310,7 @@ timestamp below this value*. Only then is a time window complete.
 6. **Tune the trade-off.** Lower `resolved` interval = fresher frontier = more messages:
    ```sql
    -- Recreate with a 1-second frontier and compare message volume
-   CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://localhost:9092?topic_prefix=fast_'
+   CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://kafka:9092?topic_prefix=fast_'
      WITH updated, resolved = '1s';
    ```
 
@@ -297,7 +326,7 @@ after a job restart, a lease transfer, or a rebalance, messages are re-emitted.
    ```
    ```sql
    CREATE CHANGEFEED FOR TABLE shop.orders
-     INTO 'kafka://localhost:9092?topic_prefix=replay_'
+     INTO 'kafka://kafka:9092?topic_prefix=replay_'
      WITH updated, resolved = '10s', cursor = '<a timestamp from 5 minutes ago>';
    ```
 
@@ -334,7 +363,7 @@ after a job restart, a lease transfer, or a rebalance, messages are re-emitted.
 
 3. **Control the behaviour explicitly:**
    ```sql
-   CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://localhost:9092?topic_prefix=strict_'
+   CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://kafka:9092?topic_prefix=strict_'
      WITH updated, resolved='10s', schema_change_policy = 'stop';
    ```
 

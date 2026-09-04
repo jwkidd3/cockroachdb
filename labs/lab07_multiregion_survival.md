@@ -28,6 +28,12 @@ docker run --rm -it -p 8090:8080 \
 That drops you straight into a SQL shell inside the container. The DB Console is at
 <http://localhost:8090>.
 
+> **The `\demo …` commands below only work in this interactive shell.** They are client-side
+> commands, not SQL: pipe them into a non-interactive session and you get
+> `ERROR: invalid syntax: \demo connect 2`. Keep this shell open and type them here. To reach a
+> specific node from a *script* instead, connect to that node's own port — `demo` assigns them
+> sequentially from 26257, so node 4 is 26260.
+
 > **Why `demo` here, and not the compose cluster?** This is the one lab that needs *simulated
 > inter-region latency* — `--global` inserts realistic round-trip delays between its nine
 > simulated regions, which is the whole point of measuring a cross-region write. Nine real

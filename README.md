@@ -139,7 +139,6 @@ a **Measure it** block showing how to prove it works.
 ```
 cockroachdb/
 ├── README.md
-├── docker-compose.yml          # test runner (docker compose run --rm tests)
 ├── docker/                     # the lab clusters
 │   ├── labs.yml                #   main 3-node cluster
 │   ├── labs-b.yml              #   Lab 11 standby
@@ -158,26 +157,34 @@ cockroachdb/
 
 ## Running the Automated Tests
 
-Every lab ships with a paired test that drives its SQL and CLI non-interactively and asserts the
-outcomes — row counts, plan shapes, range distribution, retry counts, restore checksums, and the
-throughput orderings the labs claim.
+Every lab ships with a paired test that drives **the same commands the lab gives students** —
+`scripts/crdb` against `docker/labs*.yml` — and asserts the outcomes: row counts, plan shapes,
+range distribution, retry counts, restore checksums, and the throughput orderings the labs claim.
 
 ```bash
-# Containerized (recommended)
-docker compose build
-docker compose run --rm tests               # everything
-docker compose run --rm -e DAY=2 tests      # one day
-docker compose run --rm tests ./tests/lab08_test.sh
+# The student path end to end: compose files + scripts/crdb
+./tests/lab_cluster_test.sh
 
-# On the host, against your own cockroach binary
+# Every lab test
 ./tests/run_all.sh
+
+# One day's labs, or an explicit subset, or one lab
 DAY=3 ./tests/run_all.sh
 LABS_OVERRIDE="lab08_test.sh lab10_test.sh" ./tests/run_all.sh
+./tests/lab01_test.sh
+
+# Leave the cluster up on failure for postmortem
 KEEP_ON_FAIL=1 ./tests/lab11_test.sh
 ```
 
-Tests with external dependencies (Docker for Labs 9/13/15/16, `psycopg2` for Lab 14) skip cleanly
-with a warning when the dependency is missing. See [`tests/README.md`](tests/README.md).
+The tests need what a student needs and nothing more: Docker running, plus `psql`, `python3 +
+psycopg2`, and `kind`/`kubectl` for the labs that use them —
+[`setup/provision_student_vm.sh`](setup/provision_student_vm.sh) installs all of it. There is no
+`cockroach` binary to install, for the labs or for the tests. Tests whose extra dependency is
+missing skip cleanly with a warning. See [`tests/README.md`](tests/README.md).
+
+Because every test drives the real compose stacks, they share one Docker project each and run
+sequentially, each starting with `scripts/crdb reset`.
 
 The test suite is the spec — if a lab changes its commands or expected outputs, its test changes
 in the same commit.

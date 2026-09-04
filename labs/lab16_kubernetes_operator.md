@@ -57,11 +57,21 @@ rather than decorative.
    kubectl apply -f https://raw.githubusercontent.com/cockroachdb/cockroach-operator/master/install/operator.yaml
    ```
 
-2. **Wait for it:**
+2. **Wait for it — twice.** The Pod being ready is not the same as the operator's admission
+   webhook being reachable, and applying a `CrdbCluster` in that gap fails with
+   `failed calling webhook "mcrdbcluster.kb.io" … connection refused`:
    ```bash
    kubectl -n cockroach-operator-system rollout status deploy/cockroach-operator-manager --timeout=180s
    kubectl -n cockroach-operator-system get pods
    ```
+   ```bash
+   # The webhook Service must have at least one ready endpoint before you apply anything.
+   kubectl -n cockroach-operator-system get endpoints cockroach-operator-webhook-service -w
+   ```
+
+   > This is a general Kubernetes lesson, not an operator quirk: **any** operator with a
+   > mutating or validating webhook rejects resources until its Service has endpoints. If your
+   > CI applies a custom resource immediately after installing an operator, it will flake.
 
 3. **Look at what the CRD gives you:**
    ```bash

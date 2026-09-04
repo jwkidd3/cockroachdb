@@ -258,8 +258,11 @@ cutover means another migration; changing it now costs nothing.
    CREATE TABLE stage_events (legacy_id INT PRIMARY KEY, order_legacy INT, event_type STRING, occurred_at TIMESTAMPTZ);
    SQL
 
+   # The CSVs are on your machine; the node is in a container and cannot see
+   # them. Copy each one in, then stage it in the cluster's userfile store.
    for t in customers orders events; do
-     scripts/crdb run userfile upload /tmp/lab15/${t/events/order_events}.csv /lab15/$t.csv --url "$CRDB"
+     scripts/crdb cp /tmp/lab15/${t/events/order_events}.csv crdb1:/tmp/$t.csv
+     scripts/crdb run userfile upload /tmp/$t.csv /lab15/$t.csv --insecure
    done
 
    scripts/crdb sql <<'SQL'

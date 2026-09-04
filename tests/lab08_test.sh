@@ -11,11 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 CLUSTER_TAG="lab08"
-BASE_SQL_PORT=26397
-BASE_HTTP_PORT=8143
 source "$SCRIPT_DIR/lib/cluster.sh"
 
-URL="postgresql://root@localhost:${BASE_SQL_PORT}?sslmode=disable"
 CSV="${STORE_BASE}/load_test.csv"
 
 trap 'stop_cluster' EXIT INT TERM
@@ -45,7 +42,7 @@ ROWS=20000     # smaller than the lab's 100k so the suite stays quick
 T0=$(date +%s)
 for i in $(seq 1 200); do
     echo "INSERT INTO throughput.load_test (tenant, amount, note) VALUES (1, 9.99, 'single');"
-done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1
+done | crdb sql >/dev/null 2>&1
 T1=$(date +%s)
 SINGLE_SECS=$(( T1 - T0 )); [ "$SINGLE_SECS" -eq 0 ] && SINGLE_SECS=1
 SINGLE_RATE=$(( 200 / SINGLE_SECS ))
@@ -79,7 +76,14 @@ with open(path, 'w', newline='') as f:
 PY
 assert_file_exists "CSV generated" "$CSV"
 
-if cockroach userfile upload "$CSV" /lab8/load_test.csv --url "$URL" >/dev/null 2>&1; then
+# The CSV is on this machine; the node is in a container and cannot see it.
+# Copy it in first, then upload it to the cluster's userfile store — the two-step
+# the lab spells out.
+crdb_cp "$CSV" crdb1:/tmp/load_test.csv >/dev/null 2>&1 \
+    || fail "scripts/crdb cp could not copy the CSV into the node container"
+pass "CSV copied into the node container with scripts/crdb cp"
+
+if crdb_run userfile upload /tmp/load_test.csv /lab8/load_test.csv --insecure >/dev/null 2>&1; then
     pass "userfile upload succeeded"
     sql "TRUNCATE throughput.load_test;" >/dev/null
     IMPORT_OUT=$(sql "IMPORT INTO throughput.load_test (id, tenant, amount, note, created)
@@ -113,7 +117,7 @@ SPLIT_LEASEHOLDERS=$(sql_value "SELECT count(DISTINCT lease_holder) FROM [SHOW R
 assert_ge "pre-split table spread across leaseholders" "$SPLIT_LEASEHOLDERS" "1"
 
 assert_command_succeeds "UNSPLIT ALL releases manual splits" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    crdb sql \
     --execute "ALTER TABLE throughput.seq_split UNSPLIT ALL;"
 
 section "Part D — PK design bake-off"
@@ -188,7 +192,7 @@ pass "counter tables created"
 sql "UPDATE throughput.counter_shards SET n = 0 WHERE name = 'page_views';" >/dev/null
 for i in $(seq 1 200); do
     echo "UPDATE throughput.counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = (random()*16)::INT2;"
-done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1
+done | crdb sql >/dev/null 2>&1
 VOLATILE_TOTAL=$(sql_value "SELECT sum(n) FROM throughput.counter_shards WHERE name = 'page_views';")
 info "volatile predicate: 200 increments produced a total of ${VOLATILE_TOTAL}"
 if [ "${VOLATILE_TOTAL:-200}" -ne 200 ]; then
@@ -209,7 +213,7 @@ bump() {
             else
                 echo "UPDATE throughput.counter_shards SET n = n + 1 WHERE name = 'page_views' AND shard = $(( RANDOM % 16 ));"
             fi
-          done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1 ) &
+          done | crdb sql >/dev/null 2>&1 ) &
     done
     wait
     t1=$(date +%s)
@@ -238,12 +242,12 @@ section "Part F — online schema change under write load"
 
 ( for i in $(seq 1 40); do
     echo "INSERT INTO throughput.pk_uuid (tenant, payload) SELECT g % 50, 'live' FROM generate_series(1,200) g;"
-  done | cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" >/dev/null 2>&1 ) &
+  done | crdb sql >/dev/null 2>&1 ) &
 WRITER_PID=$!
 
 sleep 1
 assert_command_succeeds "CREATE INDEX succeeds while writes are in flight" \
-    cockroach sql --insecure --host="localhost:${BASE_SQL_PORT}" \
+    crdb sql \
     --execute "CREATE INDEX pk_uuid_tenant_created_idx ON throughput.pk_uuid (tenant, created DESC);"
 
 wait "$WRITER_PID" 2>/dev/null || true
@@ -265,10 +269,10 @@ assert_contains "optimizer picks the new index" "$IDX_PLAN" "pk_uuid_tenant_crea
 section "Part G — concurrency knee via cockroach workload"
 
 assert_command_succeeds "workload init kv" \
-    cockroach workload init kv --drop "$URL"
+    crdb_run workload init kv --drop "$URL"
 
 for C in 1 8; do
-    OUT=$(cockroach workload run kv --duration=10s --concurrency=$C --read-percent=50 "$URL" 2>&1 | tail -3)
+    OUT=$(crdb_run workload run kv --duration=10s --concurrency=$C --read-percent=50 "$URL" 2>&1 | tail -3)
     if echo "$OUT" | grep -qE '[0-9]'; then
         pass "workload run at concurrency=$C produced results"
         echo "$OUT" | sed 's/^/    /'
