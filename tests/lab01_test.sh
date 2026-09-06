@@ -121,7 +121,16 @@ LIVE4=$(sql_value "SELECT count(*) FROM crdb_internal.gossip_nodes WHERE is_live
 assert_eq "cluster reports 4 live nodes" "$LIVE4" "4"
 
 info "decommissioning node $DECOMM_NODE (this moves every replica off it)"
-if crdb_run node decommission "$DECOMM_NODE" --insecure >/dev/null 2>&1; then
+DECOMM_OK=0
+for attempt in 1 2 3; do
+    if crdb_run node decommission "$DECOMM_NODE" --insecure >/dev/null 2>&1; then
+        DECOMM_OK=1
+        break
+    fi
+    warn "decommission attempt $attempt failed; node 4 may not be taking replicas yet"
+    sleep 20
+done
+if [ "$DECOMM_OK" = "1" ]; then
     pass "decommission completed once spare capacity existed"
 else
     fail "decommission still failed with 4 nodes"

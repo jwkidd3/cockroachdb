@@ -165,7 +165,7 @@ USE target;
 INSERT INTO customers (tenant_id, email, name, created_at, legacy_id)
 SELECT tenant_id, email, name, created_at, legacy_id FROM stage_customers;
 INSERT INTO orders (tenant_id, customer_id, total, status, metadata, created_at, legacy_id)
-SELECT s.tenant_id, c.id, s.total, s.status, s.metadata, s.created_at, s.legacy_id
+SELECT c.tenant_id, c.id, s.total, s.status, s.metadata, s.created_at, s.legacy_id
 FROM stage_orders s JOIN customers c ON c.legacy_id = s.customer_legacy;
 INSERT INTO order_events (order_id, occurred_at, event_type, legacy_id)
 SELECT o.id, s.occurred_at, s.event_type, s.legacy_id
