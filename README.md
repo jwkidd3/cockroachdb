@@ -152,7 +152,6 @@ cockroachdb/
 │   └── labs-secure.logging.yml #   Lab 12 overlay
 ├── scripts/
 │   ├── crdb.sh / crdb.bat      # drive the lab cluster
-│   └── pull_latest.bat         # Windows: pull the latest materials
 ├── labs/                       # 16 labs + the Schema Patterns Playbook
 ├── presentations/              # Reveal.js decks, one per day
 ├── outline/                    # course outlines (source + rendered)
@@ -217,9 +216,7 @@ Speaker notes: `S`. Overview: `O`. Print to PDF: append `?print-pdf` and use the
   Where a lab writes `scripts/crdb`, use `scripts/crdb.sh` on macOS, Linux and **WSL**, and
   `scripts\crdb.bat` only in a native Windows shell. On Windows, WSL is the recommended path.
 - Between labs, `bash setup/reset_labs.sh` returns the machine to a known state.
-- To pick up lab corrections during the course, run `git pull` — or on Windows,
-  double-click [`scripts\pull_latest.bat`](scripts/pull_latest.bat), which stashes your own
-  work first and does a fast-forward-only pull so you can't land in a merge conflict mid-lab.
+- To pick up lab corrections during the course, run `git pull` 
 
 ## Running the 2-Day Version
 

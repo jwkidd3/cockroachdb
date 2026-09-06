@@ -58,10 +58,6 @@ git pull                       # pick up any lab corrections
 bash setup/reset_labs.sh       # clean state
 ```
 
-On Windows (if you are working from a local clone rather than the VM), double-click
-`scripts\pull_latest.bat` instead of `git pull`. It stashes your own edits, fast-forwards,
-and puts your edits back.
-
 ## If a lab goes sideways
 
 ```bash
