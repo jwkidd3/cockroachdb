@@ -18,6 +18,11 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
+# Free the compose cluster before starting Lab 7's 9-node demo: on a 12 GB student VM the two
+# do not fit at once, and the failure looks like a product bug rather than an
+# out-of-memory kill.
+( cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" && bash scripts/crdb.sh down >/dev/null 2>&1 ) || true
+
 IMAGE="cockroachdb/cockroach:${CRDB_VERSION:-v23.2.5}"
 NAME="lab07-demo"
 # demo assigns SQL ports sequentially from --sql-port: node N is 26256+N.

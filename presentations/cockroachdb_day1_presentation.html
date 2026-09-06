@@ -690,7 +690,10 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
 6.  New node is now a full participant — no manual intervention required
                     </code></pre>
                     <div class="info-box fragment">
-                        <p><strong>Decommissioning</strong> is the reverse: a single command (<code>cockroach node decommission &lt;id&gt;</code>) removes a node, and the allocator drains its replicas to remaining nodes before it shuts down.</p>
+                        <p><strong>Lab 1 does both:</strong> <code>scripts/crdb add-node</code>, then
+                        <code>scripts/crdb run node decommission 3 --insecure</code>. Decommissioning is <em>refused</em>
+                        when the replicas have nowhere to go — as on a 3-node cluster at RF=3, which is why the lab adds
+                        a fourth node first.</p>
                     </div>
                 </section>
 
@@ -788,20 +791,20 @@ cockroach version
                 </section>
 
                 <section>
-                    <h3><code>cockroach demo</code> — Your Classroom Cluster</h3>
-                    <p class="code-title">Spinning up a 3-node demo</p>
+                    <h3><code>cockroach demo</code> — A Cluster With No Setup</h3>
+                    <p class="code-title">Everything runs in a container — there is no binary to install</p>
                     <pre><code class="language-bash">
-# Default: 1 node, in-memory, with a sample dataset (movr)
-cockroach demo
+# 3-node empty cluster, entirely in memory
+docker run --rm -it cockroachdb/cockroach:v23.2.5 \
+  demo --nodes 3 --no-example-database --empty
 
-# 3-node empty cluster — what we'll use in labs
-cockroach demo --nodes 3 --no-example-database --empty
-# in this course, containerised:
-#   docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 ...
-
-# 9-node, 3-region cluster with simulated WAN latencies
-cockroach demo --global --nodes 9 --no-example-database --empty
+# 9-node, 3-region cluster with simulated WAN latencies — this is Lab 7
+docker run --rm -it -p 8090:8080 cockroachdb/cockroach:v23.2.5 \
+  demo --global --nodes 9 --no-example-database --empty --http-port=8080
                     </code></pre>
+                    <p class="fragment small-text"><code>demo</code> is for <em>throwaway</em> clusters. Every other lab
+                    uses the persistent compose cluster. Lab 7 needs <code>demo</code>: <code>--global</code> simulates
+                    inter-region latency, and it ships the licence multi-region SQL requires.</p>
                     <div class="highlight-box fragment">
                         <ul>
                             <li>Drops you straight into a SQL shell connected to the first node</li>
@@ -813,39 +816,39 @@ cockroach demo --global --nodes 9 --no-example-database --empty
                 </section>
 
                 <section>
-                    <h3><code>cockroach start</code> — Real Cluster Nodes</h3>
-                    <p class="code-title">Three-node insecure cluster on one machine</p>
+                    <h3><code>cockroach start</code> — How a Cluster Forms</h3>
+                    <p class="code-title">You type one line&hellip;</p>
                     <pre><code class="language-bash">
-cockroach start --insecure --store=node1 --listen-addr=localhost:26257 \
-  --http-addr=localhost:8080 --join=localhost:26257,localhost:26258,localhost:26259 \
-  --background
-
-cockroach start --insecure --store=node2 --listen-addr=localhost:26258 \
-  --http-addr=localhost:8081 --join=localhost:26257,localhost:26258,localhost:26259 \
-  --background
-
-cockroach start --insecure --store=node3 --listen-addr=localhost:26259 \
-  --http-addr=localhost:8082 --join=localhost:26257,localhost:26258,localhost:26259 \
-  --background
-
-# One-time cluster bootstrap (do this exactly once)
-cockroach init --insecure --host=localhost:26257
+scripts/crdb up
                     </code></pre>
-                    <div class="warning-box fragment">
-                        <p><strong>Heads up:</strong> <code>--insecure</code> is for labs only. Production clusters use TLS — we'll cover that on Day 2.</p>
-                    </div>
+                    <p class="code-title">&hellip;and <code>docker/labs.yml</code> runs this, once per node</p>
+                    <pre><code class="language-bash">
+cockroach start --insecure \
+  --advertise-addr=crdb1 \
+  --http-addr=0.0.0.0:8080 \
+  --join=crdb1:26257,crdb2:26257,crdb3:26257
+
+# Every node gets the SAME --join list. None of them is the "master".
+# Then, exactly once in the life of the cluster:
+cockroach init --insecure --host=crdb1:26257
+                    </code></pre>
+                    <p class="fragment small-text">Read it in <code>docker/labs.yml</code>; watch a node join with
+                    <code>scripts/crdb logs 1</code>. <strong><code>--insecure</code> is for labs only</strong> —
+                    Lab 12 builds a TLS cluster.</p>
                 </section>
 
                 <section>
                     <h3>The SQL Shell</h3>
                     <p class="code-title">Connecting to a running cluster</p>
                     <pre><code class="language-bash">
-# Built-in client (ships with the cockroach binary)
-cockroach sql --insecure --host=localhost:26257
+# Built-in client, run inside node 1 — the command you will use all week
+scripts/crdb sql
+scripts/crdb sql -e "SELECT count(*) FROM lab1.notes;"
 
-# Using a PostgreSQL client (psql, pgcli, DBeaver, etc.)
+# Any PostgreSQL client, over the published port (psql, pgcli, DBeaver, ...)
 psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable"
                     </code></pre>
+
                     <div class="info-box fragment">
                         <p>Inside the shell, common helpers:</p>
                         <ul>
@@ -859,14 +862,29 @@ psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable"
                 </section>
 
                 <section>
+                    <h3>Two Addresses, One Cluster</h3>
+                    <div class="warning-box">
+                        <p>From your machine the cluster is <code>localhost:26257</code>.<br>
+                        From inside another container it is <code>crdb1:26257</code>.</p>
+                    </div>
+                    <p class="fragment">Mixing these up is the single most common connection error in this course.</p>
+                    <p class="fragment small-text">It bites hardest where the <em>database</em> dials out — a changefeed
+                    sink in Lab 13, a workload generator in Lab 8. Those run inside the cluster network, so
+                    <code>localhost</code> there means the node itself, not your laptop.</p>
+                </section>
+
+                <section>
                     <h3>DB Console — The Web UI</h3>
                     <div class="highlight-box">
                         <p>Every node exposes a built-in web console on port <strong>8080</strong> (configurable). It is read-mostly: metrics, jobs, statements, schema, and cluster topology.</p>
                     </div>
                     <p class="code-title">Where to find it</p>
                     <pre><code class="language-text">
-cockroach demo    →  prints "DB Console: http://127.0.0.1:8080/..."
-cockroach start   →  --http-addr=<host>:<port>  (default 8080)
+scripts/crdb console  →  http://localhost:8080   (node 1)
+                         http://localhost:8081   (node 2)
+                         http://localhost:8082   (node 3)
+
+Every node serves the same console. If one is down, read another.
                     </code></pre>
                     <p class="fragment">Key tabs we'll tour in <strong>Lab 2</strong>:</p>
                     <ul class="fragment small-text">

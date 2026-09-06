@@ -3,7 +3,9 @@
 #
 #   sudo bash provision_student_vm.sh
 #
-# Target: Ubuntu 22.04 / 24.04 LTS, 8 vCPU / 32 GB RAM / 150 GB SSD.
+# Target: Ubuntu 22.04 / 24.04 LTS, 4-8 vCPU / 12 GB RAM / 100 GB SSD.
+# 12 GB is enough for every lab, but not for two heavy stacks at once:
+# stop the compose cluster before Lab 7 (9-node demo) or Lab 16 (kind).
 # Idempotent — safe to re-run.
 
 set -euo pipefail
@@ -90,8 +92,12 @@ if ! command -v kind >/dev/null 2>&1; then
     chmod +x /usr/local/bin/kind
 fi
 if ! command -v kubectl >/dev/null 2>&1; then
-    log "installing kubectl"
-    KUBECTL_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+    # Match kubectl to the kind node image, do NOT take whatever stable.txt says
+    # today. Kubernetes supports +/-1 minor of skew; stable.txt has already drifted
+    # many minors past kindest/node:v1.29.2, and a mismatched kubectl fails Lab 16
+    # in ways that look like operator bugs.
+    KUBECTL_VERSION="${KUBECTL_VERSION:-v${KIND_NODE_IMAGE##*:v}}"
+    log "installing kubectl $KUBECTL_VERSION (matched to $KIND_NODE_IMAGE)"
     curl -fsSLo /usr/local/bin/kubectl \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${K8S_ARCH}/kubectl"
     chmod +x /usr/local/bin/kubectl
@@ -182,6 +188,11 @@ done
 cat > "$STUDENT_HOME/.crdb_course_env" <<'ENVEOF'
 # CockroachDB course conveniences
 export CRDB_INSECURE='postgresql://root@localhost:26257?sslmode=disable'
+# Enterprise licence — free for training, request one from Cockroach Labs.
+# Uncomment and fill in before snapshotting the golden image, and every student
+# gets the Lab 11 and Lab 13 enterprise steps instead of the skipped versions.
+#export COCKROACH_ORG='Your Organisation'
+#export COCKROACH_LICENSE='crl-0-...'
 # Everything runs in Docker; scripts/crdb drives the lab cluster.
 alias crdb='bash ~/cockroachdb-course/scripts/crdb.sh'
 alias crup='bash ~/cockroachdb-course/scripts/crdb.sh up'

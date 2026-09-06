@@ -883,7 +883,8 @@ kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"cockroachDBVersion":"v
 kubectl patch crdbcluster crdb -p '{"spec":{"nodes":3}}'
 
 # RIGHT: move replicas off while the node still serves, THEN remove it
-cockroach node decommission 5 --wait=all
+kubectl exec cockroachdb-client-secure -- ./cockroach node decommission 5 \
+  --wait=all --certs-dir=/cockroach/cockroach-certs --host=crdb-public
 kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
                     </div>
                     <p class="fragment small-text">Decommission is slower <em>because</em> it is correct.</p>

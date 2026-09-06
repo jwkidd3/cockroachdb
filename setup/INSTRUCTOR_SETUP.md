@@ -28,28 +28,40 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 | 15 MOLT | 3-node + PostgreSQL container | ~7 GB | 15 GB | Docker |
 | 16 Kubernetes | kind (4 nodes) + 5 CRDB pods | ~10 GB | 25 GB | Docker-in-Docker; heaviest RAM user |
 
-### Recommended student VM
+### Student VM
 
-| | Minimum (Days 1–2 only) | **Recommended (all 4 days)** | Comfortable |
+| | This class | Minimum (Days 1–2 only) | Comfortable |
 | --- | --- | --- | --- |
-| vCPU | 4 | **8** | 8–16 |
-| RAM | 16 GB | **32 GB** | 32 GB |
-| Disk | 60 GB SSD | **150 GB SSD (gp3/pd-ssd)** | 200 GB |
-| OS | Ubuntu 22.04/24.04 LTS | **Ubuntu 24.04 LTS** | same |
+| vCPU | **4–8** | 4 | 8 |
+| RAM | **12 GB** | 8 GB | 16 GB+ |
+| Disk | **100 GB SSD** | 60 GB SSD | 150 GB |
+| OS | **Ubuntu 24.04 LTS** | Ubuntu 22.04 LTS | same |
 
-> **Do not undersize RAM.** A student whose Lab 16 kind cluster OOMs loses 40 minutes and the
-> lesson. 32 GB is the difference between "it works" and a room full of raised hands.
+> **12 GB fits every lab — one heavy stack at a time.** Compare the peak column above with
+> what is already running. The 3-node compose cluster holds ~4 GB, and Labs 7, 10 and 16 each
+> want 8–10 GB on their own. So before those three, have students run:
+> ```bash
+> scripts/crdb down
+> ```
+> That single habit is the difference between a smooth Lab 16 and a room full of raised hands.
+> `setup/verify_student_vm.sh` prints this reminder when it sees a 12 GB machine.
+
+> **Lab 11 is the exception that still fits:** two 3-node clusters at ~8 GB combined, which is
+> fine on 12 GB as long as nothing else is up.
 
 ### Instance types by cloud
 
-| Cloud | Recommended | Minimum | Approx. on-demand $/hr |
-| --- | --- | --- | --- |
-| AWS | `m6i.2xlarge` (8 vCPU / 32 GB) | `m6i.xlarge` | ~$0.38 |
-| GCP | `n2-standard-8` | `n2-standard-4` | ~$0.39 |
-| Azure | `Standard_D8s_v5` | `Standard_D4s_v5` | ~$0.38 |
+Most clouds jump from 8 GB to 16 GB, so the nearest standard sizes give you headroom rather
+than an exact 12 GB:
 
-**Cost for a 12-student class, 4 days × 8 hours:** `12 × 32 h × $0.38 ≈ $146` compute, plus
-~$25 storage. Stop instances overnight and it drops by roughly a third.
+| Cloud | Nearest size | vCPU / RAM | Approx. on-demand $/hr |
+| --- | --- | --- | --- |
+| AWS | `m6i.xlarge` | 4 / 16 GB | ~$0.19 |
+| GCP | `e2-standard-4` | 4 / 16 GB | ~$0.13 |
+| Azure | `Standard_D4s_v5` | 4 / 16 GB | ~$0.19 |
+
+**Cost for a 12-student class, 4 days × 8 hours:** roughly `12 × 32 h × $0.19 ≈ $73` compute
+plus ~$20 storage. Stop instances overnight and it drops by about a third.
 
 ---
 
@@ -210,13 +222,42 @@ sudo systemctl restart ssh
 
 ---
 
-## 5. Pre-Class Checklist
+## 5. Enterprise Licence (get one — it is free for training)
+
+Cockroach Labs issues licences free of charge for training and evaluation. Request one before
+class; it takes minutes and it unlocks the parts of the course that are otherwise skipped.
+
+| Without a licence | With one |
+| --- | --- |
+| Lab 11: full backups only — `revision_history` and incremental backups are refused | The whole backup lesson, including PITR |
+| Lab 13: core changefeeds only — `CREATE CHANGEFEED ... INTO 'kafka://...'` is refused | The Kafka sink, resolved timestamps, the frontier consumer |
+| Lab 7: works anyway — `cockroach demo` carries its own temporary licence | Same |
+
+Apply it once per cluster by exporting it before `up`; the wrapper does the rest:
+
+```bash
+export COCKROACH_ORG='Your Organisation'
+export COCKROACH_LICENSE='crl-0-...'
+scripts/crdb up          # prints "enterprise licence applied"
+```
+
+Put both lines in the student image's `~/.crdb_course_env` and every student gets it
+automatically. On Windows, `set COCKROACH_LICENSE=crl-0-...` before `scripts\crdb.bat up`.
+
+> The labs detect the licence at runtime. Without one they print a `🔒` note and continue on
+> the free path, so nothing breaks — students just see less.
+
+---
+
+## 6. Pre-Class Checklist
 
 **One week out**
 - [ ] Golden image built and verified with `verify_student_vm.sh`
-- [ ] Quota confirmed: `12 × 8 vCPU = 96 vCPU` in the target region — request an increase early
+- [ ] Enterprise licence requested and added to the image's `~/.crdb_course_env`
+- [ ] Quota confirmed for the class size in the target region — request an increase early
 - [ ] Course repo pushed and the image's clone points at the right branch
 - [ ] Test one student VM end to end: run **Lab 7**, **Lab 10**, and **Lab 16** in full
+- [ ] Confirm the "`scripts/crdb down` before Labs 7, 10 and 16" habit on a 12 GB VM
 
 **Day before**
 - [ ] Student VMs launched from the image
@@ -234,7 +275,7 @@ sudo systemctl restart ssh
 
 ---
 
-## 6. Per-Day Warm-Up
+## 7. Per-Day Warm-Up
 
 Some labs benefit from a head start. Run these on all VMs the evening before.
 
@@ -254,7 +295,7 @@ setup/run_on_all.sh 'docker pull kindest/node:v1.29.2; \
 
 ---
 
-## 7. Teardown
+## 8. Teardown
 
 ```bash
 # AWS — terminate everything tagged for this course
@@ -278,7 +319,7 @@ az vm list --resource-group "$RG" --query "[?tags.course=='crdb-4day'].name" -o 
 
 ---
 
-## 8. Alternatives to Per-Student VMs
+## 9. Alternatives to Per-Student VMs
 
 | Option | Works for | Trade-off |
 | --- | --- | --- |
@@ -292,7 +333,7 @@ instructions. Days 3–4 need Docker, kind, and 32 GB — plan for VMs.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |

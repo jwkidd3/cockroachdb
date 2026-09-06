@@ -15,6 +15,10 @@
 #   scripts/crdb.sh logs [n]       tail a node's logs
 #   scripts/crdb.sh down           remove the cluster AND its data
 #   scripts/crdb.sh reset          down, then up
+#
+# Set COCKROACH_LICENSE (and optionally COCKROACH_ORG) before `up` to unlock the
+# enterprise steps in Labs 11 and 13. Without one they are skipped, and the labs
+# say so.
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -36,6 +40,19 @@ else
 fi
 CMD="${1:-help}"; shift || true
 
+# Apply an enterprise licence if the instructor has one in the environment.
+# Unlocks incremental backups and revision_history (Lab 11), Kafka-sink
+# changefeeds (Lab 13), and multi-region SQL on this cluster (Lab 7 normally
+# borrows the temporary licence that `cockroach demo` ships with).
+apply_license() {
+    [ -n "${COCKROACH_LICENSE:-}" ] || return 0
+    "${COMPOSE[@]}" exec -T ${NODE}1 ./cockroach sql "${AUTH[@]}" -e \
+        "SET CLUSTER SETTING cluster.organization = '${COCKROACH_ORG:-CockroachDB Course}';
+         SET CLUSTER SETTING enterprise.license = '${COCKROACH_LICENSE}';" >/dev/null 2>&1 \
+      && echo "enterprise licence applied" \
+      || echo "WARNING: could not apply COCKROACH_LICENSE (is it valid and unexpired?)" >&2
+}
+
 need_docker() {
     docker info >/dev/null 2>&1 || {
         echo "ERROR: Docker is not running. Start Docker Desktop and try again." >&2
@@ -54,6 +71,7 @@ case "$CMD" in
             sleep 2
         done
         "${COMPOSE[@]}" exec -T ${NODE}1 ./cockroach cert list --certs-dir=/certs
+        apply_license
         echo
         echo "DB Console: https://localhost:${HTTP0}   (self-signed certificate)"
         exit 0
@@ -73,6 +91,7 @@ case "$CMD" in
     done
     "${COMPOSE[@]}" exec -T ${NODE}1 ./cockroach sql "${AUTH[@]}" -e \
         "SELECT node_id, address, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;"
+    apply_license
     echo
     echo "DB Console: http://localhost:${HTTP0}   (node 2: $((HTTP0+1)), node 3: $((HTTP0+2)))"
     echo "SQL:        localhost:${SQL0}"
@@ -100,6 +119,6 @@ case "$CMD" in
   reset)    need_docker; "${COMPOSE[@]}" --profile scale down -v; exec "$0" up ;;
   cp)       need_docker; "${COMPOSE[@]}" cp "$@" ;;
   help|--help|-h|*)
-    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
 esac

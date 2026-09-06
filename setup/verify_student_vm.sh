@@ -10,12 +10,27 @@ PASS=0; FAIL=0; WARN=0
 if [ -t 1 ]; then G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; B=$'\033[34m'; N=$'\033[0m';
 else G=""; R=""; Y=""; B=""; N=""; fi
 
+# All three go to stdout so the report reads in order. Redirecting failures to
+# stderr interleaved them into the wrong section, which made the report look
+# like it was failing checks it had not reached yet. The exit code is the
+# machine-readable signal.
 ok()   { PASS=$((PASS+1)); echo "${G}PASS${N} $*"; }
-bad()  { FAIL=$((FAIL+1)); echo "${R}FAIL${N} $*" >&2; }
-warn() { WARN=$((WARN+1)); echo "${Y}WARN${N} $*" >&2; }
+bad()  { FAIL=$((FAIL+1)); echo "${R}FAIL${N} $*"; }
+warn() { WARN=$((WARN+1)); echo "${Y}WARN${N} $*"; }
 sec()  { echo; echo "${B}=== $* ===${N}"; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# The cluster smoke test below reads more naturally as pass/fail, and needs an
+# equality check. Without these it silently did nothing but print
+# "command not found" — and still reported the VM ready.
+pass() { ok "$@"; }
+fail() { bad "$@"; }
+assert_eq() {
+    local desc="$1" actual="$2" expected="$3"
+    if [ "$actual" = "$expected" ]; then ok "$desc (= $expected)"
+    else bad "$desc — expected '$expected', got '$actual'"; fi
+}
 
 sec "Hardware"
 CPUS=$(nproc)
@@ -23,8 +38,19 @@ MEM_GB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
 DISK_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
 
 [ "$CPUS" -ge 8 ]     && ok "vCPU: $CPUS (>= 8)"      || { [ "$CPUS" -ge 4 ] && warn "vCPU: $CPUS — Days 1-2 only; 8 recommended" || bad "vCPU: $CPUS — need at least 4"; }
-[ "$MEM_GB" -ge 30 ]  && ok "RAM: ${MEM_GB} GB (>= 32)" || { [ "$MEM_GB" -ge 15 ] && warn "RAM: ${MEM_GB} GB — Lab 16 (kind) and Lab 7 (9 nodes) may OOM" || bad "RAM: ${MEM_GB} GB — need at least 16"; }
+# The course is sized for a 12 GB student VM. The kernel reserves a little, so
+# a 12,287 MB machine reports 11 GB here — that is the expected PASS value.
+[ "$MEM_GB" -ge 11 ]  && ok "RAM: ${MEM_GB} GB (12 GB VM)" || { [ "$MEM_GB" -ge 8 ] && warn "RAM: ${MEM_GB} GB — Labs 1-6 fine; Lab 7 (9-node demo) and Lab 16 (kind) will be tight" || bad "RAM: ${MEM_GB} GB — need at least 8"; }
 [ "$DISK_GB" -ge 100 ] && ok "Free disk: ${DISK_GB} GB" || { [ "$DISK_GB" -ge 50 ] && warn "Free disk: ${DISK_GB} GB — Lab 10 TPC-C needs headroom" || bad "Free disk: ${DISK_GB} GB — need at least 50"; }
+
+# Every lab runs in containers, so the ceiling that matters is the one the Docker
+# daemon has — on Docker Desktop that is a VM allocation, not the host's RAM.
+if docker info >/dev/null 2>&1; then
+    DOCKER_GB=$(( $(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
+    if   [ "$DOCKER_GB" -ge 11 ]; then ok "Docker memory: ${DOCKER_GB} GB"
+    elif [ "$DOCKER_GB" -ge 6 ];  then warn "Docker memory: ${DOCKER_GB} GB — enough for Labs 1-6; Lab 7 (9 nodes) and Lab 16 (kind) will be tight"
+    else bad "Docker memory: ${DOCKER_GB} GB — raise it to at least 11 GB (Docker Desktop: Settings > Resources > Memory)"; fi
+fi
 
 sec "Binaries"
 # cockroach itself is NOT installed on the host any more - it runs in containers.
@@ -102,16 +128,20 @@ else
 fi
 
 sec "Multi-node capability (Lab 7 needs 9 nodes)"
-if [ "$MEM_GB" -ge 30 ]; then
-    ok "RAM sufficient for the 9-node demo cluster in Lab 7"
+L7_GB="${DOCKER_GB:-$MEM_GB}"
+if [ "$L7_GB" -ge 11 ]; then
+    ok "Docker has ${L7_GB} GB — enough for Lab 7's 9-node demo and Lab 16's kind cluster"
+    warn "On a 12 GB VM, run them one at a time: 'scripts/crdb down' before Lab 7 or Lab 16"
+elif [ "$L7_GB" -ge 8 ]; then
+    warn "Docker has ${L7_GB} GB — Lab 7 needs ~6 GB free, so stop the lab cluster first ('scripts/crdb down')"
 else
-    warn "RAM may be insufficient for Lab 7's 9-node cluster — have students pair up or use --nodes 3"
+    warn "Docker has ${L7_GB} GB — too tight for Lab 7's 9 nodes; have students pair up or use --nodes 3"
 fi
 
 sec "Summary"
 echo "Pass: $PASS   Warn: $WARN   Fail: $FAIL"
 if [ "$FAIL" -gt 0 ]; then
-    echo "${R}VM is NOT ready.${N} Fix the failures above and re-run." >&2
+    echo "${R}VM is NOT ready.${N} Fix the failures above and re-run."
     exit 1
 fi
 [ "$WARN" -gt 0 ] && echo "${Y}VM is usable with caveats — review the warnings.${N}"

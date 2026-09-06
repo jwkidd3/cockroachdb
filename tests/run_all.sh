@@ -39,7 +39,7 @@ esac
 # It needs the Docker daemon, so it skips cleanly inside the test image. Run it with
 # the full suite only; a per-day run is scoped to that day's labs.
 if [ "${DAY:-all}" = "all" ]; then
-    LABS+=("lab_cluster_test.sh")
+    LABS+=("lab_cluster_test.sh" "crdb_wrappers_test.sh")
 fi
 
 # Explicit override: LABS="lab08_test.sh lab13_test.sh" ./run_all.sh

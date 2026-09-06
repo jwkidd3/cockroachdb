@@ -769,13 +769,26 @@ actual RTO     = locate + restore + verify + cut over</code></pre>
 
                 <section>
                     <h3>TLS Everywhere — and the Rotation Nobody Plans</h3>
-                    <pre><code class="language-bash">cockroach cert create-ca     --certs-dir=certs --ca-key=keys/ca.key
-cockroach cert create-node   localhost 127.0.0.1 --certs-dir=certs --ca-key=keys/ca.key
-cockroach cert create-client root --certs-dir=certs --ca-key=keys/ca.key</code></pre>
-                    <div class="highlight-box fragment">
-                        <p><strong>Rotation without downtime:</strong> reissue the cert, then
-                        <code>kill -SIGHUP &lt;pid&gt;</code>. The node reloads certificates in place —
-                        open connections stay open.</p>
+                    <pre><code class="language-bash">export CRDB_COMPOSE=docker/labs-secure.yml     # Lab 12 runs against the TLS stack
+
+scripts/crdb run cert create-ca     --certs-dir=/certs --ca-key=/certs/ca.key
+scripts/crdb run cert create-node   crdbs1 localhost 127.0.0.1 --certs-dir=/certs --ca-key=/certs/ca.key
+scripts/crdb run cert create-client root --certs-dir=/certs --ca-key=/certs/ca.key</code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>List every name, every time.</strong> A reissue <em>replaces</em> the SAN list, it does
+                        not extend it. Drop <code>crdbs1</code> and the certificate is still perfectly valid — but every
+                        client that connects by that name fails verification the moment the node reloads it.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Rotating Without Downtime</h3>
+                    <p class="code-title">Reissue, then signal the process — no restart, connections stay open</p>
+                    <pre><code class="language-bash">docker compose -f docker/labs-secure.yml kill -s HUP crdbs1</code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>Only if the binary is PID 1.</strong> Through a shell-script entrypoint the signal
+                        never reaches it: the cert is reissued, <code>cert list</code> shows the new expiry, and the
+                        server keeps serving the old one. True of any wrapped process.</p>
                     </div>
                     <table class="fragment" style="font-size: 0.65em;">
                         <tr><th>Cert</th><th>Lifetime</th><th>Rotate at</th></tr>

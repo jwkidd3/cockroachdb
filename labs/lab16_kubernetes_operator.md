@@ -13,10 +13,19 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- Docker with at least **6 GB** of memory allocated
+- Docker with at least **6 GB** of memory free
 - `kind` — <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>
 - `kubectl` — <https://kubernetes.io/docs/tasks/tools/>
 - **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
+
+> **Free the memory first.** kind runs four Kubernetes nodes and then three CockroachDB pods
+> inside them. On a 12 GB machine that does not fit alongside the lab cluster, so shut it down
+> before you start:
+> ```bash
+> scripts/crdb down
+> ```
+> Skip this and the symptom is not a clear error — pods sit in `Pending` or get OOM-killed
+> mid-rollout, which reads like an operator bug.
 
 ```bash
 kind version && kubectl version --client && docker info | grep -i "total memory"

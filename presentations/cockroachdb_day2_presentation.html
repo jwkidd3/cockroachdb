@@ -774,12 +774,14 @@ EXPLAIN ANALYZE (DEBUG) SELECT ...;</code></pre>
 
                 <section>
                     <h3>Localities — Tagging Nodes</h3>
-                    <p class="code-title">Set at node startup</p>
+                    <p class="code-title">Set at node startup — a flag, not SQL</p>
                     <pre><code class="language-bash">
 cockroach start \
   --locality=region=us-east1,zone=us-east1-b,rack=r4 \
   --join=...
                     </code></pre>
+                    <p class="small-text">Lab 7's <code>demo --global</code> assigns them for you — read them back with
+                    <code>SELECT node_id, locality FROM crdb_internal.gossip_nodes;</code></p>
                     <div class="highlight-box fragment">
                         <ul>
                             <li>Localities are <strong>hierarchical</strong> — left-to-right, broadest to narrowest</li>
@@ -905,11 +907,12 @@ CREATE TABLE country_codes (
                     <p class="code-title">Removing a node cleanly</p>
                     <pre><code class="language-bash">
 # Tell node 4 to drain — it stops being a leaseholder and rebalances replicas off
-cockroach node decommission 4 --host=&lt;node1&gt;:26257
+scripts/crdb run node decommission 4 --insecure
 
 # Watch progress
-cockroach node status --host=&lt;node1&gt;:26257 --decommission
+scripts/crdb run node status --insecure --decommission
                     </code></pre>
+                    <p class="fragment small-text"><code>scripts/crdb run &lt;args&gt;</code> is just <code>cockroach &lt;args&gt;</code> executed inside node 1 — which is why the production form you will find in the docs works unchanged.</p>
                     <div class="highlight-box fragment">
                         <ul>
                             <li>Decommissioning is <strong>online</strong> — no downtime, no read/write interruption</li>
@@ -1225,9 +1228,11 @@ WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE');
                 <section>
                     <h3>The Concurrency Knee</h3>
                     <pre><code class="language-bash">for C in 1 4 16 64 256; do
-  cockroach workload run kv --duration=30s --concurrency=$C \
-    --read-percent=50 "$CRDB" | tail -4
+  scripts/crdb run workload run kv --duration=30s --concurrency=$C \
+    --read-percent=50 'postgresql://root@crdb1:26257?sslmode=disable' | tail -4
 done</code></pre>
+                    <p class="fragment small-text">It runs <em>inside</em> the cluster network — hence
+                    <code>crdb1</code>, not <code>localhost</code>.</p>
                     <div class="highlight-box fragment">
                         <p><strong>Throughput plateaus long before latency does.</strong> The knee is the last
                         concurrency level where throughput still climbs meaningfully. Past it, you're buying

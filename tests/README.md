@@ -34,7 +34,8 @@ bare machine — but they only *prove* the lab when the dependency is present.
 | `lab15_test.sh` | Docker (PostgreSQL) + `psql` | Schema redesign and plan comparison still tested against synthetic data |
 | `lab16_test.sh` | `kind` + `kubectl` + 10 GB of Docker memory | Manifests still validated; live cluster skipped (`FORCE_LAB16=1` overrides the RAM check) |
 | `lab_cluster_test.sh` | Docker daemon | Whole test skips |
-| Enterprise features (BACKUP, IMPORT, enterprise changefeeds) | License | Detected at runtime; those assertions are skipped with a warning |
+| `crdb_wrappers_test.sh` | Docker daemon | Whole test skips |
+| Enterprise features (incremental backups, `revision_history`, Kafka-sink changefeeds) | A licence — free for training from Cockroach Labs. Export `COCKROACH_LICENSE` before `scripts/crdb up` | Detected at runtime; those assertions are skipped with a warning |
 
 > **The tests are the student path.** Every lab test drives
 > [`docker/labs.yml`](../docker/labs.yml), [`docker/labs-b.yml`](../docker/labs-b.yml) or
@@ -46,6 +47,12 @@ bare machine — but they only *prove* the lab when the dependency is present.
 > [`lab_cluster_test.sh`](lab_cluster_test.sh) covers the wrapper and the compose files
 > themselves — start, stop, restart, add-node, published ports, the shared backup volume, the
 > TLS stack — so a broken compose file cannot ship green.
+>
+> [`crdb_wrappers_test.sh`](crdb_wrappers_test.sh) keeps `scripts/crdb.bat` in step with
+> `scripts/crdb.sh`: same subcommands, same ports, valid cmd structure, and the docker commands
+> the batch file builds are executed here to prove they work. **cmd.exe's own parsing cannot be
+> tested on macOS or Linux** — run `scripts\crdb.bat up` on a Windows host before teaching a
+> class with Windows students.
 
 ## How to run
 
@@ -135,6 +142,7 @@ tests/
 ├── lab14_test.sh                   # outbox & idempotent retries
 ├── lab15_test.sh                   # PostgreSQL migration
 ├── lab_cluster_test.sh             # the student path: compose files + scripts/crdb
+├── crdb_wrappers_test.sh           # crdb.sh and crdb.bat must stay in step
 ├── lab16_test.sh                   # Kubernetes operator on kind
 └── scratch/                        # per-run temp data (auto-cleaned)
 ```

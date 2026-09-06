@@ -7,6 +7,11 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
+# Free the compose cluster before starting kind and the operator: on a 12 GB student VM the two
+# do not fit at once, and the failure looks like a product bug rather than an
+# out-of-memory kill.
+( cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" && bash scripts/crdb.sh down >/dev/null 2>&1 ) || true
+
 KIND_CLUSTER="lab16-test"
 WORK="/tmp/crdb-lab16-$$"
 OPERATOR_BASE="https://raw.githubusercontent.com/cockroachdb/cockroach-operator/master"

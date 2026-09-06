@@ -18,6 +18,9 @@ rem    scripts\crdb.bat console        print the DB Console URL
 rem    scripts\crdb.bat logs [n]       tail a node's logs
 rem    scripts\crdb.bat down           remove the cluster AND its data
 rem    scripts\crdb.bat reset          down, then up
+rem
+rem  Set COCKROACH_LICENSE (and optionally COCKROACH_ORG) before `up` to unlock
+rem  the enterprise steps in Labs 11 and 13.
 rem ============================================================================
 
 set "RC=0"
@@ -65,11 +68,15 @@ rem ARG1 is the first argument after the command - the node number for
 rem stop/start/sql-on/logs. Capture it before :collect shifts everything away.
 set "ARG1=%~1"
 
-rem Rebuild the remaining arguments into ARGS.
+rem Rebuild the remaining arguments into ARGS, and everything after the first
+rem one into REST (which is what sql-on needs once the node number is consumed).
 set "ARGS="
+set "REST="
+set "FIRSTARG=1"
 :collect
 if "%~1"=="" goto :dispatch
 set "ARGS=!ARGS! %1"
+if defined FIRSTARG (set "FIRSTARG=") else (set "REST=!REST! %1")
 shift
 goto :collect
 
@@ -92,15 +99,7 @@ echo [ERROR] unknown command "%CMD%"
 goto :help
 
 :up
-if not "%CRDB_COMPOSE%"=="%CRDB_COMPOSE:labs-secure=%" (
-    %COMPOSE% up -d
-    echo Waiting for the secure node...
-    timeout /t 12 /nobreak >nul
-    %COMPOSE% exec -T %NODE%1 ./cockroach cert list --certs-dir=/certs
-    echo.
-    echo DB Console: https://localhost:%HTTP0%  ^(self-signed certificate^)
-    goto :done
-)
+if not "%CRDB_COMPOSE%"=="%CRDB_COMPOSE:labs-secure=%" goto :up_secure
 %COMPOSE% up -d %NODE%1 %NODE%2 %NODE%3
 if errorlevel 1 (set "RC=1" & goto :done)
 echo Waiting for the cluster to initialise...
@@ -120,8 +119,37 @@ for /l %%i in (1,1,60) do (
 :up_ready
 del "%COUNTFILE%" 2>nul
 %COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% -e "SELECT node_id, address, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;"
+call :apply_license
 echo.
 echo DB Console: http://localhost:%HTTP0%   ^(SQL on localhost:%SQL0%^)
+goto :done
+
+:apply_license
+rem Applies COCKROACH_LICENSE if the instructor set one. Unlocks the enterprise
+rem steps in Labs 11 and 13; without it those steps are skipped and say so.
+if "%COCKROACH_LICENSE%"=="" exit /b 0
+if "%COCKROACH_ORG%"=="" set "COCKROACH_ORG=CockroachDB Course"
+%COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% -e "SET CLUSTER SETTING cluster.organization = '%COCKROACH_ORG%'; SET CLUSTER SETTING enterprise.license = '%COCKROACH_LICENSE%';" >nul 2>&1
+if errorlevel 1 (echo [WARN] could not apply COCKROACH_LICENSE ^(is it valid and unexpired?^)) else (echo enterprise licence applied)
+exit /b 0
+
+:up_secure
+%COMPOSE% up -d
+if errorlevel 1 (set "RC=1" & goto :done)
+echo Waiting for the secure node...
+rem Poll instead of sleeping a fixed number of seconds: a cold image pull or a
+rem slow laptop takes longer than any constant you would pick, and then
+rem `cert list` fails and the stack looks broken when it is merely slow.
+for /l %%i in (1,1,60) do (
+    %COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% -e "SELECT 1" >nul 2>&1
+    if not errorlevel 1 goto :secure_ready
+    timeout /t 2 /nobreak >nul
+)
+:secure_ready
+%COMPOSE% exec -T %NODE%1 ./cockroach cert list --certs-dir=/certs
+call :apply_license
+echo.
+echo DB Console: https://localhost:%HTTP0%  ^(self-signed certificate^)
 goto :done
 
 :sql
@@ -137,10 +165,11 @@ goto :done
 :sqlon
 set "N=%ARG1%"
 if "%N%"=="" set "N=1"
-rem ARGS starts with the node number; drop that token before passing the rest on.
-set "REST=!ARGS!"
-if not "%ARG1%"=="" call set "REST=%%REST: %ARG1%=%%"
-%COMPOSE% exec %NODE%%N% ./cockroach sql %AUTH%!REST!
+if "!REST!"=="" (
+    %COMPOSE% exec %NODE%%N% ./cockroach sql %AUTH%
+) else (
+    %COMPOSE% exec -T %NODE%%N% ./cockroach sql %AUTH%!REST!
+)
 goto :done
 
 :stopnode
@@ -155,7 +184,9 @@ goto :done
 
 :addnode
 %COMPOSE% --profile scale up -d %NODE%4
-echo Node 4 started ^(one port above node 3^)
+set /a SQL3=%SQL0%+3
+set /a HTTP3=%HTTP0%+3
+echo Node 4 started ^(SQL on !SQL3!, console on !HTTP3!^)
 goto :done
 
 :console
@@ -192,6 +223,9 @@ echo   scripts\crdb.bat ps             container status
 echo   scripts\crdb.bat cp ^<src^> ^<dst^> copy a file into/out of a container
 echo   scripts\crdb.bat down           remove the cluster AND its data
 echo   scripts\crdb.bat reset          down, then up
+echo.
+echo Set COCKROACH_LICENSE ^(and optionally COCKROACH_ORG^) before `up` to unlock
+echo the enterprise steps in Labs 11 and 13.
 echo.
 echo Set CRDB_COMPOSE to pick a different cluster:
 echo   docker/labs.yml         main 3-node cluster (default)

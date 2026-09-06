@@ -86,13 +86,16 @@ export C='postgresql://root@localhost:26257?sslmode=disable'
 > From your machine it is `localhost:26257`; from inside another container it is
 > `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
 
-> **Enterprise changefeeds need a license.** `cockroach demo` provides one automatically;
-> a local `cockroach start` cluster does not. If `CREATE CHANGEFEED ... INTO` is rejected,
-> either set a trial license (`SET CLUSTER SETTING enterprise.license = '...'`) or run this
-> lab against a containerised demo cluster
-> (`docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 --no-example-database --empty`)
-> and adjust the connection URL. Part A (Core
-> changefeeds) works on any cluster.
+> **Enterprise changefeeds need a licence — and it is free for training.** Cockroach Labs
+> issues licences at no cost for training and evaluation, so ask your instructor whether the
+> class has one. Export it before starting the cluster and the wrapper applies it:
+> ```bash
+> export COCKROACH_ORG='Your Organisation'
+> export COCKROACH_LICENSE='crl-0-...'
+> scripts/crdb up          # prints "enterprise licence applied"
+> ```
+> Without one, `CREATE CHANGEFEED ... INTO` is refused and you run Part A only — core
+> changefeeds, which need no licence and teach the same envelope format.
 
 ```bash
 scripts/crdb sql <<'SQL'

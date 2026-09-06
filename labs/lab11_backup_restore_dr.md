@@ -33,8 +33,9 @@ export A='postgresql://root@localhost:26257?sslmode=disable'
 
 ### ⚠️ Licensing — read this before Part A
 
-On a plain `cockroach start` cluster with **no enterprise license**, the backup features split
-like this (verified on v23.2):
+On a cluster with **no enterprise licence**, the backup features split like this (verified on
+v23.2). A licence is free for training — see option 3 below — but the lab is written so that
+every lesson lands without one:
 
 | Feature | Without a license |
 | --- | --- |
@@ -57,9 +58,17 @@ The error is explicit, e.g.:
    `docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 --no-example-database --empty`
    ships with a temporary licence, so every step
    works. Use it for Parts A–C; Part D needs two clusters, so start a second demo on other ports.
-3. **Trial licence.** If you have one:
+3. **A licence — free for training.** Cockroach Labs issues them at no cost for training and
+   evaluation, so ask your instructor whether the class has one. Export it before starting the
+   cluster and `scripts/crdb up` applies it for you:
+   ```bash
+   export COCKROACH_ORG='Your Organisation'
+   export COCKROACH_LICENSE='crl-0-...'
+   scripts/crdb up          # prints "enterprise licence applied"
+   ```
+   Already have a cluster running? Apply it in place instead:
    ```sql
-   SET CLUSTER SETTING cluster.organization = 'Your Org';
+   SET CLUSTER SETTING cluster.organization = 'Your Organisation';
    SET CLUSTER SETTING enterprise.license = 'crl-0-...';
    ```
 
