@@ -74,14 +74,23 @@ docker info --format '{{.MemTotal}}'
 
 ### 2.1 Clone the course into the Linux filesystem
 
+Put it wherever you like — the scripts work out their own location, so nothing depends on the
+directory being named a particular thing or matching another machine:
+
 ```bash
 git clone <course-repo-url> ~/cockroachdb-course
 cd ~/cockroachdb-course
 ```
 
-> **Not `/mnt/c/...`.** The Windows filesystem is reachable from WSL but painfully slow for
-> bind mounts and git, and ownership of the directories the labs mount (`lab9/`, `lab12/`)
-> behaves oddly there. Keep the repo under `~`.
+> **One rule: not `/mnt/c/...`.** The Windows filesystem is reachable from WSL but painfully
+> slow for bind mounts and git, and ownership of the directories the labs mount (`lab9/`,
+> `lab12/`) behaves oddly there. Keep the repo somewhere under `~`.
+> `provision_wsl.sh` warns if it finds itself under `/mnt`.
+
+> **Nothing is path-dependent.** `scripts/crdb.sh` and the tests locate the repo from their own
+> position; the compose files use relative bind mounts and pin their project names, so the
+> cluster network is `crdb-labs_default` no matter what the folder is called; and
+> `provision_wsl.sh` writes shell aliases pointing at wherever you actually put it.
 
 ### 2.2 Provision
 

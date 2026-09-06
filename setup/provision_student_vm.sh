@@ -15,6 +15,9 @@ KIND_VERSION="${KIND_VERSION:-v0.23.0}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.29.2}"
 STUDENT_USER="${STUDENT_USER:-student}"
 COURSE_REPO="${COURSE_REPO:-}"          # optional git URL; otherwise copy the repo in manually
+# Derived from this script, not assumed, so the repo can sit in any directory.
+# If COURSE_REPO is set below, this is repointed at the clone.
+COURSE_DIR="${COURSE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 INSTALL_CODE_SERVER="${INSTALL_CODE_SERVER:-0}"
 
 log() { echo -e "\033[34m==>\033[0m $*"; }
@@ -146,6 +149,7 @@ if [ -n "$COURSE_REPO" ]; then
     sudo -u "$STUDENT_USER" git clone --depth 1 "$COURSE_REPO" \
         "$STUDENT_HOME/cockroachdb-course" 2>/dev/null || \
         (cd "$STUDENT_HOME/cockroachdb-course" && sudo -u "$STUDENT_USER" git pull --ff-only)
+    COURSE_DIR="$STUDENT_HOME/cockroachdb-course"
 fi
 
 # ---------------------------------------------------- pre-pull container images
@@ -164,7 +168,7 @@ for img in \
 done
 
 # ------------------------------------------------------------ shell conveniences
-cat > "$STUDENT_HOME/.crdb_course_env" <<'ENVEOF'
+cat > "$STUDENT_HOME/.crdb_course_env" <<ENVEOF
 # CockroachDB course conveniences
 export CRDB_INSECURE='postgresql://root@localhost:26257?sslmode=disable'
 # Enterprise licence — free for training, request one from Cockroach Labs.
@@ -173,14 +177,14 @@ export CRDB_INSECURE='postgresql://root@localhost:26257?sslmode=disable'
 #export COCKROACH_ORG='Your Organisation'
 #export COCKROACH_LICENSE='crl-0-...'
 # Everything runs in Docker; scripts/crdb drives the lab cluster.
-alias crdb='bash ~/cockroachdb-course/scripts/crdb.sh'
-alias crup='bash ~/cockroachdb-course/scripts/crdb.sh up'
-alias crsql='bash ~/cockroachdb-course/scripts/crdb.sh sql'
-alias crnodes='bash ~/cockroachdb-course/scripts/crdb.sh status'
-alias labreset='bash ~/cockroachdb-course/setup/reset_labs.sh'
+alias crdb='bash $COURSE_DIR/scripts/crdb.sh'
+alias crup='bash $COURSE_DIR/scripts/crdb.sh up'
+alias crsql='bash $COURSE_DIR/scripts/crdb.sh sql'
+alias crnodes='bash $COURSE_DIR/scripts/crdb.sh status'
+alias labreset='bash $COURSE_DIR/setup/reset_labs.sh'
 # Tools that run in containers rather than being installed:
 alias molt='docker run --rm --network crdb-labs_default -v /tmp/lab15:/tmp/lab15 cockroachdb/molt'
-alias helm='docker run --rm -v "$HOME/.config/helm:/root/.config/helm" -v "$HOME/.cache/helm:/root/.cache/helm" alpine/helm'
+alias helm='docker run --rm -v "\$HOME/.config/helm:/root/.config/helm" -v "\$HOME/.cache/helm:/root/.cache/helm" alpine/helm'
 ENVEOF
 install -d -o "$STUDENT_USER" -g "$STUDENT_USER" \
     "$STUDENT_HOME/.config/helm" "$STUDENT_HOME/.cache/helm" /tmp/lab15

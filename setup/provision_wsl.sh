@@ -171,7 +171,9 @@ for img in \
 done
 
 # ------------------------------------------------------------ shell conveniences
-COURSE_DIR="${COURSE_DIR:-$TARGET_HOME/cockroachdb-course}"
+# Where the course actually lives — derived from this script, not assumed, so
+# the repo can sit in any directory on any machine. Override with COURSE_DIR=...
+COURSE_DIR="${COURSE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cat > "$TARGET_HOME/.crdb_course_env" <<ENVEOF
 # CockroachDB course conveniences
 export CRDB_INSECURE='postgresql://root@localhost:26257?sslmode=disable'
