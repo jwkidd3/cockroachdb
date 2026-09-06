@@ -14,10 +14,18 @@ By the end of this lab you will be able to:
 ## Prerequisites
 
 - **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
-- Docker (for PostgreSQL source)
 - `psql` client
-- MOLT tools — download from <https://www.cockroachlabs.com/docs/molt/molt-fetch> (a
-  pure-SQL fallback path is given if the binaries are unavailable)
+- Nothing else to install: PostgreSQL and the MOLT tools both run as containers.
+
+> **MOLT in a container, like everything else.** Set this once and the `molt` commands below
+> work verbatim:
+> ```bash
+> alias molt='docker run --rm --network crdb-labs_default -v /tmp/lab15:/tmp/lab15 cockroachdb/molt'
+> ```
+> It joins the cluster network, so `$CRDB` must use the in-network name `crdb1:26257` — and
+> `$PG` must name the PostgreSQL container, not `localhost`. The `-v` mount is what lets
+> `--bucket-path /tmp/lab15/fetch` write where you can see it. A pure-SQL fallback is given
+> below if you would rather skip MOLT entirely.
 
 ## Setup
 

@@ -25,7 +25,9 @@ scripts/crdb sql         # open a SQL shell
 ```
 
 > Everything runs in Docker — see [Lab 1](lab01_cluster_bootstrap.md) for the cluster layout.
-> On Windows use `scripts\crdb.bat`; on macOS/Linux `scripts/crdb.sh`.
+> Use `scripts/crdb.sh` on macOS, Linux, and **WSL** — WSL is Linux, so the shell script is
+> the right one there. Only a native Windows shell (`cmd` or PowerShell) needs
+> `scripts\crdb.bat`.
 
 `cockroach workload` needs a connection string. There are two, and which one you use depends
 on where the command runs:

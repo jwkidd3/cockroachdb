@@ -13,9 +13,9 @@ By the end of this lab you will be able to:
 
 ## Prerequisites
 
-- Docker with at least **6 GB** of memory free
-- `kind` — <https://kind.sigs.k8s.io/docs/user/quick-start/#installation>
-- `kubectl` — <https://kubernetes.io/docs/tasks/tools/>
+- Docker with at least **8 GB** of memory free (a full run was measured at 7.6 GB)
+- `kind` and `kubectl` — the only two tools this course installs locally, because `kind`
+  drives the Docker daemon itself and cannot run in a container
 - **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
 
 > **Free the memory first.** kind runs four Kubernetes nodes and then three CockroachDB pods
@@ -296,6 +296,11 @@ rather than decorative.
 
 1. **Look at the Helm alternative:**
    ```bash
+   # helm in a container — nothing to install. The two mounts matter: without
+   # them `repo add` writes into a container that is deleted a moment later, and
+   # `show values` then reports no such repository.
+   mkdir -p ~/.config/helm ~/.cache/helm
+   alias helm='docker run --rm -v "$HOME/.config/helm:/root/.config/helm" -v "$HOME/.cache/helm:/root/.cache/helm" alpine/helm'
    helm repo add cockroachdb https://charts.cockroachdb.com/
    helm show values cockroachdb/cockroachdb | head -60
    ```

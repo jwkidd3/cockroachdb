@@ -20,9 +20,16 @@ By the end of this lab you will be able to:
 - Nothing else. There is no `cockroach` binary to install — every node, and the SQL
   shell itself, runs in a container.
 
-> **Windows, macOS, Linux.** The commands below are identical everywhere. Use
-> `scripts\crdb.bat` on Windows and `scripts/crdb.sh` on macOS/Linux — this lab writes
-> `scripts/crdb` to mean "whichever of those two you have".
+> **Windows, macOS, Linux.** The commands below are identical everywhere. This lab writes
+> `scripts/crdb` to mean "the wrapper for your shell":
+>
+> | Shell | Use |
+> | --- | --- |
+> | macOS, Linux, **WSL** | `scripts/crdb.sh` |
+> | Windows `cmd` / PowerShell | `scripts\crdb.bat` |
+>
+> On Windows, **WSL is the recommended path** — it is Linux, so every command in the course
+> works verbatim.
 
 ## Setup
 

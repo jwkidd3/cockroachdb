@@ -26,9 +26,18 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 | 13 CDC | 3-node + Kafka container | ~7 GB | 10 GB | Docker |
 | 14 Outbox | 3-node + Python | ~5 GB | 5 GB | psycopg2 |
 | 15 MOLT | 3-node + PostgreSQL container | ~7 GB | 15 GB | Docker |
-| 16 Kubernetes | kind (4 nodes) + 5 CRDB pods | ~10 GB | 25 GB | Docker-in-Docker; heaviest RAM user |
+| 16 Kubernetes | kind (4 nodes) + 5 CRDB pods | ~8 GB (measured) | 25 GB | Docker-in-Docker; heaviest RAM user |
 
 ### Student VM
+
+> **This class runs on 12 GB Windows VMs, with students working inside WSL2.**
+> Follow [`SETUP_WSL.md`](SETUP_WSL.md) — it is the path this course is set up for.
+> [`provision_student_vm.sh`](provision_student_vm.sh) is for plain Ubuntu VMs instead; the two
+> are siblings, and `verify_student_vm.sh` covers either.
+>
+> The one WSL step that decides whether Lab 16 works is `%UserProfile%\.wslconfig`:
+> WSL2 defaults to about half the host's RAM, so a 12 GB VM gives Linux ~6 GB unless you
+> set `memory=9GB`.
 
 | | This class | Minimum (Days 1–2 only) | Comfortable |
 | --- | --- | --- | --- |
@@ -39,7 +48,7 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 
 > **12 GB fits every lab — one heavy stack at a time.** Compare the peak column above with
 > what is already running. The 3-node compose cluster holds ~4 GB, and Labs 7, 10 and 16 each
-> want 8–10 GB on their own. So before those three, have students run:
+> want 6–8 GB on their own. So before those three, have students run:
 > ```bash
 > scripts/crdb down
 > ```
@@ -252,7 +261,8 @@ automatically. On Windows, `set COCKROACH_LICENSE=crl-0-...` before `scripts\crd
 ## 6. Pre-Class Checklist
 
 **One week out**
-- [ ] Golden image built and verified with `verify_student_vm.sh`
+- [ ] Golden image built (WSL: `SETUP_WSL.md`; Ubuntu: `provision_student_vm.sh`) and verified with `verify_student_vm.sh`
+- [ ] On WSL images: `.wslconfig` sets `memory=9GB`, and `wsl --shutdown` has been run once
 - [ ] Enterprise licence requested and added to the image's `~/.crdb_course_env`
 - [ ] Quota confirmed for the class size in the target region — request an increase early
 - [ ] Course repo pushed and the image's clone points at the right branch

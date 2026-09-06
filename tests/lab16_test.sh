@@ -125,7 +125,9 @@ if ! docker info >/dev/null 2>&1; then
     echo "Lab 16: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed (live portion skipped)."
     [ "$FAIL_COUNT" -eq 0 ]; exit $?
 fi
-if [ "$MEM_GB" -gt 0 ] && [ "$MEM_GB" -lt 10 ] && [ "${FORCE_LAB16:-0}" != "1" ]; then
+# 8 GB, not the 10 previously guessed: a full run — kind, the operator, three
+# pods, scale-out to five — was measured completing with Docker at 7.6 GB.
+if [ "$MEM_GB" -gt 0 ] && [ "$MEM_GB" -lt 8 ] && [ "${FORCE_LAB16:-0}" != "1" ]; then
     warn "only ${MEM_GB} GB RAM detected; skipping (set FORCE_LAB16=1 to run anyway)"
     echo "Lab 16: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed (live portion skipped)."
     [ "$FAIL_COUNT" -eq 0 ]; exit $?

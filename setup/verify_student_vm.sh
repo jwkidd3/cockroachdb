@@ -33,6 +33,14 @@ assert_eq() {
 }
 
 sec "Hardware"
+# Under WSL2 every number below describes the WSL virtual machine, not the
+# Windows host — which is exactly what matters, since Docker runs inside it.
+IS_WSL=0
+if grep -qi microsoft /proc/version 2>/dev/null || [ -n "${WSL_DISTRO_NAME:-}" ]; then
+    IS_WSL=1
+    ok "running under WSL2${WSL_DISTRO_NAME:+ ($WSL_DISTRO_NAME)} — the Linux path, so every lab command works verbatim"
+fi
+
 CPUS=$(nproc)
 MEM_GB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
 DISK_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
@@ -41,6 +49,18 @@ DISK_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
 # The course is sized for a 12 GB student VM. The kernel reserves a little, so
 # a 12,287 MB machine reports 11 GB here — that is the expected PASS value.
 [ "$MEM_GB" -ge 11 ]  && ok "RAM: ${MEM_GB} GB (12 GB VM)" || { [ "$MEM_GB" -ge 8 ] && warn "RAM: ${MEM_GB} GB — Labs 1-6 fine; Lab 7 (9-node demo) and Lab 16 (kind) will be tight" || bad "RAM: ${MEM_GB} GB — need at least 8"; }
+
+# WSL2 does not hand the whole machine to Linux. Recent builds default to half
+# of host RAM, so a 12 GB laptop gives WSL ~6 GB — enough for Labs 1-6 and
+# nothing heavier. This is the single most likely reason Lab 16 fails on Windows.
+if [ "$IS_WSL" = "1" ] && [ "$MEM_GB" -lt 10 ]; then
+    warn "WSL2 has only ${MEM_GB} GB of the host's RAM. Raise it on the Windows side:"
+    warn "    create %UserProfile%\\.wslconfig containing:"
+    warn "        [wsl2]"
+    warn "        memory=10GB"
+    warn "        processors=4"
+    warn "    then run 'wsl --shutdown' in PowerShell and reopen this shell."
+fi
 [ "$DISK_GB" -ge 100 ] && ok "Free disk: ${DISK_GB} GB" || { [ "$DISK_GB" -ge 50 ] && warn "Free disk: ${DISK_GB} GB — Lab 10 TPC-C needs headroom" || bad "Free disk: ${DISK_GB} GB — need at least 50"; }
 
 # Every lab runs in containers, so the ceiling that matters is the one the Docker
@@ -53,13 +73,12 @@ if docker info >/dev/null 2>&1; then
 fi
 
 sec "Binaries"
-# cockroach itself is NOT installed on the host any more - it runs in containers.
+# The only binaries the course needs locally. cockroach, molt and helm are all
+# containers; kind must be local because it drives the Docker daemon itself.
 for b in docker kind kubectl psql python3 git jq nc bc openssl curl unzip; do
     have "$b" && ok "$b: $(command -v $b)" || bad "$b missing"
 done
-have helm && ok "helm present" || warn "helm missing (Lab 16 Part E comparison only)"
-have molt && ok "molt present" || warn "molt missing — Lab 15 falls back to the pure-SQL path"
-have go   && ok "go present"   || warn "go missing (optional, Lab 14 Go variants)"
+# molt and helm are containers, not local binaries — checked with the images below.
 
 sec "Limits and kernel settings"
 NOFILE=$(ulimit -n)
@@ -76,7 +95,8 @@ else
 fi
 
 sec "Pre-pulled images"
-for img in prom/prometheus grafana/grafana apache/kafka postgres kindest/node; do
+for img in cockroachdb/cockroach kindest/node prom/prometheus grafana/grafana \
+           apache/kafka postgres cockroachdb/molt alpine/helm; do
     docker image ls --format '{{.Repository}}' 2>/dev/null | grep -q "^${img}$" \
         && ok "image cached: $img" || warn "image not cached: $img (first use will download)"
 done

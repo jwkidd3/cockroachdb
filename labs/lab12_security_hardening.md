@@ -26,7 +26,7 @@ Every command in this lab talks to the **secure** cluster, so export this once:
 export CRDB_COMPOSE=docker/labs-secure.yml
 ```
 
-(On Windows: `set CRDB_COMPOSE=docker/labs-secure.yml`.)
+(In WSL, `export` as above. Only in native `cmd`: `set CRDB_COMPOSE=docker/labs-secure.yml`.)
 
 ## Tasks
 

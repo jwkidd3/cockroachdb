@@ -13,10 +13,8 @@ set -euo pipefail
 CRDB_VERSION="${CRDB_VERSION:-v23.2.5}"
 KIND_VERSION="${KIND_VERSION:-v0.23.0}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.29.2}"
-MOLT_VERSION="${MOLT_VERSION:-latest}"
 STUDENT_USER="${STUDENT_USER:-student}"
 COURSE_REPO="${COURSE_REPO:-}"          # optional git URL; otherwise copy the repo in manually
-INSTALL_GO="${INSTALL_GO:-1}"
 INSTALL_CODE_SERVER="${INSTALL_CODE_SERVER:-0}"
 
 log() { echo -e "\033[34m==>\033[0m $*"; }
@@ -102,10 +100,6 @@ if ! command -v kubectl >/dev/null 2>&1; then
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${K8S_ARCH}/kubectl"
     chmod +x /usr/local/bin/kubectl
 fi
-if ! command -v helm >/dev/null 2>&1; then
-    log "installing helm"
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-fi
 
 # ------------------------------------------------------------------ python deps
 log "installing python packages"
@@ -115,28 +109,11 @@ pip3 install $PIP_FLAGS --break-system-packages \
     psycopg2-binary sqlalchemy sqlalchemy-cockroachdb psycopg 2>/dev/null \
   || pip3 install $PIP_FLAGS psycopg2-binary sqlalchemy sqlalchemy-cockroachdb psycopg
 
-# ---------------------------------------------------------------------- MOLT
-if ! command -v molt >/dev/null 2>&1; then
-    log "installing MOLT (Lab 15)"
-    MOLT_URL="https://molt.cockroachdb.com/molt/cli/molt-${MOLT_VERSION}.linux-${CRDB_ARCH}.tgz"
-    if curl -fsSL "$MOLT_URL" -o /tmp/molt.tgz 2>/dev/null; then
-        rm -rf /tmp/molt-extract && mkdir -p /tmp/molt-extract
-        tar -xz -C /tmp/molt-extract -f /tmp/molt.tgz 2>/dev/null || true
-        find /tmp/molt-extract -type f -name 'molt*' -exec install -m 755 {} /usr/local/bin/ \; 2>/dev/null || true
-        rm -rf /tmp/molt.tgz /tmp/molt-extract
-    else
-        echo "WARN: MOLT download failed — Lab 15 has a documented pure-SQL fallback path" >&2
-    fi
-fi
-
-# ------------------------------------------------------------------------- Go
-if [ "$INSTALL_GO" = "1" ] && ! command -v go >/dev/null 2>&1; then
-    log "installing Go (optional, Lab 14 Go variants)"
-    GO_VERSION="1.22.5"
-    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${K8S_ARCH}.tar.gz" -o /tmp/go.tgz
-    rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz && rm /tmp/go.tgz
-    echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
-fi
+# MOLT, helm and Go are NOT installed locally:
+#   molt  -> cockroachdb/molt image  (Lab 15)
+#   helm  -> alpine/helm image       (Lab 16 Part E)
+#   go    -> not needed; the Go in Lab 14 and Day 4 is illustrative snippets
+# Both images are pre-pulled below.
 
 # ------------------------------------------------------------ kernel / ulimits
 log "applying kernel and ulimit tuning"
@@ -179,7 +156,9 @@ for img in \
     "apache/kafka:3.9.0" \
     "postgres:16" \
     "$KIND_NODE_IMAGE" \
-    "cockroachdb/cockroach:${CRDB_VERSION}" ; do
+    "cockroachdb/cockroach:${CRDB_VERSION}" \
+    "cockroachdb/molt:latest" \
+    "alpine/helm:latest" ; do
     log "  pulling $img"
     docker pull -q "$img" || echo "WARN: failed to pull $img" >&2
 done
@@ -199,7 +178,12 @@ alias crup='bash ~/cockroachdb-course/scripts/crdb.sh up'
 alias crsql='bash ~/cockroachdb-course/scripts/crdb.sh sql'
 alias crnodes='bash ~/cockroachdb-course/scripts/crdb.sh status'
 alias labreset='bash ~/cockroachdb-course/setup/reset_labs.sh'
+# Tools that run in containers rather than being installed:
+alias molt='docker run --rm --network crdb-labs_default -v /tmp/lab15:/tmp/lab15 cockroachdb/molt'
+alias helm='docker run --rm -v "$HOME/.config/helm:/root/.config/helm" -v "$HOME/.cache/helm:/root/.cache/helm" alpine/helm'
 ENVEOF
+install -d -o "$STUDENT_USER" -g "$STUDENT_USER" \
+    "$STUDENT_HOME/.config/helm" "$STUDENT_HOME/.cache/helm" /tmp/lab15
 chown "$STUDENT_USER:$STUDENT_USER" "$STUDENT_HOME/.crdb_course_env"
 grep -q crdb_course_env "$STUDENT_HOME/.bashrc" 2>/dev/null || \
     echo '[ -f ~/.crdb_course_env ] && source ~/.crdb_course_env' >> "$STUDENT_HOME/.bashrc"

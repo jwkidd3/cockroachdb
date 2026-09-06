@@ -35,10 +35,15 @@ Per learner:
 | --- | --- | --- |
 | RAM | 16 GB | **32 GB** |
 | Disk | 60 GB | **150 GB** |
-| Tools | Docker | plus `kind` + `kubectl` (Lab 16 only) |
+| Tools | Docker | plus `kind` + `kubectl` (Lab 16 only) — `molt` and `helm` run as containers |
+
+**On Windows, work inside WSL2** — it is Linux, so every command in the course runs verbatim.
+Setup is in **[`setup/SETUP_WSL.md`](setup/SETUP_WSL.md)**, including the one step that decides
+whether Lab 16 works (`.wslconfig` memory).
 
 Instructors provisioning machines: see **[`setup/INSTRUCTOR_SETUP.md`](setup/INSTRUCTOR_SETUP.md)** —
-it ships a provisioning script, a verification script, and a teardown procedure.
+it ships provisioning scripts for WSL and for plain Ubuntu, a verification script, and a
+teardown procedure.
 
 ## Quick Start — Start the Lab Cluster
 
@@ -49,8 +54,8 @@ and Linux.
 ```bash
 git clone https://github.com/jwkidd3/cockroachdb.git
 cd cockroachdb
-scripts/crdb.sh up          # macOS / Linux
-scripts\crdb.bat up         # Windows
+scripts/crdb.sh up          # macOS, Linux, and WSL
+scripts\crdb.bat up         # native Windows cmd / PowerShell only
 ```
 
 You should see three live nodes and a DB Console link:
@@ -151,7 +156,10 @@ cockroachdb/
 ├── labs/                       # 16 labs + the Schema Patterns Playbook
 ├── presentations/              # Reveal.js decks, one per day
 ├── outline/                    # course outlines (source + rendered)
-├── setup/                      # instructor: student VM provisioning
+├── setup/                      # instructor: student machine provisioning
+│   ├── SETUP_WSL.md            #   Windows + WSL2 (what this class uses)
+│   ├── provision_wsl.sh        #   run inside WSL
+│   └── provision_student_vm.sh #   plain Ubuntu VMs instead
 └── tests/                      # automated lab tests
 ```
 
@@ -206,7 +214,8 @@ Speaker notes: `S`. Overview: `O`. Print to PDF: append `?print-pdf` and use the
   with **Cleanup**, **Deliverables**, **Challenge Exercises**, and a command **Reference** table.
 - Labs are self-contained — you can drop into any lab after completing its Setup block.
 - Commands are identical on Windows, macOS and Linux, because everything runs in containers.
-  Where a lab writes `scripts/crdb`, use `scripts\crdb.bat` on Windows and `scripts/crdb.sh` elsewhere.
+  Where a lab writes `scripts/crdb`, use `scripts/crdb.sh` on macOS, Linux and **WSL**, and
+  `scripts\crdb.bat` only in a native Windows shell. On Windows, WSL is the recommended path.
 - Between labs, `bash setup/reset_labs.sh` returns the machine to a known state.
 - To pick up lab corrections during the course, run `git pull` — or on Windows,
   double-click [`scripts\pull_latest.bat`](scripts/pull_latest.bat), which stashes your own
