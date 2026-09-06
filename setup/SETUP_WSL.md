@@ -151,7 +151,42 @@ ports to the host automatically.
 Inside WSL, always `scripts/crdb.sh` — WSL is Linux. `scripts\crdb.bat` exists only for a
 native `cmd`/PowerShell shell, and is not the path this class takes.
 
-## 5. Freeing memory for the heavy labs
+## 5. Running the test suite on this machine
+
+The suite is bash, so run it **inside WSL** — not in `cmd` or PowerShell. It drives the same
+Docker stacks the labs do, so a green run here means the labs work on this machine.
+
+```bash
+cd ~/cockroachdb-course          # wherever you cloned it
+git pull
+
+bash setup/verify_student_vm.sh  # check the machine first — 30 seconds
+```
+
+Fix any `FAIL` before going further; a short WSL memory allocation will surface here.
+
+```bash
+./tests/lab_cluster_test.sh      # the student path: compose + scripts/crdb   (~3 min)
+./tests/crdb_wrappers_test.sh    # crdb.sh / crdb.bat parity                  (~2 min)
+./tests/run_all.sh               # all 16 labs                            (~60-90 min)
+```
+
+Useful knobs:
+
+| Command | Effect |
+| --- | --- |
+| `DAY=3 ./tests/run_all.sh` | just that day's four labs |
+| `LABS_OVERRIDE="lab08_test.sh lab10_test.sh" ./tests/run_all.sh` | an explicit subset |
+| `KEEP_ON_FAIL=1 ./tests/lab11_test.sh` | leave the cluster up to inspect a failure |
+| `FORCE_LAB16=1 ./tests/lab16_test.sh` | run Lab 16 even if the memory check objects |
+
+Expect skips rather than failures where a dependency is genuinely absent — the summary names
+each one. A run is healthy when the final line reads `Fail: 0`.
+
+> **Run it once before the first class.** It is the difference between finding a
+> machine-specific problem on a quiet afternoon and finding it in front of twelve people.
+
+## 6. Freeing memory for the heavy labs
 
 12 GB fits every lab, one heavy stack at a time. Before **Lab 7**, **Lab 10** and **Lab 16**:
 
