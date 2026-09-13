@@ -194,7 +194,7 @@ Reports that aggregate a big table will often contend with write traffic. The fi
 
 2. **In another terminal, run a current-time aggregate. Time it:**
    ```sql
-   \timing on
+   \set show_times
    SELECT count(*), sum(balance) FROM accounts;
    ```
    Often runs fast; under heavier contention it can stall briefly.

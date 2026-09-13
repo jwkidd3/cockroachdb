@@ -97,6 +97,10 @@ CREATE STATISTICS s2 FROM orders;
    ```sql
    CREATE INDEX orders_by_customer ON orders(customer_id);
    ```
+   > `customer_id` is a foreign key, and it had no index until now. **CockroachDB does not
+   > index FK columns automatically** (neither does PostgreSQL). Every column in a `REFERENCES`
+   > clause is a join column, and an unindexed join column means a full scan of the child table
+   > on every join — the most common slow join in practice. Index them by default.
 
 4. **Re-run EXPLAIN ANALYZE.** Confirm:
    - Scan is now `orders@orders_by_customer`
@@ -126,7 +130,7 @@ The query reads `id, status, total`. The index above only contains `customer_id,
 
 4. **Measure the write cost.** Time a `STATUS = 'shipped'` mass-update with and without storing. With STORING, every status change rewrites both the PK row and the index entry:
    ```sql
-   \timing on
+   \set show_times
    UPDATE orders SET status = 'shipped' WHERE status = 'paid';
    ```
    STORING is a tradeoff — fast reads, slower writes. Use it on hot read paths, not blindly.

@@ -224,10 +224,8 @@ SQL
 
 4. **Time the restore — this is your measured RTO:**
    ```sql
-   SELECT job_id, job_type, status,
-          finished - started AS duration,
-          (SELECT sum(row_count) FROM [SHOW JOBS] WHERE job_id = j.job_id) AS rows
-   FROM [SHOW JOBS] j
+   SELECT job_id, job_type, status, finished - started AS duration
+   FROM [SHOW JOBS]
    WHERE job_type = 'RESTORE' ORDER BY created DESC LIMIT 5;
    ```
 

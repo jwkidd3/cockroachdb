@@ -110,7 +110,7 @@ The `--global` flag also injects simulated inter-region latency (~80–100ms RTT
      price  DECIMAL(10,2) NOT NULL
    );
 
-   \timing on
+   \set show_times
    INSERT INTO products (name, price)
    SELECT 'item-' || g, (random()*100)::DECIMAL(10,2)
    FROM generate_series(1, 100) g;
@@ -169,7 +169,7 @@ The `--global` flag also injects simulated inter-region latency (~80–100ms RTT
    \demo connect 1
    ```
    ```sql
-   \timing on
+   \set show_times
    SELECT name FROM customers WHERE email = 'alice@us.example.com';   -- local
    SELECT name FROM customers WHERE email = 'charlie@eu.example.com'; -- remote
    ```
@@ -182,6 +182,41 @@ The `--global` flag also injects simulated inter-region latency (~80–100ms RTT
    SELECT name FROM customers WHERE email = 'alice@us.example.com';   -- now remote
    SELECT name FROM customers WHERE email = 'charlie@eu.example.com'; -- now local
    ```
+
+
+6. **Give a related table the same home.** Tables never share a range, so the only cross-table
+   locality available is the region — and only if each table carries the same region value.
+   Create `orders` `REGIONAL BY ROW`, copying the customer's region onto each order:
+   ```sql
+   CREATE TABLE orders (
+     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     customer_id UUID NOT NULL REFERENCES customers(id),
+     total       DECIMAL(12,2) NOT NULL,
+     region      crdb_internal_region NOT NULL
+   ) LOCALITY REGIONAL BY ROW AS region;
+
+   INSERT INTO orders (customer_id, total, region)
+   SELECT id, 42.00, region FROM customers;
+   ```
+   First the *request* — one partition per region, each with a lease preference for it:
+   ```sql
+   SELECT partition_name, zone_config FROM [SHOW PARTITIONS FROM TABLE orders];
+   ```
+   Then the *result* — where the allocator actually put the leaseholders:
+   ```sql
+   SELECT 'customers' AS tbl, start_key, lease_holder_locality
+   FROM [SHOW RANGES FROM TABLE customers WITH DETAILS]
+   UNION ALL
+   SELECT 'orders', start_key, lease_holder_locality
+   FROM [SHOW RANGES FROM TABLE orders WITH DETAILS]
+   ORDER BY 2, 1;
+   ```
+   Partitions appear in region order (the key encodes the region enum). Give the allocator about
+   two minutes after creating the tables (measured) and re-run: each partition's leaseholder locality
+   converges to its own region, for both tables alike. A join for
+   one customer now stays inside that region. Without the copied column, `orders` would default
+   to the *gateway's* region — and a European customer who ordered while travelling would carry a
+   cross-region join forever.
 
 ### Part C: GLOBAL Tables for Reference Data (10 min)
 
@@ -212,7 +247,7 @@ For lookup tables read everywhere but rarely written.
    \demo connect 1
    ```
    ```sql
-   \timing on
+   \set show_times
    SELECT name FROM country_codes WHERE code = 'US';
    ```
    ```text
@@ -231,7 +266,7 @@ For lookup tables read everywhere but rarely written.
 
 4. **But writes are slow:**
    ```sql
-   \timing on
+   \set show_times
    UPDATE country_codes SET name = 'United States of America' WHERE code = 'US';
    ```
    GLOBAL writes have to wait for clocks to advance past a future timestamp — slower than REGIONAL writes.
@@ -256,7 +291,7 @@ Sometimes you want a small reference table to live entirely in one region (think
    \demo connect 7
    ```
    ```sql
-   \timing on
+   \set show_times
    SELECT * FROM eu_pricing_rules;            -- local in EU (fast)
    ```
    ```text
@@ -323,20 +358,35 @@ Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving 
    ```sql
    SELECT
      range_id,
-     start_pretty,
+     start_key,
      lease_holder,
      replicas,
      lease_holder_locality,
      replica_localities
    FROM [SHOW RANGES FROM TABLE customers WITH DETAILS]
-   ORDER BY start_pretty;
+   ORDER BY start_key;
    ```
 
-2. **Zone configs in the system catalog:**
+2. **Zone configs in the system catalog** — this is the mechanism under everything you did in
+   Parts A–D:
    ```sql
+   SHOW ZONE CONFIGURATION FROM TABLE customers;
    SHOW ZONE CONFIGURATIONS;
    ```
-   Look for the entries CockroachDB created for your database and tables — they reflect the locality and survival goal you set.
+   `REGIONAL BY ROW` did not place anything itself. It wrote one zone configuration per region
+   partition, with `constraints` and `lease_preferences` expressed in locality terms
+   (`+region=europe-west1`), and the **allocator** satisfies them by matching against what each
+   node advertised in `--locality`. Put the two side by side:
+   ```sql
+   SELECT node_id, locality FROM crdb_internal.gossip_nodes ORDER BY node_id;   -- what nodes offer
+   ```
+   The `region=` strings in the second must match the `+region=` strings in the first exactly.
+
+   > **The failure is asymmetric.** `ADD REGION` for a name no node advertises is refused
+   > immediately. A node started with a *mis-typed* locality — `region=us-east-1` where the
+   > database says `us-east1` — is not refused: it joins, reports healthy, and simply never
+   > receives the replicas its region's zone configs ask for. The symptom is a region whose
+   > ranges are all led from elsewhere. These two queries are how you find it.
 
 3. **For the database overall:**
    ```sql
@@ -355,8 +405,11 @@ For each row, pick the locality and survival goal.
 | Compliance-pinned EU customer data | ? | ? |
 | Reference tax rates updated weekly, read everywhere | ? | ? |
 | Shopping-cart row that follows the user across regions (rare) | ? | ? |
+| Reporting dashboard over orders; five seconds stale is acceptable | ? | ? |
+| Global leaderboard written from every region and read as current | ? | ? |
 
 > Defend each choice. Then build them out on this cluster and confirm via `SHOW RANGES`.
+> Two of these rows have no "local everywhere" answer — say which, and what you would pin instead.
 
 ## Cleanup
 

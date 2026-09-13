@@ -105,7 +105,7 @@ SET sql_safe_updates = off;        -- lets us TRUNCATE without WHERE
 
 3. **Time the inserts head to head:**
    ```sql
-   \timing on
+   \set show_times
 
    INSERT INTO events_serial (payload)
    SELECT repeat('x', 400) FROM generate_series(1, 10000);
@@ -404,14 +404,19 @@ The classic dual-write problem: your app writes to the database AND publishes a 
 2. **Atomic write pattern — business data + event in one transaction:**
    ```sql
    BEGIN;
-   INSERT INTO orders_v2 (customer, total)
-     VALUES ('Alice', 99.99) RETURNING id AS order_id \gset
-
+   WITH new_order AS (
+     INSERT INTO orders_v2 (customer, total)
+     VALUES ('Alice', 99.99)
+     RETURNING id
+   )
    INSERT INTO events_outbox (topic, payload)
-     VALUES ('orders.created',
-             jsonb_build_object('order_id', :'order_id', 'customer', 'Alice', 'total', 99.99));
+   SELECT 'orders.created',
+          jsonb_build_object('order_id', id, 'customer', 'Alice', 'total', 99.99)
+   FROM new_order;
    COMMIT;
    ```
+   (A CTE carries the new id into the second insert. The CockroachDB shell has no psql-style
+   `\gset` variables — the single statement is also what keeps the pair atomic.)
    If the COMMIT succeeds, both rows are durable. If anything fails, NEITHER is visible. Atomicity by definition — no dual-write inconsistency.
 
 3. **Hand off via CDC** — in production, a changefeed ships the outbox to Kafka:

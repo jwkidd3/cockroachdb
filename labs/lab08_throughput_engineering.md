@@ -40,7 +40,7 @@ scripts/crdb sql         # open a SQL shell
 CREATE DATABASE throughput;
 USE throughput;
 SET sql_safe_updates = off;
-\timing on
+\set show_times
 ```
 
 Several parts of this lab drive the cluster from a **second terminal**. Copy the connection URL

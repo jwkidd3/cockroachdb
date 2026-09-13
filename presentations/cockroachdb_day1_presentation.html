@@ -1297,10 +1297,13 @@ CREATE TABLE orders (
 );
                     </code></pre>
                     <div class="info-box fragment">
-                        <p><strong>Foreign keys are real and enforced</strong> — they require a unique index on the parent column. CockroachDB will warn (or fail) if you try to add an FK without one. Cascading actions work the same way as PG.</p>
+                        <p><strong>Foreign keys are real and enforced</strong> — the <em>parent</em> column needs a unique index, which the primary key provides. Cascading actions work as in PG.</p>
+                    </div>
+                    <div class="warning-box fragment">
+                        <p><strong>The child column gets no index.</strong> <code>orders.customer_id</code> above is unindexed until you say <code>CREATE INDEX ON orders(customer_id)</code>. Until then every join or lookup by customer scans the whole <code>orders</code> table — the most common slow join in practice.</p>
                     </div>
                 
-                    <aside class="notes"><p>Foreign keys work and are enforced, but every FK check is a read of the referenced row — which may be on another range and node. On a write-heavy table with an FK to a hot parent, that read is a contention point.</p><p>Guidance to give: keep FKs where integrity matters and the parent is stable; consider dropping them on high-volume event tables where the application already guarantees the relationship. Lab 11 hits an FK ordering problem when deleting — parent before child fails.</p><p><strong>Terms:</strong> <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
+                    <aside class="notes"><p>Foreign keys work and are enforced, but every FK check is a read of the referenced row — which may be on another range and node. On a write-heavy table with an FK to a hot parent, that read is a contention point.</p><p>Guidance to give: keep FKs where integrity matters and the parent is stable; consider dropping them on high-volume event tables where the application already guarantees the relationship. Lab 11 hits an FK ordering problem when deleting — parent before child fails.</p><p>The warning box is the one to dwell on. PostgreSQL does not index FK columns automatically either, but people forget, and on a distributed database the consequence is a full scan of every range of the child table on every join. Lab 4 Part A shows exactly this: the join runs as a full scan of orders until the index on customer_id exists, then becomes a single-key lookup. The rule: every column that appears in REFERENCES gets an index unless there is a measured reason not to.</p><p><strong>Terms:</strong> <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
