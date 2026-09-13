@@ -81,8 +81,19 @@ done
 # molt and helm are containers, not local binaries — checked with the images below.
 
 sec "Limits and kernel settings"
+# CockroachDB runs in containers, which take the Docker daemon's file-handle
+# limit — not this shell's. Check the limit the database actually runs under.
+if docker info >/dev/null 2>&1; then
+    CNOFILE=$(docker run --rm alpine sh -c 'ulimit -n' 2>/dev/null || echo 0)
+    [ "${CNOFILE:-0}" -ge 65536 ] \
+        && ok "container ulimit -n = $CNOFILE (what CockroachDB runs under)" \
+        || bad "container ulimit -n = ${CNOFILE:-?} — set Docker's default-ulimits nofile to 65536 (daemon.json)"
+fi
+# The host shell's limit matters only to host-side tools (psql, python), which
+# need nothing like 65536. WSL commonly reports 1024 here; that is harmless.
 NOFILE=$(ulimit -n)
-[ "$NOFILE" -ge 65536 ] && ok "ulimit -n = $NOFILE" || bad "ulimit -n = $NOFILE (need 65536; log out and back in after provisioning)"
+[ "$NOFILE" -ge 65536 ] && ok "host shell ulimit -n = $NOFILE" \
+    || warn "host shell ulimit -n = $NOFILE — fine; only the container limit above affects the database"
 MMC=$(sysctl -n vm.max_map_count)
 [ "$MMC" -ge 262144 ] && ok "vm.max_map_count = $MMC" || bad "vm.max_map_count = $MMC (kind needs 262144)"
 
