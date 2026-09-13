@@ -48,7 +48,7 @@ DISK_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
 [ "$CPUS" -ge 8 ]     && ok "vCPU: $CPUS (>= 8)"      || { [ "$CPUS" -ge 4 ] && warn "vCPU: $CPUS — Days 1-2 only; 8 recommended" || bad "vCPU: $CPUS — need at least 4"; }
 # The course is sized for a 12 GB student VM. The kernel reserves a little, so
 # a 12,287 MB machine reports 11 GB here — that is the expected PASS value.
-[ "$MEM_GB" -ge 11 ]  && ok "RAM: ${MEM_GB} GB (12 GB VM)" || { [ "$MEM_GB" -ge 8 ] && warn "RAM: ${MEM_GB} GB — Labs 1-6 fine; Lab 7 (9-node demo) and Lab 16 (kind) will be tight" || bad "RAM: ${MEM_GB} GB — need at least 8"; }
+[ "$MEM_GB" -ge 11 ]  && ok "RAM: ${MEM_GB} GB (12 GB VM)" || { [ "$MEM_GB" -ge 8 ] && warn "RAM: ${MEM_GB} GB — every lab fits one stack at a time; Lab 16 (7.6 GB measured) has little margin" || bad "RAM: ${MEM_GB} GB — need at least 8; Lab 16 (kind) will not run"; }
 
 # WSL2 does not hand the whole machine to Linux. Recent builds default to half
 # of host RAM, so a 12 GB laptop gives WSL ~6 GB — enough for Labs 1-6 and
@@ -68,8 +68,9 @@ fi
 if docker info >/dev/null 2>&1; then
     DOCKER_GB=$(( $(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
     if   [ "$DOCKER_GB" -ge 11 ]; then ok "Docker memory: ${DOCKER_GB} GB"
-    elif [ "$DOCKER_GB" -ge 6 ];  then warn "Docker memory: ${DOCKER_GB} GB — enough for Labs 1-6; Lab 7 (9 nodes) and Lab 16 (kind) will be tight"
-    else bad "Docker memory: ${DOCKER_GB} GB — raise it to at least 11 GB (Docker Desktop: Settings > Resources > Memory)"; fi
+    elif [ "$DOCKER_GB" -ge 8 ];  then warn "Docker memory: ${DOCKER_GB} GB — every lab fits one stack at a time; Lab 16 (7.6 GB measured) has little margin"
+    elif [ "$DOCKER_GB" -ge 6 ];  then warn "Docker memory: ${DOCKER_GB} GB — Labs 1-15 fit one stack at a time; Lab 16 (kind, 7.6 GB) will not"
+    else bad "Docker memory: ${DOCKER_GB} GB — too little for Lab 7 (6 GB) or Lab 16 (7.6 GB)"; fi
 fi
 
 sec "Binaries"
@@ -158,15 +159,24 @@ else
     fail "docker/labs.yml not found - is the course repo checked out at $REPO?"
 fi
 
-sec "Multi-node capability (Lab 7 needs 9 nodes)"
+sec "Memory for the heavy labs (7, 10, 16)"
+# Measured, not estimated: Lab 7's 9-node demo ~6 GB; Lab 16's kind cluster
+# completed at 7.6 GB, scale-out included. Both assume the compose cluster
+# (~4 GB) is down first.
 L7_GB="${DOCKER_GB:-$MEM_GB}"
 if [ "$L7_GB" -ge 11 ]; then
-    ok "Docker has ${L7_GB} GB — enough for Lab 7's 9-node demo and Lab 16's kind cluster"
-    warn "On a 12 GB VM, run them one at a time: 'scripts/crdb down' before Lab 7 or Lab 16"
+    ok "Docker has ${L7_GB} GB — Labs 7, 10 and 16 all fit with room to spare"
+    warn "Still run 'scripts/crdb down' before Labs 7, 10 and 16: the compose cluster holds ~4 GB"
 elif [ "$L7_GB" -ge 8 ]; then
-    warn "Docker has ${L7_GB} GB — Lab 7 needs ~6 GB free, so stop the lab cluster first ('scripts/crdb down')"
+    ok "Docker has ${L7_GB} GB — Lab 7 (6 GB) fits comfortably; Lab 16 (7.6 GB) fits with ~$((L7_GB*1000-7600)) MB to spare"
+    warn "'scripts/crdb down' before Labs 7, 10 and 16 is mandatory at this size, not advice"
+    if [ "$IS_WSL" = "1" ]; then
+        warn "On a 12 GB machine WSL can safely have 9 GB. In %UserProfile%\\.wslconfig set:  [wsl2]  memory=9GB  — then 'wsl --shutdown'"
+    fi
+elif [ "$L7_GB" -ge 6 ]; then
+    warn "Docker has ${L7_GB} GB — Lab 7 fits with the cluster down; Lab 16 (7.6 GB) will not run"
 else
-    warn "Docker has ${L7_GB} GB — too tight for Lab 7's 9 nodes; have students pair up or use --nodes 3"
+    warn "Docker has ${L7_GB} GB — too little for Lab 7 (6 GB); have students pair up or use --nodes 3"
 fi
 
 sec "Summary"
