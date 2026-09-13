@@ -16,12 +16,17 @@
 #   scripts/crdb.sh down           remove the cluster AND its data
 #   scripts/crdb.sh reset          down, then up
 #
-# Set COCKROACH_LICENSE (and optionally COCKROACH_ORG) before `up` to unlock the
-# enterprise steps in Labs 11 and 13. Without one they are skipped, and the labs
-# say so.
+# The class licence is read from .license.env in the repo root (gitignored) and
+# applied by `up`. COCKROACH_LICENSE in the environment works too.
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# An enterprise licence for the class lives in .license.env at the repo root
+# (gitignored; the student image carries it). Plain KEY=VALUE lines. Applied
+# automatically by `up`, so students never touch it.
+if [ -f .license.env ]; then
+    set -a; . ./.license.env; set +a
+fi
 # CRDB_COMPOSE selects which cluster to drive. Lab 11 uses the standby:
 #   CRDB_COMPOSE=docker/labs-b.yml scripts/crdb.sh up
 CRDB_COMPOSE="${CRDB_COMPOSE:-docker/labs.yml}"
@@ -46,9 +51,13 @@ CMD="${1:-help}"; shift || true
 # borrows the temporary licence that `cockroach demo` ships with).
 apply_license() {
     [ -n "${COCKROACH_LICENSE:-}" ] || return 0
+    # A licence is bound to an organization NAME, which may be empty — the class
+    # key is. Setting cluster.organization to anything else makes the key
+    # invalid ("license valid only for ..."), so only set it when told to.
+    local org_sql=""
+    [ -n "${COCKROACH_ORG:-}" ] && org_sql="SET CLUSTER SETTING cluster.organization = '${COCKROACH_ORG}';"
     "${COMPOSE[@]}" exec -T ${NODE}1 ./cockroach sql "${AUTH[@]}" -e \
-        "SET CLUSTER SETTING cluster.organization = '${COCKROACH_ORG:-CockroachDB Course}';
-         SET CLUSTER SETTING enterprise.license = '${COCKROACH_LICENSE}';" >/dev/null 2>&1 \
+        "${org_sql} SET CLUSTER SETTING enterprise.license = '${COCKROACH_LICENSE}';" >/dev/null 2>&1 \
       && echo "enterprise licence applied" \
       || echo "WARNING: could not apply COCKROACH_LICENSE (is it valid and unexpired?)" >&2
 }

@@ -49,6 +49,9 @@ if not "%CRDB_COMPOSE%"=="%CRDB_COMPOSE:labs-secure=%" (
     set "AUTH=--certs-dir=/certs --host=crdbs1"
 )
 
+rem The class licence lives in .license.env at the repo root (KEY=VALUE lines).
+if exist ".license.env" for /f "usebackq eol=# tokens=1,* delims==" %%a in (".license.env") do set "%%a=%%b"
+
 set "CMD=%~1"
 if "%CMD%"=="" set "CMD=help"
 shift
@@ -128,8 +131,11 @@ goto :done
 rem Applies COCKROACH_LICENSE if the instructor set one. Unlocks the enterprise
 rem steps in Labs 11 and 13; without it those steps are skipped and say so.
 if "%COCKROACH_LICENSE%"=="" exit /b 0
-if "%COCKROACH_ORG%"=="" set "COCKROACH_ORG=CockroachDB Course"
-%COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% -e "SET CLUSTER SETTING cluster.organization = '%COCKROACH_ORG%'; SET CLUSTER SETTING enterprise.license = '%COCKROACH_LICENSE%';" >nul 2>&1
+rem Only set the organization when one is given: the class key is bound to an
+rem empty organization name, and any other value makes it invalid.
+set "ORGSQL="
+if not "%COCKROACH_ORG%"=="" set "ORGSQL=SET CLUSTER SETTING cluster.organization = '%COCKROACH_ORG%';"
+%COMPOSE% exec -T %NODE%1 ./cockroach sql %AUTH% -e "%ORGSQL% SET CLUSTER SETTING enterprise.license = '%COCKROACH_LICENSE%';" >nul 2>&1
 if errorlevel 1 (echo [WARN] could not apply COCKROACH_LICENSE ^(is it valid and unexpired?^)) else (echo enterprise licence applied)
 exit /b 0
 

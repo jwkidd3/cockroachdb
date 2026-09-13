@@ -98,6 +98,14 @@ cd ~/cockroachdb-course
 sudo bash setup/provision_wsl.sh
 ```
 
+Building the golden image? Export the class licence first and the script writes it into
+`.license.env`, where `scripts/crdb up` applies it on every start — students never see it:
+
+```bash
+export COCKROACH_LICENSE='crl-0-...'      # no COCKROACH_ORG: class keys are bound to an empty org
+sudo -E bash setup/provision_wsl.sh
+```
+
 It installs only what genuinely cannot be a container:
 
 | Installed | Why |

@@ -170,6 +170,20 @@ for img in \
     docker pull -q "$img" >/dev/null || warn "failed to pull $img"
 done
 
+# ------------------------------------------------------------- class licence
+# If the instructor exported COCKROACH_LICENSE when building the image, write
+# it where scripts/crdb reads it at every `up`. Students never see this step.
+# The file is gitignored, so a `git pull` on the image never removes it.
+if [ -n "${COCKROACH_LICENSE:-}" ]; then
+    log "writing the class licence to $COURSE_DIR/.license.env"
+    {
+        echo "COCKROACH_LICENSE=${COCKROACH_LICENSE}"
+        [ -n "${COCKROACH_ORG:-}" ] && echo "COCKROACH_ORG=${COCKROACH_ORG}"
+    } > "$COURSE_DIR/.license.env"
+    chown "$TARGET_USER:$TARGET_USER" "$COURSE_DIR/.license.env"
+    chmod 600 "$COURSE_DIR/.license.env"
+fi
+
 # ------------------------------------------------------------ shell conveniences
 # Where the course actually lives — derived from this script, not assumed, so
 # the repo can sit in any directory on any machine. Override with COURSE_DIR=...
@@ -186,9 +200,6 @@ alias labreset='bash $COURSE_DIR/setup/reset_labs.sh'
 # Tools that run in containers rather than being installed:
 alias molt='docker run --rm --network crdb-labs_default -v /tmp/lab15:/tmp/lab15 cockroachdb/molt'
 alias helm='docker run --rm -v "\$HOME/.config/helm:/root/.config/helm" -v "\$HOME/.cache/helm:/root/.cache/helm" alpine/helm'
-# Enterprise licence — free for training, request one from Cockroach Labs.
-#export COCKROACH_ORG='Your Organisation'
-#export COCKROACH_LICENSE='crl-0-...'
 ENVEOF
 install -d -o "$TARGET_USER" -g "$TARGET_USER" \
     "$TARGET_HOME/.config/helm" "$TARGET_HOME/.cache/helm" /tmp/lab15

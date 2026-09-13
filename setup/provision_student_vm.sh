@@ -167,15 +167,24 @@ for img in \
     docker pull -q "$img" || echo "WARN: failed to pull $img" >&2
 done
 
+# ------------------------------------------------------------- class licence
+# If the instructor exported COCKROACH_LICENSE when building the image, write
+# it where scripts/crdb reads it at every `up`. Students never see this step.
+# The file is gitignored, so a `git pull` on the image never removes it.
+if [ -n "${COCKROACH_LICENSE:-}" ]; then
+    log "writing the class licence to $COURSE_DIR/.license.env"
+    {
+        echo "COCKROACH_LICENSE=${COCKROACH_LICENSE}"
+        [ -n "${COCKROACH_ORG:-}" ] && echo "COCKROACH_ORG=${COCKROACH_ORG}"
+    } > "$COURSE_DIR/.license.env"
+    chown "$STUDENT_USER:$STUDENT_USER" "$COURSE_DIR/.license.env"
+    chmod 600 "$COURSE_DIR/.license.env"
+fi
+
 # ------------------------------------------------------------ shell conveniences
 cat > "$STUDENT_HOME/.crdb_course_env" <<ENVEOF
 # CockroachDB course conveniences
 export CRDB_INSECURE='postgresql://root@localhost:26257?sslmode=disable'
-# Enterprise licence — free for training, request one from Cockroach Labs.
-# Uncomment and fill in before snapshotting the golden image, and every student
-# gets the Lab 11 and Lab 13 enterprise steps instead of the skipped versions.
-#export COCKROACH_ORG='Your Organisation'
-#export COCKROACH_LICENSE='crl-0-...'
 # Everything runs in Docker; scripts/crdb drives the lab cluster.
 alias crdb='bash $COURSE_DIR/scripts/crdb.sh'
 alias crup='bash $COURSE_DIR/scripts/crdb.sh up'

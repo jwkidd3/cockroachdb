@@ -61,16 +61,19 @@ The error is explicit, e.g.:
 3. **A licence — free for training.** Cockroach Labs issues them at no cost for training and
    evaluation, so ask your instructor whether the class has one. Export it before starting the
    cluster and `scripts/crdb up` applies it for you:
+   On a class machine it is already in place: `scripts/crdb up` prints
+   `enterprise licence applied` when it starts. On your own machine, put the key in
+   `.license.env` at the repo root:
    ```bash
-   export COCKROACH_ORG='Your Organisation'
-   export COCKROACH_LICENSE='crl-0-...'
-   scripts/crdb up          # prints "enterprise licence applied"
+   echo 'COCKROACH_LICENSE=crl-0-...' > .license.env
+   scripts/crdb up
    ```
    Already have a cluster running? Apply it in place instead:
    ```sql
-   SET CLUSTER SETTING cluster.organization = 'Your Organisation';
    SET CLUSTER SETTING enterprise.license = 'crl-0-...';
    ```
+   (No `cluster.organization` — trial keys are bound to an empty organization name, and
+   setting one invalidates them.)
 
 Everything Parts D and E teach — the cross-cluster drill, the verification, the measured RTO,
 the runbook — works on the free path.

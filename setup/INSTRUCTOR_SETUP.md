@@ -242,16 +242,22 @@ class; it takes minutes and it unlocks the parts of the course that are otherwis
 | Lab 13: core changefeeds only — `CREATE CHANGEFEED ... INTO 'kafka://...'` is refused | The Kafka sink, resolved timestamps, the frontier consumer |
 | Lab 7: works anyway — `cockroach demo` carries its own temporary licence | Same |
 
-Apply it once per cluster by exporting it before `up`; the wrapper does the rest:
+Put it in one file on the golden image and students never touch it. In the repo root:
 
 ```bash
-export COCKROACH_ORG='Your Organisation'
-export COCKROACH_LICENSE='crl-0-...'
-scripts/crdb up          # prints "enterprise licence applied"
+echo 'COCKROACH_LICENSE=crl-0-...' > .license.env
+chmod 600 .license.env
 ```
 
-Put both lines in the student image's `~/.crdb_course_env` and every student gets it
-automatically. On Windows, `set COCKROACH_LICENSE=crl-0-...` before `scripts\crdb.bat up`.
+`scripts/crdb up` reads that file and applies the key every time a cluster starts, printing
+`enterprise licence applied`. The file is gitignored, so a `git pull` on the image never removes
+it and it can never be committed to the public repo. `provision_wsl.sh` and
+`provision_student_vm.sh` write it for you if `COCKROACH_LICENSE` is exported when they run.
+
+> **Do not set an organization.** Trial and training keys from the Cockroach Cloud console are
+> bound to an *empty* organization name. Setting `cluster.organization` to anything — the
+> account UUID, a company name — makes the key invalid with `license valid only for ""`.
+> Leave `COCKROACH_ORG` out of `.license.env` unless Cockroach Labs told you the key needs one.
 
 > The labs detect the licence at runtime. Without one they print a `🔒` note and continue on
 > the free path, so nothing breaks — students just see less.
@@ -263,7 +269,7 @@ automatically. On Windows, `set COCKROACH_LICENSE=crl-0-...` before `scripts\crd
 **One week out**
 - [ ] Golden image built (WSL: `SETUP_WSL.md`; Ubuntu: `provision_student_vm.sh`) and verified with `verify_student_vm.sh`
 - [ ] On WSL images: `.wslconfig` sets `memory=9GB`, and `wsl --shutdown` has been run once
-- [ ] Enterprise licence requested and added to the image's `~/.crdb_course_env`
+- [ ] Enterprise licence requested and written to `.license.env` in the repo root on the image
 - [ ] Quota confirmed for the class size in the target region — request an increase early
 - [ ] Course repo pushed and the image's clone points at the right branch
 - [ ] Test one student VM end to end: run **Lab 7**, **Lab 10**, and **Lab 16** in full
