@@ -192,8 +192,11 @@ guarantees beyond "this session is connected".
 4. **Consume raw:**
    ```bash
    docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-     --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 15000
+     --bootstrap-server localhost:9092 --topic orders --from-beginning
    ```
+   **Ctrl+C when you have seen enough.** A changefeed with `resolved` emits a watermark every
+   few seconds, so the stream never goes quiet — which is why `--timeout-ms` (an *inactivity*
+   timeout) would never fire here.
 
 5. **Decode an envelope.** With `updated, diff, key_in_value` you get:
    ```json
@@ -231,8 +234,8 @@ timestamp below this value*. Only then is a time window complete.
 1. **Watch the resolved messages arrive:**
    ```bash
    docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-     --bootstrap-server localhost:9092 --topic orders --timeout-ms 40000 \
-     | grep resolved
+     --bootstrap-server localhost:9092 --topic orders \
+     | grep --line-buffered resolved          # Ctrl+C to stop
    ```
 
 2. **Build a frontier-tracking consumer** — `/tmp/lab13/consumer.py`:
@@ -286,9 +289,10 @@ timestamp below this value*. Only then is a time window complete.
 3. **Run it against the live topic:**
    ```bash
    docker compose exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
-     --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 60000 \
-     | python3 /tmp/lab13/consumer.py
+     --bootstrap-server localhost:9092 --topic orders --from-beginning \
+     | python3 -u /tmp/lab13/consumer.py
    ```
+   Leave this running — it prints each `FRONTIER advanced` as it happens. Ctrl+C when done.
 
 4. **In another terminal, make changes and watch the frontier advance:**
    ```bash

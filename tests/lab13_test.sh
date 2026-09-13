@@ -121,8 +121,10 @@ else
         sleep 5
         pass "kafka broker is up"
 
+        # min_checkpoint_frequency defaults to 30s and caps how often resolved
+        # messages can be emitted, whatever `resolved` says. The lab sets both.
         CF=$(sql "CREATE CHANGEFEED FOR TABLE shop.orders INTO 'kafka://kafka:9092'
-                  WITH updated, resolved = '5s', diff, key_in_value;" 2>&1 || true)
+                  WITH updated, resolved = '5s', diff, key_in_value, min_checkpoint_frequency = '5s';" 2>&1 || true)
         if echo "$CF" | grep -qi "use of this feature\|enterprise"; then
             warn "enterprise changefeed is license-gated on this cluster; skipping the sink assertions"
         else
@@ -135,20 +137,25 @@ else
             sql "USE shop; UPDATE orders SET status = 'paid' WHERE total > 40;" >/dev/null
             sleep 15
 
-            MSGS=$(docker exec "$KAFKA_NAME" /opt/kafka/bin/kafka-console-consumer.sh \
-                --bootstrap-server localhost:9092 --topic orders \
-                --from-beginning --timeout-ms 20000 2>/dev/null || true)
+            # --timeout-ms is an INACTIVITY timeout, and with a resolved message
+            # every 5s the stream never goes quiet — so bound it by wall-clock.
+            MSGS=$(run_for 25 docker exec "$KAFKA_NAME" /opt/kafka/bin/kafka-console-consumer.sh \
+                --bootstrap-server localhost:9092 --topic orders --from-beginning)
             if [ -n "$MSGS" ]; then
                 pass "messages delivered to the kafka topic"
                 assert_contains "envelope has an after image" "$MSGS" "after"
                 assert_contains "resolved watermarks emitted" "$MSGS" "resolved"
 
                 # The frontier consumer must apply only rows below the frontier.
-                echo "$MSGS" | python3 - <<'PY'
+                # Messages go in by FILE, not by pipe: `echo | python3 - <<EOF`
+                # hands stdin to the heredoc and the script reads nothing.
+                MSGFILE="${STORE_BASE}/kafka_msgs.json"
+                printf '%s\n' "$MSGS" > "$MSGFILE"
+                python3 - "$MSGFILE" <<'PY'
 import json, sys
 frontier, pending, applied = "0", [], {}
 resolved_seen = 0
-for line in sys.stdin:
+for line in open(sys.argv[1]):
     line = line.strip()
     if not line: continue
     try: msg = json.loads(line)
