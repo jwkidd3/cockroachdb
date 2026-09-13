@@ -13,11 +13,6 @@
         /* Overflow safety: keep slide content visible when it exceeds the
            1280x900 viewport. Without this rule, content past the bottom edge
            silently disappears in present mode. */
-        .reveal .slides > section > section,
-        .reveal .slides > section:not(:has(section)) {
-            overflow-y: auto;
-            max-height: 88vh;
-        }
         .reveal .slides section pre {
             max-width: 100%;
             overflow-x: auto;
@@ -31,7 +26,17 @@
 
         .reveal {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* Theme default is 40px. 36px keeps every slide inside the 1280x900
+               frame without scrolling, and is still large on a projector. */
+            font-size: 36px;
         }
+        .reveal h3 { margin-bottom: 0.4em; }
+        .reveal .info-box, .reveal .warning-box { padding: 0.7em 0.9em; margin: 0.6em 0; }
+        .reveal .highlight-box { padding: 0.6em 0.8em; margin: 0.4em 0; }
+        .reveal .info-box p:first-child, .reveal .warning-box p:first-child,
+        .reveal .highlight-box p:first-child { margin-top: 0; }
+        .reveal .info-box p:last-child, .reveal .warning-box p:last-child,
+        .reveal .highlight-box p:last-child { margin-bottom: 0; }
 
         .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
             color: #1A3A5C;
@@ -113,7 +118,6 @@
             border-radius: 15px;
             padding: 0.6em;
             font-size: 0.75em;
-            overflow-y: auto;
             max-height: 90vh;
             color: #1f2d24 !important;
         }

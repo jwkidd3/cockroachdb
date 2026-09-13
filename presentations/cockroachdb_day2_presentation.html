@@ -10,11 +10,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/plugin/highlight/monokai.min.css">
 
     <style>
-        .reveal .slides > section > section,
-        .reveal .slides > section:not(:has(section)) {
-            overflow-y: auto;
-            max-height: 88vh;
-        }
         .reveal .slides section pre {
             max-width: 100%;
             overflow-x: auto;
@@ -28,7 +23,17 @@
 
         .reveal {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* Theme default is 40px. 36px keeps every slide inside the 1280x900
+               frame without scrolling, and is still large on a projector. */
+            font-size: 36px;
         }
+        .reveal h3 { margin-bottom: 0.4em; }
+        .reveal .info-box, .reveal .warning-box { padding: 0.7em 0.9em; margin: 0.6em 0; }
+        .reveal .highlight-box { padding: 0.6em 0.8em; margin: 0.4em 0; }
+        .reveal .info-box p:first-child, .reveal .warning-box p:first-child,
+        .reveal .highlight-box p:first-child { margin-top: 0; }
+        .reveal .info-box p:last-child, .reveal .warning-box p:last-child,
+        .reveal .highlight-box p:last-child { margin-bottom: 0; }
 
         .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
             color: #1A3A5C;
@@ -110,7 +115,6 @@
             border-radius: 15px;
             padding: 0.6em;
             font-size: 0.75em;
-            overflow-y: auto;
             max-height: 90vh;
             color: #1f2d24 !important;
         }
@@ -925,7 +929,7 @@ scripts/crdb run node status --insecure --decommission
                 <section>
                     <h3>The Allocator — Who Decides Where Replicas Live</h3>
                     <p>Every node runs an allocator that continuously answers: <em>is this range where it should be?</em></p>
-                    <table style="font-size: 0.64em;">
+                    <table style="font-size: 0.6em;">
                         <tr><th>Input</th><th>Effect on placement</th></tr>
                         <tr><td>Zone configuration</td><td>Hard constraint — replica count, region/zone requirements</td></tr>
                         <tr><td>Node liveness</td><td>Dead node's replicas are re-created elsewhere after <code>server.time_until_store_dead</code></td></tr>
@@ -936,15 +940,14 @@ scripts/crdb run node status --insecure --decommission
                     <pre class="fragment" style="font-size:0.8em;"><code class="language-sql">-- Is anything at risk right now?
 SELECT count(*) FROM crdb_internal.ranges_no_leases WHERE array_length(replicas,1) < 3;
 
--- The queue doing the work (a STORE metric, not a node metric:
---  capacity.*, rocksdb.* and queue.* live in kv_store_status)
+-- The queue doing the work (a STORE metric: lives in kv_store_status)
 SELECT node_id, store_id, metrics->>'queue.replicate.pending' AS pending
 FROM crdb_internal.kv_store_status;</code></pre>
                     <div class="warning-box fragment">
-                        <p class="small-text"><strong>Under-replicated &gt; 0 for more than a few minutes is a real alert.</strong>
-                        It means some ranges are one failure away from unavailability. A sustained non-zero
-                        replicate queue means the allocator has more work than it can drain — usually disk or
-                        network, occasionally a zone config that cannot be satisfied.</p>
+                        <p class="small-text"><strong>Under-replicated &gt; 0 for more than a few minutes is a real alert</strong> —
+                        those ranges are one failure from unavailability. A replicate queue that stays non-zero
+                        means the allocator cannot drain its work: usually disk or network, occasionally a zone
+                        config that cannot be satisfied.</p>
                     </div>
                 </section>
 

@@ -13,11 +13,6 @@
         /* Overflow safety: keep slide content visible when it exceeds the
            1280x900 viewport. Without this rule, content past the bottom edge
            silently disappears in present mode. */
-        .reveal .slides > section > section,
-        .reveal .slides > section:not(:has(section)) {
-            overflow-y: auto;
-            max-height: 88vh;
-        }
         .reveal .slides section pre {
             max-width: 100%;
             overflow-x: auto;
@@ -31,7 +26,17 @@
 
         .reveal {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* Theme default is 40px. 36px keeps every slide inside the 1280x900
+               frame without scrolling, and is still large on a projector. */
+            font-size: 36px;
         }
+        .reveal h3 { margin-bottom: 0.4em; }
+        .reveal .info-box, .reveal .warning-box { padding: 0.7em 0.9em; margin: 0.6em 0; }
+        .reveal .highlight-box { padding: 0.6em 0.8em; margin: 0.4em 0; }
+        .reveal .info-box p:first-child, .reveal .warning-box p:first-child,
+        .reveal .highlight-box p:first-child { margin-top: 0; }
+        .reveal .info-box p:last-child, .reveal .warning-box p:last-child,
+        .reveal .highlight-box p:last-child { margin-bottom: 0; }
 
         .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
             color: #1A3A5C;
@@ -113,7 +118,6 @@
             border-radius: 15px;
             padding: 0.6em;
             font-size: 0.75em;
-            overflow-y: auto;
             max-height: 90vh;
             color: #1f2d24 !important;
         }
@@ -309,7 +313,7 @@
             </section>
 
             <!-- Course Overview -->
-            <section>
+            <section class="schedule-slide">
                 <div class="section-title">
                     <h2>🎯 Course Overview — 4 Days</h2>
                 </div>
@@ -332,8 +336,8 @@
                 </div>
 
                 <div class="info-box fragment">
-                    <strong>Hands-on:</strong> 16 labs, ~72% of class time. Labs 1–12 and 14 need only the
-                    <code>cockroach</code> binary; Labs 13, 15, and 16 add Docker (Kafka, PostgreSQL, kind).
+                    <strong>Hands-on:</strong> 16 labs, ~72% of class time. Everything runs in Docker —
+                    there is no <code>cockroach</code> binary to install.
                 </div>
             </section>
 
@@ -1129,7 +1133,7 @@ CREATE TABLE invoices (
 
                 <section>
                     <h3>Hash-Sharded Indexes — Spread Sequential Keys</h3>
-                    <p>Sometimes you genuinely need a monotonic key (e.g. an <code>(account_id, created_at)</code> index for time-range queries). Hash sharding spreads it across N virtual buckets:</p>
+                    <p>When you genuinely need a monotonic key, hash sharding spreads it across N buckets:</p>
                     <p class="code-title">Hash-sharded primary key</p>
                     <pre><code class="language-sql">
 CREATE TABLE events (
@@ -1148,8 +1152,7 @@ CREATE TABLE events (
                         A time-series key needs a per-row tiebreaker.</p>
                     </div>
                     <div class="highlight-box fragment">
-                        <p>Under the hood, CockroachDB prepends a hidden <code>crdb_internal_account_id_created_shard_16</code> column (a hash bucket 0–15) to the key, so writes for similar timestamps land on different ranges.</p>
-                        <p class="small-text">Range queries by exact <code>(account_id, created)</code> still work via index lookup. Open-ended scans on <code>created</code> alone may need a separate non-sharded secondary index.</p>
+                        <p class="small-text">Under the hood a hidden <code>…_shard_16</code> column (bucket 0–15) is prepended to the key, so near-identical timestamps land on different ranges. Point lookups by <code>(account_id, created)</code> still work; open-ended scans on <code>created</code> alone may want a separate non-sharded index.</p>
                     </div>
                 </section>
 
@@ -1258,7 +1261,7 @@ CREATE INDEX ON events(account_id, created)
                 <!-- Schema Patterns Playbook overview -->
                 <section>
                     <h3>📚 Schema Patterns Playbook</h3>
-                    <p class="small-text">A take-home catalog of named patterns for high-volume, heavy-throughput workloads. We'll exercise these across Labs 3, 4, and 5.</p>
+                    <p class="small-text">A take-home catalog for high-volume workloads, exercised in Labs 3–5. Full schemas: <code>labs/SCHEMA_PATTERNS_PLAYBOOK.md</code>.</p>
                     <div class="two-column">
                         <div>
                             <div class="highlight-box">
@@ -1292,9 +1295,6 @@ CREATE INDEX ON events(account_id, created)
                             </div>
                         </div>
                     </div>
-                    <p class="fragment small-text" style="margin-top:0.5em;">
-                        Full catalog with canonical schemas: <code>labs/SCHEMA_PATTERNS_PLAYBOOK.md</code>.
-                    </p>
                 </section>
 
                 <section>
