@@ -98,28 +98,8 @@ cd ~/cockroachdb-course
 sudo bash setup/provision_wsl.sh
 ```
 
-Building the golden image? Export the class licence first and the script writes it into
-`.license.env`, where `scripts/crdb up` applies it on every start — students never see it:
-
-```bash
-export COCKROACH_LICENSE='crl-0-...'      # no COCKROACH_ORG: class keys are bound to an empty org
-sudo -E bash setup/provision_wsl.sh
-```
-
-It installs only what genuinely cannot be a container:
-
-| Installed | Why |
-| --- | --- |
-| `kind`, `kubectl` | Lab 16. `kind` drives the Docker daemon to build Kubernetes nodes, so it cannot itself run in one. |
-| `psql` | Labs 8 and 15 use client-side `\copy` against local files. |
-| `python3` + `psycopg2` | Six labs run Python against the cluster. |
-
-Everything else is an image, pre-pulled so the first lab is instant: `cockroach`,
-`kindest/node`, `prometheus`, `grafana`, `kafka`, `postgres`, `molt`, `helm`.
-
-The script also turns on systemd in `/etc/wsl.conf`. Without it WSL ignores
-`/etc/sysctl.d`, `vm.max_map_count` stays at 65530, and **kind fails to start**. If it says so,
-run `wsl --shutdown` in PowerShell and reopen the shell.
+The class licence ships in the repo (`.license.env`); `scripts/crdb up` applies it
+automatically. Nothing to do here.
 
 ### 2.3 Verify
 

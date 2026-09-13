@@ -61,13 +61,8 @@ The error is explicit, e.g.:
 3. **A licence — free for training.** Cockroach Labs issues them at no cost for training and
    evaluation, so ask your instructor whether the class has one. Export it before starting the
    cluster and `scripts/crdb up` applies it for you:
-   On a class machine it is already in place: `scripts/crdb up` prints
-   `enterprise licence applied` when it starts. On your own machine, put the key in
-   `.license.env` at the repo root:
-   ```bash
-   echo 'COCKROACH_LICENSE=crl-0-...' > .license.env
-   scripts/crdb up
-   ```
+   It ships with the repo (`.license.env`): `scripts/crdb up` prints
+   `enterprise licence applied` when it starts, and nothing further is needed.
    Already have a cluster running? Apply it in place instead:
    ```sql
    SET CLUSTER SETTING enterprise.license = 'crl-0-...';

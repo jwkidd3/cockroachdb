@@ -242,17 +242,13 @@ class; it takes minutes and it unlocks the parts of the course that are otherwis
 | Lab 13: core changefeeds only — `CREATE CHANGEFEED ... INTO 'kafka://...'` is refused | The Kafka sink, resolved timestamps, the frontier consumer |
 | Lab 7: works anyway — `cockroach demo` carries its own temporary licence | Same |
 
-Put it in one file on the golden image and students never touch it. In the repo root:
+It ships in the repo as `.license.env` in the root, so every clone and every `git pull` carries
+it. `scripts/crdb up` reads that file and applies the key each time a cluster starts, printing
+`enterprise licence applied`. Students do nothing.
 
-```bash
-echo 'COCKROACH_LICENSE=crl-0-...' > .license.env
-chmod 600 .license.env
-```
-
-`scripts/crdb up` reads that file and applies the key every time a cluster starts, printing
-`enterprise licence applied`. The file is gitignored, so a `git pull` on the image never removes
-it and it can never be committed to the public repo. `provision_wsl.sh` and
-`provision_student_vm.sh` write it for you if `COCKROACH_LICENSE` is exported when they run.
+**When the key expires** — trial keys typically run 30 days — replace the line in `.license.env`,
+commit, and have students `git pull` (or run `scripts\pull_latest.bat`). That is the whole
+rotation.
 
 > **Do not set an organization.** Trial and training keys from the Cockroach Cloud console are
 > bound to an *empty* organization name. Setting `cluster.organization` to anything — the
@@ -269,7 +265,7 @@ it and it can never be committed to the public repo. `provision_wsl.sh` and
 **One week out**
 - [ ] Golden image built (WSL: `SETUP_WSL.md`; Ubuntu: `provision_student_vm.sh`) and verified with `verify_student_vm.sh`
 - [ ] On WSL images: `.wslconfig` sets `memory=9GB`, and `wsl --shutdown` has been run once
-- [ ] Enterprise licence requested and written to `.license.env` in the repo root on the image
+- [ ] `.license.env` in the repo holds a key that will still be valid on the last day of class
 - [ ] Quota confirmed for the class size in the target region — request an increase early
 - [ ] Course repo pushed and the image's clone points at the right branch
 - [ ] Test one student VM end to end: run **Lab 7**, **Lab 10**, and **Lab 16** in full

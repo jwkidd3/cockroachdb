@@ -168,9 +168,9 @@ for img in \
 done
 
 # ------------------------------------------------------------- class licence
-# If the instructor exported COCKROACH_LICENSE when building the image, write
-# it where scripts/crdb reads it at every `up`. Students never see this step.
-# The file is gitignored, so a `git pull` on the image never removes it.
+# The class licence ships in the repo as .license.env. Exporting
+# COCKROACH_LICENSE while provisioning overrides it — useful for a fresh key
+# before the committed one has been updated.
 if [ -n "${COCKROACH_LICENSE:-}" ]; then
     log "writing the class licence to $COURSE_DIR/.license.env"
     {

@@ -89,13 +89,8 @@ export C='postgresql://root@localhost:26257?sslmode=disable'
 > **Enterprise changefeeds need a licence — and it is free for training.** Cockroach Labs
 > issues licences at no cost for training and evaluation, so ask your instructor whether the
 > class has one. Export it before starting the cluster and the wrapper applies it:
-> On a class machine it is already in place — `scripts/crdb up` prints
-> `enterprise licence applied`. On your own machine, put the key in `.license.env` at the
-> repo root and start the cluster:
-> ```bash
-> echo 'COCKROACH_LICENSE=crl-0-...' > .license.env
-> scripts/crdb up
-> ```
+> It ships with the repo (`.license.env`): `scripts/crdb up` prints
+> `enterprise licence applied` when it starts, and nothing further is needed.
 > Without one, `CREATE CHANGEFEED ... INTO` is refused and you run Part A only — core
 > changefeeds, which need no licence and teach the same envelope format.
 

@@ -23,5 +23,3 @@ tests/scratch/
 /lab15/
 /lab16/
 
-# Class enterprise licence — lives on the student image, never in git
-/.license.env

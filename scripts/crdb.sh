@@ -16,14 +16,14 @@
 #   scripts/crdb.sh down           remove the cluster AND its data
 #   scripts/crdb.sh reset          down, then up
 #
-# The class licence is read from .license.env in the repo root (gitignored) and
-# applied by `up`. COCKROACH_LICENSE in the environment works too.
+# The class licence is read from .license.env in the repo root and applied by
+# `up`. COCKROACH_LICENSE in the environment overrides it.
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-# An enterprise licence for the class lives in .license.env at the repo root
-# (gitignored; the student image carries it). Plain KEY=VALUE lines. Applied
-# automatically by `up`, so students never touch it.
+# The class enterprise licence lives in .license.env at the repo root and is
+# distributed with the repo. Plain KEY=VALUE lines. Applied automatically by
+# `up`, so students never touch it.
 if [ -f .license.env ]; then
     set -a; . ./.license.env; set +a
 fi
