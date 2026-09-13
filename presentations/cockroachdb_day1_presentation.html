@@ -381,6 +381,8 @@
                     <p class="fragment small-text" style="margin-top: 0.5em;">
                         Built by ex-Googlers inspired by Google Spanner — but open source and self-hostable.
                     </p>
+                
+                    <aside class="notes"><p>Frame it as one sentence: a relational database that speaks PostgreSQL and is built from the ground up to run as a cluster. Everything else in the course follows from the word "cluster".</p><p>Head off the first misconception now: it is not PostgreSQL with replication bolted on. There is no primary node. The storage, transaction, and replication layers are original; only the wire protocol and SQL dialect are borrowed.</p><p><strong>Terms:</strong> <strong>SERIALIZABLE</strong> — the only isolation level; transactions behave as if run one at a time, and anomalies are prevented by aborting with 40001.</p></aside>
                 </section>
 
                 <section>
@@ -392,6 +394,8 @@
                     <div class="highlight-box fragment">
                         <p>This isn't a marketing claim — it's an architectural <em>invariant</em>. Every range of data is replicated to 3 (or 5, or 7) nodes by default, and writes only commit when a quorum of replicas has acknowledged them. Survivability is built into the storage layer, not bolted on as a failover script.</p>
                     </div>
+                
+                    <aside class="notes"><p>The name is a design statement: the goal is survival, not speed. Say this explicitly, because students who arrive from single-node databases expect the pitch to be about performance.</p><p>Every later trade-off — synchronous replication, serializable isolation, cross-region write latency — is the price of that goal. When a student asks "why is this slower than Postgres for X", the answer is almost always on this slide.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all.</p></aside>
                 </section>
 
                 <section>
@@ -438,6 +442,8 @@
                             </tr>
                         </tbody>
                     </table>
+                
+                    <aside class="notes"><p>Two families: databases that shard a single-node engine (Citus, Vitess, application-level sharding) and databases whose storage layer is distributed from the start (CockroachDB, Spanner, YugabyteDB, TiDB). The first family has a coordinator and shards; the second has ranges and consensus.</p><p>The practical difference is who handles rebalancing, cross-shard transactions, and failover. In the first family, you do. In the second, the database does. That is the whole reason to accept the second family's costs.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default.</p></aside>
                 </section>
 
                 <section>
@@ -467,6 +473,8 @@
                             </div>
                         </div>
                     </div>
+                
+                    <aside class="notes"><p>Walk the table row by row, but spend the time on the two rows that change how students write code: isolation level (SERIALIZABLE always, so retries are normal — Day 2) and primary keys (sequential keys hotspot — later today).</p><p>Point out what is the same: the wire protocol, most of the SQL, the drivers. A Postgres developer is productive on day one; the surprises are operational and schema-level, not syntactic.</p><p><strong>Terms:</strong> <strong>SERIALIZABLE</strong> — the only isolation level; transactions behave as if run one at a time, and anomalies are prevented by aborting with 40001. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -496,6 +504,8 @@
                             </div>
                         </div>
                     </div>
+                
+                    <aside class="notes"><p>Be honest here; it builds credibility for the rest of the week. It fits when you need survival across failures or regions, horizontal write scaling, or strong consistency across a distributed dataset. It does not fit a single-region, single-node workload that will never grow — Postgres is simpler and faster there.</p><p>The tell in a requirements conversation: "what happens when this node / this zone / this region goes away?" If the answer has to be "nothing", you are in CockroachDB territory.</p><p><strong>Terms:</strong> <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere.</p></aside>
                 </section>
 
                 <section>
@@ -512,6 +522,8 @@
                     <p class="fragment small-text" style="margin-top: 0.5em;">
                         Common thread: <em>strong consistency + survivability + scale</em>. Any two are easy. All three is hard — and that's CockroachDB's niche.
                     </p>
+                
+                    <aside class="notes"><p>Use these as recognisable shapes rather than logos: financial ledgers (correctness under contention — Lab 5), global user profiles (data near the user — Lab 7), metadata and control planes (survive anything — Lab 1), IoT ingest (write scaling — Labs 3 and 8).</p><p>Ask the room which shape their own system is closest to. It sets up which labs they should pay closest attention to.</p></aside>
                 </section>
             </section>
 
@@ -541,6 +553,8 @@ Replication        ← Raft consensus, leaseholders
 Storage (Pebble)   ← LSM-tree, MVCC key-value store
                     </code></pre>
                     <p class="fragment small-text">Each node runs <em>all layers</em>. There is no separate "router" or "coordinator" tier.</p>
+                
+                    <aside class="notes"><p>This is the layer diagram to return to all week. SQL on top, then the transaction layer, then distribution (ranges), then replication (Raft), then storage (Pebble). A query enters at the top and each layer answers one question: what does this mean, is it consistent, where is it, is it durable, is it on disk.</p><p>Tell students you will name the layer every time a concept comes up. It stops the architecture from feeling like a pile of unrelated facts.</p><p><strong>Terms:</strong> <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>MVCC</strong> — multi-version concurrency control: every write is a new version keyed by timestamp; readers see the version at their timestamp and never block writers. <strong>SERIALIZABLE</strong> — the only isolation level; transactions behave as if run one at a time, and anomalies are prevented by aborting with 40001. <strong>Pebble</strong> — CockroachDB's storage engine: an append-only LSM-tree key-value store in Go; no locking. <strong>LSM</strong> — log-structured merge tree: writes go to a memtable and WAL, flush to immutable sorted files, and are compacted into deeper levels.</p></aside>
                 </section>
 
                 <section>
@@ -559,6 +573,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                     <div class="info-box fragment">
                         <p><strong>Why this matters:</strong> the layout of your primary key directly determines how rows are distributed across the cluster. Sequential keys = hotspots. Random keys = balanced load. We'll dig into this in Module 1 Section 4.</p>
                     </div>
+                
+                    <aside class="notes"><p>Show the encoding concretely: a row in table 52 with primary key 7 becomes a key like /52/1/7 with the non-key columns as the value. Secondary indexes are just more keys whose value is the primary key. That is the entire storage model.</p><p>The payoff comes on the primary-key slides: because rows are sorted by key, the primary key decides which rows sit next to each other on disk and which range they land in. Design the key and you have designed locality.</p><p><strong>Terms:</strong> <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>Pebble</strong> — CockroachDB's storage engine: an append-only LSM-tree key-value store in Go; no locking. <strong>LSM</strong> — log-structured merge tree: writes go to a memtable and WAL, flush to immutable sorted files, and are compacted into deeper levels.</p></aside>
                 </section>
 
                 <section>
@@ -575,6 +591,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                     <p class="fragment small-text">
                         A table doesn't live "on a node" — it lives across however many ranges its data fills, and each range can be on a different set of nodes.
                     </p>
+                
+                    <aside class="notes"><p>A range is a contiguous slice of the sorted key space, about 512 MiB in v23.2. It is the thing that gets replicated, moved, split, and merged. Tables and indexes are not distributed; ranges are.</p><p>Anticipate the question "how many ranges does my table have?" — SHOW RANGES FROM TABLE, which Lab 1 runs. A new small table is one range; that is why a hot new table can bottleneck on one node until it splits, which is what pre-splitting in Lab 8 addresses.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging.</p></aside>
                 </section>
 
                 <section>
@@ -591,6 +609,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                     <div class="highlight-box fragment">
                         <p>The 3 replicas of r42 elect a <strong>leader</strong> via Raft. The leader proposes writes; followers ack. A write commits when <strong>a majority (2 of 3)</strong> acknowledges — so the cluster tolerates losing 1 replica per range with zero data loss and no manual failover.</p>
                     </div>
+                
+                    <aside class="notes"><p>Three replicas per range, on three different nodes, chosen by the allocator. Replication is synchronous to a majority: a write is acknowledged when 2 of 3 have it durably. There is no asynchronous lag window where a committed write exists on only one node.</p><p>Distinguish durability from availability here because students conflate them: a backup gives durability; replicas give both durability and the ability to keep serving when a node dies. Lab 1 Part C demonstrates the second.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all.</p></aside>
                 </section>
 
                 <section>
@@ -618,6 +638,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                             </div>
                         </div>
                     </div>
+                
+                    <aside class="notes"><p>Keep it to the mechanics students will observe: each range's replicas form a Raft group; one is leader; the leader appends writes to a log and ships them to followers; a majority acknowledging is the commit point; followers apply committed entries in order.</p><p>Two properties to state: a committed entry is never lost as long as a majority survives, and a new leader always has every committed entry. Do not go deeper than that — the rest of the protocol never surfaces in operations.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all.</p></aside>
                 </section>
 
                 <section>
@@ -633,6 +655,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                     <div class="info-box fragment">
                         <p>Reads from a leaseholder are <strong>strongly consistent</strong> — they reflect every committed write. The leaseholder's lease is time-bounded (~9s), so a dead leaseholder is replaced quickly by a peer.</p>
                     </div>
+                
+                    <aside class="notes"><p>This is the slide students misremember, so be precise. Reads do not go through Raft and do not touch a quorum. One replica per range holds the lease; it alone serves reads, from its local copy, and it alone proposes writes. The lease guarantees it has applied every committed write, so a read from it is linearizable.</p><p>Consequence: read latency is decided by where the leaseholder is, not where the replicas are. Multi-region design on Day 2 is entirely about leaseholder placement. Lab 1 Part D kills the leaseholder specifically so students see the brief stall while the lease moves.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>follower read</strong> — a read served by a non-leaseholder replica at a slightly past timestamp it has fully applied (~4–5 s); trades staleness for locality.</p></aside>
                 </section>
 
                 <section>
@@ -664,6 +688,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                     <p class="fragment small-text" style="margin-top: 0.5em;">
                         Apps point at any node — typically through a load balancer — and the cluster routes the request to the right leaseholder internally.
                     </p>
+                
+                    <aside class="notes"><p>"Multi-active" means every node accepts reads and writes for the ranges it leads; there is no read-only replica tier and no primary to fail over. Contrast with active-passive (one writer, standby waits) and active-active (multiple writers, conflicts resolved later — which CockroachDB is not).</p><p>If asked how this differs from "multi-master": there is exactly one leaseholder per range at any instant, so there is never a write conflict to reconcile. Consensus decides before the write is acknowledged, not after.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>multi-active</strong> — every node serves reads and writes for the ranges it leads; no primary, no failover step.</p></aside>
                 </section>
 
                 <section>
@@ -680,13 +706,15 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                     <div class="info-box fragment">
                         <p>Gossip is <em>eventually consistent</em> — but the actual data and Raft log are <em>strongly consistent</em>. The distinction matters: gossip just tells nodes where to look; consistency comes from Raft.</p>
                     </div>
+                
+                    <aside class="notes"><p>Gossip is how every node learns cluster-wide facts cheaply — who is alive, what localities exist, where ranges' leaseholders roughly are. It is eventually consistent by design and it is not on the write path.</p><p>This explains a thing students will see in Lab 1: right after scripts/crdb up, the node list can briefly show fewer than three nodes. The cluster is fine; gossip has not propagated yet. The wrapper waits for it, but the console may lag a moment.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>gossip</strong> — the peer-to-peer protocol nodes use to share liveness, localities and addresses; eventually consistent, not on the write path. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
                 </section>
 
                 <section>
                     <h3>Cluster Membership &amp; Join Flow</h3>
                     <p class="code-title">Bringing a new node online</p>
                     <pre><code class="language-text">
-1.  Operator runs:   cockroach start --join=<existing-node>:26257
+1.  Operator runs:   cockroach start --join=&lt;existing-node&gt;:26257
 2.  New node connects to one or more existing nodes (the "join list")
 3.  Gossip propagates the new node's address &amp; locality
 4.  The allocator decides which ranges should add this node as a replica
@@ -699,6 +727,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                         when the replicas have nowhere to go — as on a 3-node cluster at RF=3, which is why the lab adds
                         a fourth node first.</p>
                     </div>
+                
+                    <aside class="notes"><p>The point to land: there is no master to register with. A new node is given a --join list of any existing nodes, connects, gossips its address, and the allocator starts moving replicas onto it. Adding capacity is starting a process. scripts/crdb add-node in Lab 1 does exactly that.</p><p>Decommissioning is the reverse and it is refused when there is nowhere to put the replicas. Lab 1 Part E has students hit that refusal on purpose — a 3-node cluster at replication factor 3 cannot lose a node gracefully — then add a fourth node and succeed.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>gossip</strong> — the peer-to-peer protocol nodes use to share liveness, localities and addresses; eventually consistent, not on the write path. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
                 </section>
 
                 <section>
@@ -711,6 +741,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                         <p><strong>Q2.</strong> An application connects to Node 3 and runs <code>SELECT * FROM users WHERE id = 'abc'</code>. The leaseholder for that row is on Node 1. What does Node 3 do?</p>
                         <p class="fragment small-text"><em>A:</em> Node 3 routes the request to Node 1's leaseholder via internal RPC and returns the result. The client never sees the redirect.</p>
                     </div>
+                
+                    <aside class="notes"><p>Run it as a discussion, not a test. Q1's answer is the one that matters: losing a majority of a range's replicas makes that range unavailable, not inconsistent. The database refuses to answer rather than answer wrongly. That is the design choice everything else rests on.</p><p>Q2 establishes that the gateway node is not special — any node accepts the connection and routes internally. Students who came from sharded systems expect to have to connect to the right shard.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>unavailable range</strong> — a range with fewer live replicas than a quorum: refuses reads and writes until a replica returns.</p></aside>
                 </section>
             </section>
 
@@ -734,6 +766,8 @@ INSERT INTO users VALUES ('abc-123', 'jane@example.com', 'Jane');
                         </ul>
                     </div>
                     <p class="fragment small-text">No JVM. No Python runtime. No package manager dependencies. <code>scp</code> the binary, run it, done.</p>
+                
+                    <aside class="notes"><p>One static Go binary contains the server, the SQL shell, the workload generator, the demo cluster, backup tooling, and cert generation. Every command in this course is a subcommand of it.</p><p>In this course that binary lives inside a container. Nothing is installed on the student machine; scripts/crdb run executes any subcommand inside node 1. Say this now so nobody goes looking for a download.</p><p><strong>Terms:</strong> <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>cockroach demo</strong> — a throwaway in-memory cluster in one process with a temporary licence; <code>--global</code> simulates inter-region latency.</p></aside>
                 </section>
 
                 <section>
@@ -766,6 +800,8 @@ cockroach version
                         <a href="https://www.cockroachlabs.com/docs/releases/">releases page</a>,
                         extract, and add the folder to <code>PATH</code>.</p>
                     </div>
+                
+                    <aside class="notes"><p>Students install nothing for this class — the image already has Docker, kind, kubectl, psql and psycopg2, and the database itself runs only in containers. Show the slide for what they will do after the course on their own machines.</p><p>The one thing worth saying about production installs: pin the version. The compose files pin v23.2.5 for exactly that reason; the sample in the labs is reproducible because the version is.</p></aside>
                 </section>
 
                 <section>
@@ -792,6 +828,8 @@ cockroach version
                             </tr>
                         </tbody>
                     </table>
+                
+                    <aside class="notes"><p>demo is a throwaway in-memory cluster with a temporary enterprise licence — used in Lab 7 for simulated multi-region latency. start is a real persistent node — what docker/labs.yml runs three times. Kubernetes via the operator is Lab 16.</p><p>Students should leave knowing which one they are using at any moment. The compose cluster is start; if a lab says demo, it is deliberately a different cluster.</p><p><strong>Terms:</strong> <strong>cockroach demo</strong> — a throwaway in-memory cluster in one process with a temporary licence; <code>--global</code> simulates inter-region latency.</p></aside>
                 </section>
 
                 <section>
@@ -817,6 +855,8 @@ docker run --rm -it -p 8090:8080 cockroachdb/cockroach:v23.2.5 \
                             <li>Survives kills inside the demo (<code>cockroach node decommission</code>, etc.)</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>demo builds an entire cluster inside one process and drops you into a SQL shell. --global adds simulated inter-region latency between nine nodes in three regions, which is the only way to teach multi-region latency on one laptop — hence Lab 7.</p><p>Two facts to state: it ships with a temporary enterprise licence, which multi-region SQL requires; and the backslash-demo commands (connect, shutdown) work only in that interactive shell, not when SQL is piped in.</p><p><strong>Terms:</strong> <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>enterprise licence</strong> — unlocks incremental/revision_history backups, enterprise changefeeds and multi-region SQL; free for training; ships in <code>.license.env</code>; bound to an empty organization name. <strong>cockroach demo</strong> — a throwaway in-memory cluster in one process with a temporary licence; <code>--global</code> simulates inter-region latency.</p></aside>
                 </section>
 
                 <section>
@@ -839,6 +879,8 @@ cockroach init --insecure --host=crdb1:26257
                     <p class="fragment small-text">Read it in <code>docker/labs.yml</code>; watch a node join with
                     <code>scripts/crdb logs 1</code>. <strong><code>--insecure</code> is for labs only</strong> —
                     Lab 12 builds a TLS cluster.</p>
+                
+                    <aside class="notes"><p>Walk the three flags. --join is the same list on every node; no node is special. --advertise-addr is the name other nodes use to reach this one — inside Docker that is the container name. init runs exactly once in the life of the cluster and turns three waiting processes into a cluster.</p><p>Point students at docker/labs.yml so they see this is not hidden magic: the file is the three start commands plus a one-shot init service. scripts/crdb logs 1 shows a node waiting for init and then joining.</p></aside>
                 </section>
 
                 <section>
@@ -863,6 +905,8 @@ psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable"
                             <li><code>\q</code> — quit</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>scripts/crdb sql is cockroach sql executed inside node 1 — it is the built-in client, not a wrapper around psql. -e runs one statement and exits; without -e it is interactive; piping a file into it works.</p><p>psql and every other PostgreSQL client also work, over the published port on localhost. Lab 1 Part F has students connect three ways so they see the wire compatibility rather than take it on faith.</p></aside>
                 </section>
 
                 <section>
@@ -875,6 +919,8 @@ psql "postgresql://root@localhost:26257/defaultdb?sslmode=disable"
                     <p class="fragment small-text">It bites hardest where the <em>database</em> dials out — a changefeed
                     sink in Lab 13, a workload generator in Lab 8. Those run inside the cluster network, so
                     <code>localhost</code> there means the node itself, not your laptop.</p>
+                
+                    <aside class="notes"><p>This slide exists because it is the single most common error in the course. From the student's shell, the cluster is localhost:26257 (a published port). From inside any container — including the database node itself — it is crdb1:26257, because localhost there is that container.</p><p>Where it bites: anything the database dials out to. A changefeed sink in Lab 13, a workload generator in Lab 8 — those run inside the network, so the URL must say crdb1, and a Kafka broker must be on the same Docker network. Return to this slide when Lab 13 arrives.</p><p><strong>Terms:</strong> <strong>sink</strong> — a changefeed's destination (<code>kafka://</code>, cloud storage, webhook); dialled by the database node, so it must be reachable from inside the cluster network.</p></aside>
                 </section>
 
                 <section>
@@ -898,6 +944,8 @@ Every node serves the same console. If one is down, read another.
                         <li><strong>Jobs</strong> — long-running things like BACKUP, RESTORE, CHANGEFEED, schema changes</li>
                         <li><strong>Databases</strong> — schema browser with per-table stats</li>
                     </ul>
+                
+                    <aside class="notes"><p>Every node serves the same console; if node 1 is down, use node 2's port. Nothing in the console is authoritative in a way SQL is not — crdb_internal has all of it — but the console is where trends are visible.</p><p>Lab 2 is a guided tour. For now, open localhost:8080 and show the Overview page: three nodes, live, ranges spread evenly. That picture is what "healthy" looks like, and students should recognise its absence later.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>online schema change</strong> — DDL that runs as a background job while the table serves traffic; additive changes are safe, renames and type changes are not. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
                 </section>
 
                 <section>
@@ -927,6 +975,8 @@ Every node serves the same console. If one is down, read another.
                             </div>
                         </div>
                     </div>
+                
+                    <aside class="notes"><p>Compatibility is at the protocol and SQL-dialect level, which is why existing drivers and ORMs work unchanged. What is not compatible is anything that assumes single-node behaviour: retry handling for 40001, stored procedures (limited), some system catalogs, and extensions.</p><p>The honest summary for a migrating team: the driver works on day one; the application's transaction handling and schema need review. Day 4's migration section is that review.</p><p><strong>Terms:</strong> <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots.</p></aside>
                 </section>
 
                 <!-- Lab 1: Cluster Bootstrap -->
@@ -972,6 +1022,8 @@ Every node serves the same console. If one is down, read another.
                             <li class="fragment"><strong>Hot Ranges</strong>: top ranges by QPS — your hotspot suspects live here</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>Teach three numbers on the Overview page: live nodes, under-replicated ranges, unavailable ranges. Under-replicated non-zero for a moment after a node restarts is normal; sustained is an alert. Unavailable non-zero means a range has lost its majority and is refusing requests.</p><p>Lab 1 Part C has students watch under-replicated rise when a node is stopped and fall back to zero when it returns. Connect the number to the mechanism: the allocator is repairing replica counts.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>under-replicated</strong> — a range with fewer live replicas than its replication factor but still a quorum: serving, and being repaired. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput.</p></aside>
                 </section>
 
                 <section>
@@ -999,6 +1051,8 @@ ORDER BY executions DESC LIMIT 10;
 SELECT node_id, session_id, application_name, active_queries
 FROM crdb_internal.cluster_sessions;
                     </code></pre>
+                
+                    <aside class="notes"><p>crdb_internal is the operator's view; it is what the console reads. Emphasise gossip_nodes (who is live), ranges_no_leases (replica placement), statement_statistics (what is slow), kv_node_status and kv_store_status (metrics in SQL).</p><p>One gotcha worth flagging: some metrics live on stores, not nodes — capacity, storage-engine, and queue metrics are in kv_store_status and are silently NULL from kv_node_status. Lab 9 hits this.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>crdb_internal</strong> — the virtual schema exposing cluster state in SQL; what the DB Console reads.</p></aside>
                 </section>
 
                 <!-- Lab 2: DB Console & SQL Tour -->
@@ -1059,6 +1113,8 @@ scripts/crdb up          # 3-node cluster in Docker</code></pre>
                     </table>
                     <p class="fragment small-text">You will be asked to defend a primary key with a number
                     before this course is over.</p>
+                
+                    <aside class="notes"><p>State the thesis and repeat it every day: performance in a distributed database is decided by data layout, and data layout is decided by the primary key. Tuning, indexes, and hardware come after that decision, not instead of it.</p><p>Everything from here to the end of Day 2 is applications of this one idea. If students remember nothing else, this is the slide.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>write amplification</strong> — bytes physically written per byte logically written, from compaction; typically 10–30×, multiplied by replication and indexes. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write.</p></aside>
                 </section>
 
                 <section>
@@ -1077,6 +1133,8 @@ CREATE TABLE events (
                         </code></pre>
                         <p class="small-text">Sequential <code>id</code> values → every insert lands on the rightmost range → one leaseholder is hammered while others idle.</p>
                     </div>
+                
+                    <aside class="notes"><p>Three things the primary key controls at once: which rows are adjacent on disk (scan locality), which range a new row lands in (write distribution), and what a point lookup costs (one key or a fan-out). No other schema choice controls all three.</p><p>Set the frame for the next four slides: sequential keys concentrate writes, random keys spread them, composite keys choose which queries are local. There is no universally right answer — there is the right answer for a given access pattern.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots.</p></aside>
                 </section>
 
                 <section>
@@ -1090,6 +1148,8 @@ CREATE TABLE events (
                         <p><strong>Better than PG's SERIAL</strong> — values are roughly time-ordered but each node carves out its own counter space, so writes spread across the cluster.</p>
                         <p><strong>Still not random</strong> — values are <em>monotonic</em>, so all inserts cluster on the latest range. For high-throughput inserts, prefer <code>UUID</code>.</p>
                     </div>
+                
+                    <aside class="notes"><p>On a single node, SERIAL is the ideal key. On a cluster it is the worst one: every new row is the largest key so far, so every insert lands on the last range — the right edge — on one leaseholder. Adding nodes does not help; that one range still lives on one node.</p><p>Also mention that CockroachDB's SERIAL is not a sequence by default — it is unique_rowid(), a timestamp-derived value, which is still monotonic and still hotspots. Lab 3 measures the difference between SERIAL and UUID under load.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -1112,6 +1172,8 @@ CREATE TABLE events (
                     <div class="warning-box fragment small-text">
                         <p><strong>Watch out:</strong> if you need <em>ordered</em> iteration by insert time, add a <code>created_at</code> index — don't try to encode ordering into the primary key.</p>
                     </div>
+                
+                    <aside class="notes"><p>gen_random_uuid() spreads inserts uniformly across the key space, so a write-heavy table scales with the number of nodes. That is why it is the default recommendation.</p><p>State the cost honestly: no time ordering, so "the latest rows" requires a secondary index on a timestamp — which reintroduces a right-edge hotspot on that index. The hash-sharded slide two ahead is how to keep time order without the hotspot.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -1129,6 +1191,8 @@ CREATE TABLE invoices (
                         <p><strong>Performance trap:</strong> every <code>nextval()</code> is a distributed transaction — it must atomically increment a shared counter range. High-volume inserts on a sequence-PK table will <em>not</em> scale.</p>
                         <p>Use sequences when business logic <em>requires</em> monotonic integers (e.g. invoice numbers for accounting). Otherwise, use UUID.</p>
                     </div>
+                
+                    <aside class="notes"><p>A sequence is a single row that every insert must increment — a coordination point that hotspots at scale, and a cross-range transaction on every insert. Use it only when an external system demands dense consecutive integers.</p><p>If a sequence is unavoidable, CACHE reduces the contention by handing each session a block of values. Point out that this gives up gap-free numbering, which is usually why someone wanted a sequence in the first place.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -1154,6 +1218,8 @@ CREATE TABLE events (
                     <div class="highlight-box fragment">
                         <p class="small-text">Under the hood a hidden <code>…_shard_16</code> column (bucket 0–15) is prepended to the key, so near-identical timestamps land on different ranges. Point lookups by <code>(account_id, created)</code> still work; open-ended scans on <code>created</code> alone may want a separate non-sharded index.</p>
                     </div>
+                
+                    <aside class="notes"><p>Mechanism: a hidden computed column, a hash of the key columns modulo bucket_count, is prepended to the key. Sixteen buckets means sixteen separate key regions; consecutive timestamps land in different ranges. This keeps time order within each bucket while spreading writes.</p><p>Two consequences to state. A lookup that supplies all key columns computes the shard and reads one bucket; a lookup on a prefix reads all sixteen buckets in parallel, which is still fast. An open-ended time-range scan with no account_id reads everything — sharding destroys global time order, so a separate plain index may be needed for that query. Also: now() is the transaction timestamp, so (account_id, created) alone is not unique — hence the id tiebreaker. Lab 3 measures all of this.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>hash-sharded</strong> — an index whose key is prefixed with a hidden hash-bucket column, spreading sequential keys across ranges at the cost of global order. <strong>bucket_count</strong> — the number of virtual shards in a hash-sharded index; each is a separate contiguous key region.</p></aside>
                 </section>
 
                 <section>
@@ -1176,6 +1242,8 @@ CREATE TABLE orders (
                             <li>Hot tenants can still cause a hotspot — be aware</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>The order of columns in a composite key is the order rows are sorted, and therefore what is a prefix scan. (tenant_id, created) makes "everything for this tenant, recent first" a single contiguous read; (created, tenant_id) makes it a scan of every tenant.</p><p>This is Playbook pattern #3, per-tenant co-location. It also keeps a tenant's transaction inside one range, which is the one-phase commit fast path — cheaper than the cross-range protocol. Lab 3 builds both orderings and compares plans.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>REGIONAL BY ROW</strong> — table locality that partitions rows by a region column so each row's leaseholder lives in its home region. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>composite key</strong> — a primary key of several columns; column order is sort order and decides prefix scans and range co-location.</p></aside>
                 </section>
 
                 <section>
@@ -1209,6 +1277,8 @@ CREATE TABLE orders (
                             </div>
                         </div>
                     </div>
+                
+                    <aside class="notes"><p>Types are PostgreSQL's. The cares: STRING is TEXT; INT is 64-bit; SERIAL is not a sequence; TIMESTAMPTZ over TIMESTAMP; JSONB is fully indexable with inverted indexes; DECIMAL for money, never FLOAT.</p><p>The one that surprises migrations: INT defaults to 8 bytes, so a Postgres INT4 column arrives as INT8. Harmless for storage; a mismatch for a driver expecting a 32-bit type.</p><p><strong>Terms:</strong> <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -1229,6 +1299,8 @@ CREATE TABLE orders (
                     <div class="info-box fragment">
                         <p><strong>Foreign keys are real and enforced</strong> — they require a unique index on the parent column. CockroachDB will warn (or fail) if you try to add an FK without one. Cascading actions work the same way as PG.</p>
                     </div>
+                
+                    <aside class="notes"><p>Foreign keys work and are enforced, but every FK check is a read of the referenced row — which may be on another range and node. On a write-heavy table with an FK to a hot parent, that read is a contention point.</p><p>Guidance to give: keep FKs where integrity matters and the parent is stable; consider dropping them on high-volume event tables where the application already guarantees the relationship. Lab 11 hits an FK ordering problem when deleting — parent before child fails.</p><p><strong>Terms:</strong> <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -1256,6 +1328,8 @@ CREATE INDEX ON orders(customer_id) WHERE status = 'open';
 CREATE INDEX ON events(account_id, created)
   USING HASH WITH (bucket_count = 8);
                     </code></pre>
+                
+                    <aside class="notes"><p>Secondary indexes are themselves ranges, so they replicate and can hotspot exactly like tables. Every write to an indexed column is another key-value write, another Raft proposal. An index is never free; it is a write cost paid to make one read cheaper.</p><p>Walk the four forms on the slide: plain, STORING (covering), partial (WHERE), hash-sharded. Note the syntax order for the last: USING HASH, then STORING, then WITH (bucket_count) — the labs got this wrong once and it is easy to get wrong.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>hash-sharded</strong> — an index whose key is prefixed with a hidden hash-bucket column, spreading sequential keys across ranges at the cost of global order. <strong>bucket_count</strong> — the number of virtual shards in a hash-sharded index; each is a separate contiguous key region. <strong>secondary index</strong> — an extra sorted key space whose value is the primary key; itself made of ranges, so it replicates and can hotspot. <strong>STORING / covering</strong> — <code>STORING</code> copies columns into the index entry's value so the index covers the query with no index join; stored columns cannot be filtered or sorted on. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh.</p></aside>
                 </section>
 
                 <!-- Schema Patterns Playbook overview -->
@@ -1295,6 +1369,8 @@ CREATE INDEX ON events(account_id, created)
                             </div>
                         </div>
                     </div>
+                
+                    <aside class="notes"><p>This is a take-home artifact, not a slide to read aloud. Ten named patterns, each with a canonical schema and a "measure it" block, in labs/SCHEMA_PATTERNS_PLAYBOOK.md. Labs 3, 4, and 5 exercise them; Day 2 measures them.</p><p>Ask students to name which pattern their own hottest table should be using. Most real schemas are #1, #3, or #6; #5 (sharded counter) is the one nobody has heard of and everybody needs.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>right edge</strong> — the highest end of the sorted key space, the last range; a monotonically increasing key sends every insert there. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -1328,6 +1404,8 @@ CREATE INDEX ON events(account_id, created)
                     <p class="fragment small-text" style="margin-top:0.5em;">
                         Lab 3 also builds #2 (Append-Only Event Log), #8 (Outbox + CDC), and #9 (TTL Table) from scratch.
                     </p>
+                
+                    <aside class="notes"><p>Reassure: normalisation, indexes for predicates, avoiding SELECT star, batching — all still true. Distributed SQL adds constraints; it does not replace the fundamentals.</p><p>The one shift to name: "denormalise for read speed" is more often right here than on a single node, because a join can be a cross-node operation. The outbox and per-tenant patterns are both forms of deliberate co-location.</p><p><strong>Terms:</strong> <strong>hash-sharded</strong> — an index whose key is prefixed with a hidden hash-bucket column, spreading sequential keys across ranges at the cost of global order. <strong>bucket_count</strong> — the number of virtual shards in a hash-sharded index; each is a separate contiguous key region. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>pre-split</strong> — seeding a table's ranges before a bulk load so it starts spread across nodes; released with <code>UNSPLIT ALL</code>. <strong>IMPORT INTO</strong> — bulk load into an existing table from staged files; far faster than INSERT, table briefly offline.</p></aside>
                 </section>
 
                 <!-- Lab 3: Schema Design — High-Volume Patterns -->
@@ -1380,6 +1458,8 @@ EXPLAIN SELECT * FROM orders WHERE customer_id = 'abc';
                     <div class="info-box fragment">
                         <p><strong>Anti-pattern signals:</strong> <code>full table scan</code> on a large table, span of <code>[ - ]</code> (the whole keyspace), or an estimated row count near the table cardinality.</p>
                     </div>
+                
+                    <aside class="notes"><p>The optimizer picks the index whose key prefix matches the most selective predicate, then checks whether the index covers the query or needs an index join back to the primary row. Statistics drive the estimate; stale statistics give bad plans.</p><p>Teach students to read EXPLAIN for two things: which index was chosen, and whether an index join appears. The second is the signal that a STORING clause would remove a round trip. Lab 4 and Lab 6 practise this.</p><p><strong>Terms:</strong> <strong>secondary index</strong> — an extra sorted key space whose value is the primary key; itself made of ranges, so it replicates and can hotspot. <strong>EXPLAIN</strong> — the plan the optimizer chose from statistics, without executing it.</p></aside>
                 </section>
 
                 <section>
@@ -1398,6 +1478,8 @@ SELECT customer_id, total, status FROM orders WHERE customer_id = 'abc';
                     <div class="warning-box fragment small-text">
                         <p><strong>Cost:</strong> every <code>UPDATE</code> to a stored column must also update the index. Don't blindly add every column to STORING — pick the ones that benefit the hot read path.</p>
                     </div>
+                
+                    <aside class="notes"><p>STORING copies extra columns into the index entry's value so a query is answered from the index alone — no second lookup into the primary row, no index join. The stored columns are not in the key: they cannot be filtered or sorted on efficiently and do not affect uniqueness; they only ride along.</p><p>Rule: columns you filter or sort on go in the key; columns you merely return go in STORING. Cost: every update to a stored column now writes the index too. Lab 4 shows the same query before and after, with the index join disappearing from EXPLAIN ANALYZE.</p><p><strong>Terms:</strong> <strong>STORING / covering</strong> — <code>STORING</code> copies columns into the index entry's value so the index covers the query with no index join; stored columns cannot be filtered or sorted on.</p></aside>
                 </section>
 
                 <section>
@@ -1432,6 +1514,8 @@ SELECT customer_id, total, status FROM orders WHERE customer_id = 'abc';
                             </tr>
                         </tbody>
                     </table>
+                
+                    <aside class="notes"><p>Each line is a lab: SERIAL on a hot path (Lab 3), the single-row counter (Lab 5 — 40001 retry storms), low-cardinality lead column (Lab 3), index-everything (Lab 4), delete-as-you-go instead of TTL (Lab 3), dual writes to DB and Kafka instead of outbox (Lab 14).</p><p>Tell students this list comes back on Day 4 as a code-review checklist. The intent is that they can spot these in a pull request, not just recite them.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>hash-sharded</strong> — an index whose key is prefixed with a hidden hash-bucket column, spreading sequential keys across ranges at the cost of global order. <strong>STORING / covering</strong> — <code>STORING</code> copies columns into the index entry's value so the index covers the query with no index join; stored columns cannot be filtered or sorted on.</p></aside>
                 </section>
 
                 <!-- Lab 4: Indexing -->
@@ -1483,6 +1567,8 @@ SELECT customer_id, total, status FROM orders WHERE customer_id = 'abc';
                             <li>Backup, restore, changefeeds, security, and monitoring</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>Recap the thesis: ranges are the unit, Raft makes them durable, the leaseholder serves reads, and the primary key decides where everything lives. Labs 1–4 covered cluster lifecycle, the console, hotspots, and indexes.</p><p>Preview Day 2: transactions and why retries are normal, query tuning, multi-region placement, and measuring the schema patterns rather than asserting them. Ask students to bring one schema from their own work for the patterns discussion.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>survival goal</strong> — what a multi-region database must survive: ZONE (3 replicas across zones) or REGION (5 replicas across ≥3 regions; every write's quorum spans regions). <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>STORING / covering</strong> — <code>STORING</code> copies columns into the index entry's value so the index covers the query with no index join; stored columns cannot be filtered or sorted on. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain.</p></aside>
                 </section>
             </section>
         </div>

@@ -50,9 +50,10 @@ That drops you straight into a SQL shell inside the container. The DB Console is
 > **`cockroach demo` includes a temporary licence**, which is why this lab uses it. If you run
 > these steps against your own `cockroach start` cluster instead, set a trial licence first:
 > ```sql
-> SET CLUSTER SETTING cluster.organization = 'Your Org';
 > SET CLUSTER SETTING enterprise.license = 'crl-0-...';
 > ```
+> (No `cluster.organization` — the class key is bound to an empty organization name, and
+> setting one invalidates it.)
 > Node **localities** (`--locality=region=...`) and zone configurations are core features and
 > work on any cluster.
 

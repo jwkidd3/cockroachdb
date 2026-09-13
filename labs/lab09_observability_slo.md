@@ -217,12 +217,13 @@ docker run -d --name lab9-load --network crdb-labs_default \
 
 1. **Run Grafana:**
    ```bash
-   docker run -d --name lab9-grafana -p 3000:3000 grafana/grafana
+   docker run -d --name lab9-grafana -p 3000:3000 --network crdb-labs_default grafana/grafana
    ```
    Log in at <http://localhost:3000> with `admin` / `admin`.
 
 2. **Add the Prometheus data source** — Connections → Data sources → Prometheus →
-   URL `http://host.docker.internal:9090` → Save & test.
+   URL `http://lab9-prom:9090` → Save & test. Grafana and Prometheus are on the same
+   Docker network, so the container name resolves — on WSL, Linux and macOS alike.
 
 3. **Import the official dashboards.** Cockroach Labs publishes dashboard JSON at
    <https://github.com/cockroachdb/cockroach/tree/master/monitoring/grafana-dashboards>.

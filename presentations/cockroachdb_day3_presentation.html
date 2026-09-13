@@ -372,6 +372,8 @@
                         <li><code>crdb_internal.kv_node_status</code> — the same numbers via SQL</li>
                         <li>DB Console → Metrics — prebuilt dashboards over the same data</li>
                     </ul>
+                
+                    <aside class="notes"><p>The endpoint is /_status/vars on every node, Prometheus format, over two thousand series. Nobody watches two thousand things; the next slide is the short list. Lab 9 scrapes it and confirms each metric on the short list is present.</p><p>Make the distinction between node metrics and store metrics now: a node has one or more stores (disks), and capacity, storage-engine, and queue metrics belong to the store. In SQL that is kv_store_status; asking kv_node_status for them returns NULL silently.</p><p><strong>Terms:</strong> <strong>crdb_internal</strong> — the virtual schema exposing cluster state in SQL; what the DB Console reads.</p></aside>
                 </section>
 
                 <section>
@@ -394,6 +396,8 @@
                         A rising restart rate is almost always a <em>schema</em> problem surfacing as an
                         ops problem — a single-row counter, a sequential key, an over-wide transaction.</p>
                     </div>
+                
+                    <aside class="notes"><p>Group them as the slide does: is the cluster whole (live nodes, under-replicated, unavailable), is it keeping up (SQL latency p99, QPS, connections), is it fighting itself (serializable restarts, contention), is it running out (capacity available, CPU), is admission control engaged. Each one maps to a page in the console.</p><p>Tell students the alerting rules in Lab 9 are built only from these. If a metric is not on this list, it is for diagnosis, not paging.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>under-replicated</strong> — a range with fewer live replicas than its replication factor but still a quorum: serving, and being repaired. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>admission control</strong> — per-node queueing that delays lower-priority work when CPU or storage is saturated, instead of slowing everything. <strong>SLI / SLO</strong> — SLI: the measured ratio (good requests / total). SLO: the target for it. Alerts fire on the SLO, not the raw metric.</p></aside>
                 </section>
 
                 <section>
@@ -410,6 +414,8 @@
                         <p><strong>SLO:</strong> 99.9% of statements complete under 100 ms over 30 days.<br>
                         <strong>Error budget:</strong> 0.1% × 30 days ≈ 43 minutes of "too slow".</p>
                     </div>
+                
+                    <aside class="notes"><p>Metric is the raw series. SLI is the ratio you promise on — requests under 100 ms over total. SLO is the target. Alert fires on the SLO, not the metric. This sequence is why "p99 latency above 200 ms" is a bad alert and "error budget burning 14 times faster than allowed" is a good one.</p><p>Lab 9 writes the recording rules that turn the latency histogram into an SLI. Emphasise that the histogram buckets in sql_service_latency_bucket are what makes percentiles possible at all.</p><p><strong>Terms:</strong> <strong>SLI / SLO</strong> — SLI: the measured ratio (good requests / total). SLO: the target for it. Alerts fire on the SLO, not the raw metric.</p></aside>
                 </section>
 
                 <section>
@@ -430,6 +436,8 @@
                     </table>
                     <p class="fragment small-text">A threshold alert on "p99 &gt; 100 ms" pages you for a 30-second blip.
                     A burn-rate alert pages you when the month is actually at risk.</p>
+                
+                    <aside class="notes"><p>A burn rate is how fast the error budget is being consumed relative to the rate that would exhaust it exactly at the end of the window. 14x over an hour means the month's budget is gone in two days — page. 1x means on track — do nothing.</p><p>The two-window trick (short and long) suppresses blips: both must be over threshold. Lab 9's rules file uses the 1h/5m pair. This is the difference between an on-call rotation people quit and one they tolerate.</p><p><strong>Terms:</strong> <strong>burn rate</strong> — how fast the error budget is being consumed relative to the rate that would exhaust it exactly at the window's end.</p></aside>
                 </section>
 
                 <section>
@@ -451,6 +459,8 @@
       channels: [SENSITIVE_ACCESS, USER_ADMIN, PRIVILEGES]
       auditable: true
       buffered-writes: false   # audit records must survive a crash</code></pre>
+                
+                    <aside class="notes"><p>Every log event belongs to a channel: HEALTH, OPS, SENSITIVE_ACCESS, USER_ADMIN, PRIVILEGES, SQL_EXEC, and so on. A log config routes channels to sinks — files, HTTP, stderr — with per-sink filtering. Production sends security channels to the SIEM and health to ops, separately.</p><p>In the labs the config is a file mounted into node 1 by a compose overlay, and node 1 is restarted with it. Lab 9 splits health from security; Lab 12 adds auditable: true to the security sink and ships it off-box.</p><p><strong>Terms:</strong> <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>sink</strong> — a changefeed's destination (<code>kafka://</code>, cloud storage, webhook); dialled by the database node, so it must be reachable from inside the cluster network. <strong>SENSITIVE_ACCESS</strong> — the log channel per-table auditing writes to; route it to an <code>auditable</code> sink. <strong>log channel</strong> — a named category of log events (HEALTH, OPS, SENSITIVE_ACCESS, …) routed to sinks by a log config file.</p></aside>
                 </section>
 
                 <!-- Lab 9 -->
@@ -511,6 +521,8 @@ scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=
                         <p class="small-text"><strong>Always set <code>--cache=.25 --max-sql-memory=.25</code>.</strong>
                         The defaults are laptop-safe, not production-correct. A node should be told it owns the machine.</p>
                     </div>
+                
+                    <aside class="notes"><p>Rule-of-thumb capacities per vCPU and per node for a tuned workload; the numbers are conservative starting points, not promises. Storage is the one most often undersized, because of the next slide.</p><p>The right way to use the budget: estimate, then benchmark (Lab 10), then size from the measurement. The formula slide two ahead does the arithmetic.</p><p><strong>Terms:</strong> <strong>Raft</strong> — the consensus protocol a range's replicas run among themselves; a leader replicates a log to followers and a quorum acknowledging is the commit point. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>LSM</strong> — log-structured merge tree: writes go to a memtable and WAL, flush to immutable sorted files, and are compacted into deeper levels. <strong>compaction</strong> — the LSM background merge of sorted files that discards overwritten versions; the source of write amplification. <strong>block cache</strong> — Pebble's in-memory cache of data blocks; <code>--cache</code> per node. <strong>store</strong> — one disk on a node; capacity, storage-engine and queue metrics belong to stores (<code>kv_store_status</code>, not <code>kv_node_status</code>).</p></aside>
                 </section>
 
                 <section>
@@ -527,6 +539,8 @@ scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=
                     </div>
                     <p class="fragment small-text">This is why Lab 8's "index tax" measurement matters more than
                     any sizing spreadsheet: the spreadsheet takes the index count as an input.</p>
+                
+                    <aside class="notes"><p>An LSM (Pebble) rewrites data as it compacts down through levels, so one logical write becomes several physical writes — typically 10–30x on a write-heavy table. Disk IOPS budget has to be divided by that number.</p><p>Add replication (3x) and secondary indexes (one more logical write each) and a "1 KB insert" can be 100 KB of disk activity. This is why a spinning disk is never adequate and why "we have plenty of IOPS" is usually wrong by an order of magnitude.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>replication factor</strong> — the number of replicas per range (zone config <code>num_replicas</code>); 3 by default, 5 for system ranges and REGION survival. <strong>secondary index</strong> — an extra sorted key space whose value is the primary key; itself made of ranges, so it replicates and can hotspot. <strong>write amplification</strong> — bytes physically written per byte logically written, from compaction; typically 10–30×, multiplied by replication and indexes.</p></aside>
                 </section>
 
                 <section>
@@ -546,6 +560,8 @@ utilization_target = 0.5</code></pre>
                     <p class="fragment small-text">Then check the other three constraints — storage capacity,
                     IOPS, and store-per-vCPU — and take the largest node count of the four.
                     <strong>The binding constraint is rarely CPU.</strong></p>
+                
+                    <aside class="notes"><p>Walk the arithmetic once with real numbers from the room. Storage: raw data times replication factor times a compaction headroom of about 1.5. IOPS: write rate times amplification times replication. CPU from the per-vCPU budget. Take the largest and add headroom for the allocator's own work and for losing a node.</p><p>The step students skip: sizing for N minus one. A 3-node cluster must run on 2 during maintenance.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>store</strong> — one disk on a node; capacity, storage-engine and queue metrics belong to stores (<code>kv_store_status</code>, not <code>kv_node_status</code>).</p></aside>
                 </section>
 
                 <section>
@@ -563,6 +579,8 @@ SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre
                         latency. <strong>Overload becomes a slowdown of the right thing instead of a collapse
                         of everything.</strong></p>
                     </div>
+                
+                    <aside class="notes"><p>When a node's CPU or storage engine is overloaded, admission control queues lower-priority work rather than letting everything slow down together. Foreground SQL beats background jobs; user-settable priority can push one workload ahead of another.</p><p>The metric is admission_wait_durations with a queue suffix. Lab 10 sets default_transaction_quality_of_service to show the knob exists. The teaching point: the cluster degrading gracefully is a feature; seeing admission wait time is the signal to add capacity, not to turn it off.</p><p><strong>Terms:</strong> <strong>admission control</strong> — per-node queueing that delays lower-priority work when CPU or storage is saturated, instead of slowing everything. <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable.</p></aside>
                 </section>
 
                 <section>
@@ -581,6 +599,8 @@ SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre
                         almost nothing for an app with joins, indexes, and foreign keys.
                         Use <code>kv</code> for a ceiling; use <code>tpcc</code> for what you'll actually get.</p>
                     </div>
+                
+                    <aside class="notes"><p>kv for raw throughput and latency curves; tpcc for a realistic OLTP mix with a standard scoring rule; ycsb for key-value patterns. Match the benchmark to the question. Lab 10 runs kv at three read/write mixes and tpcc at a small warehouse count.</p><p>Note that cockroach workload list does not exist; the generators are subcommands of workload init and workload run. The workload runs inside the cluster network in this course, so the URL is crdb1.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors.</p></aside>
                 </section>
 
                 <section>
@@ -600,6 +620,8 @@ SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre
                     <p class="fragment small-text">TPC-C also teaches schema design by example: every table leads its
                     primary key with the warehouse id. That's the Per-Tenant Co-located PK pattern, and it's
                     why a new-order transaction touches one range instead of nine.</p>
+                
+                    <aside class="notes"><p>tpmC is the throughput number; efficiency is the fraction of the theoretical maximum for that warehouse count; the latency columns are per transaction type. A run "passes" at 85 percent efficiency or better. Falling efficiency as warehouses increase is the cluster's ceiling.</p><p>Lab 10's capacity exercise: find the warehouse count where efficiency drops, then use the sizing formula to say how many more nodes that workload needs.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>tpmC</strong> — TPC-C throughput: new-order transactions per minute, with an efficiency percentage against the warehouse-count maximum.</p></aside>
                 </section>
 
                 <!-- Lab 10 -->
@@ -661,6 +683,8 @@ SHOW BACKUP FROM LATEST IN 's3://backups/bank?AUTH=implicit';</code></pre>
                         <code>revision_history</code> is what makes any timestamp in the window restorable,
                         not just the backup instants.</p>
                     </div>
+                
+                    <aside class="notes"><p>Full backup, incremental (changes since the last one), revision_history (every MVCC version, which enables point-in-time restore), and scheduled backups. Cluster backups include users and settings; database backups do not.</p><p>State the licence split once: full and cluster backups are free; revision_history and incrementals are enterprise. The class licence is applied by scripts/crdb up, so all of it runs in Lab 11.</p><p><strong>Terms:</strong> <strong>AS OF SYSTEM TIME</strong> — a read at a past timestamp, served from retained MVCC history by any replica, without blocking writers. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
                 </section>
 
                 <section>
@@ -680,6 +704,8 @@ RESTORE FROM LATEST IN '...';</code></pre>
                         <p class="small-text">A <strong>database</strong> backup does not carry users, roles, or grants.
                         A <strong>cluster</strong> backup does. Guess which one people discover mid-incident.</p>
                     </div>
+                
+                    <aside class="notes"><p>Restore a table, a database, or the whole cluster; restore into a new name; restore as of a past time (needs revision_history). A full-cluster restore requires an empty target cluster — exactly the DR situation, and why Lab 11's standby is a fresh stack.</p><p>The gotcha worth stating: AS OF SYSTEM TIME on a backup taken moments after creating something can predate it. Lab 11 hit this — a user created right before a backup with AOST minus ten seconds was not in the backup.</p><p><strong>Terms:</strong> <strong>AS OF SYSTEM TIME</strong> — a read at a past timestamp, served from retained MVCC history by any replica, without blocking writers. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
                 </section>
 
                 <section>
@@ -698,6 +724,8 @@ actual RTO     = locate + restore + verify + cut over</code></pre>
                         time it, divide by size, extrapolate. The number in the runbook is almost always
                         smaller than the number on the stopwatch.</p>
                     </div>
+                
+                    <aside class="notes"><p>RPO is how much data you can lose: the interval since the last backup that made it off-box. RTO is how long until service returns: restore time plus everything around it. Both are measured, not declared.</p><p>Lab 11 times the restore and has students write the number down. Point out that a backup nobody has restored has an unknown RTO, and a backup on the same disk as the database has an infinite one.</p><p><strong>Terms:</strong> <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>RPO / RTO</strong> — RPO: how much data may be lost (time since the last backup left the box). RTO: how long until service returns. Both measured, not declared.</p></aside>
                 </section>
 
                 <section>
@@ -730,6 +758,8 @@ actual RTO     = locate + restore + verify + cut over</code></pre>
                     </div>
                     <p class="fragment small-text">Swap runbooks with another pair in the lab. If they can't follow
                     yours without asking you a question, it won't work at 3am either.</p>
+                
+                    <aside class="notes"><p>Cluster A is gone; bring the data up on B. Lab 11 does it with a second compose stack that shares the backup volume — standing in for the cloud bucket both clusters would share — so the drill exercises restore, not file copying.</p><p>Verify with two numbers: row count and a business checksum (sum of balances). One without the other proves nothing. Then fill in the drill record; the record is the deliverable.</p><p><strong>Terms:</strong> <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>RPO / RTO</strong> — RPO: how much data may be lost (time since the last backup left the box). RTO: how long until service returns. Both measured, not declared.</p></aside>
                 </section>
 
                 <!-- Lab 11 -->
@@ -783,6 +813,8 @@ scripts/crdb run cert create-client root --certs-dir=/certs --ca-key=/certs/ca.k
                         not extend it. Drop <code>crdbs1</code> and the certificate is still perfectly valid — but every
                         client that connects by that name fails verification the moment the node reloads it.</p>
                     </div>
+                
+                    <aside class="notes"><p>Three certificates: a CA, a node cert listing every name the node is reached by, and a client cert per user. Lab 12's compose stack generates them in a one-shot container. Insecure connections are refused with a clear error, which the lab has students provoke.</p><p>The SAN warning on the slide came from a real bug: a reissue replaces the name list, and dropping crdbs1 produced a valid certificate that every client failed to verify. List every name, every time.</p><p><strong>Terms:</strong> <strong>SAN</strong> — subject alternative name: the list of hostnames/IPs a certificate is valid for; a reissue replaces the list.</p></aside>
                 </section>
 
                 <section>
@@ -800,6 +832,8 @@ scripts/crdb run cert create-client root --certs-dir=/certs --ca-key=/certs/ca.k
                         <tr><td>Node</td><td>1 year</td><td>3 months before expiry</td></tr>
                         <tr><td>Client</td><td>1 year (shorter for humans)</td><td>Quarterly, automated</td></tr>
                     </table>
+                
+                    <aside class="notes"><p>Reissue, then SIGHUP; the node reloads certificates in place and open connections stay open. In the lab that is docker compose kill -s HUP crdbs1.</p><p>The trap is worth two minutes: it works only because the compose file runs the binary as PID 1. Through the image's default shell-script entrypoint the signal is swallowed — the new cert is on disk, cert list shows the new expiry, and the server keeps serving the old one. The lab verifies the served certificate with openssl s_client for exactly this reason. True of any wrapped process.</p><p><strong>Terms:</strong> <strong>PID 1</strong> — the first process in a container and the only one that receives signals; a shell-wrapper PID 1 swallows SIGHUP. <strong>SIGHUP</strong> — the signal that makes a node reload its certificates in place, without a restart.</p></aside>
                 </section>
 
                 <section>
@@ -813,6 +847,8 @@ scripts/crdb run cert create-client root --certs-dir=/certs --ca-key=/certs/ca.k
                         <p>Doing steps 3 and 4 in the wrong order <strong>locks you out of your own cluster</strong>.
                         Write the procedure down before you need it, and rehearse it on a throwaway cluster.</p>
                     </div>
+                
+                    <aside class="notes"><p>Both CAs must be trusted everywhere before any cert is reissued from the new one, and the old CA is removed only after every cert has moved. Do steps 3 and 4 in the wrong order and the cluster cannot talk to itself.</p><p>Have students write the order down. Nobody rotates a CA often enough to remember it under pressure.</p><p><strong>Terms:</strong> <strong>SIGHUP</strong> — the signal that makes a node reload its certificates in place, without a restart.</p></aside>
                 </section>
 
                 <section>
@@ -839,6 +875,8 @@ GRANT CREATE ON SCHEMA ledger.public TO ledger_migrator;</code></pre>
                         Without it, every migration that creates a table also needs a matching
                         <code>GRANT</code> — and the one someone forgets is the one that pages you.</p>
                     </div>
+                
+                    <aside class="notes"><p>Role hierarchy: connect, read, write, migrate, each inheriting the last; users are members of exactly one. Two things break this in practice, and Lab 12 hits both. First, a new database's public schema grants CREATE to everyone — revoke it before anything else. Second, default privileges are scoped to the role that creates the table, so root's defaults do not cover tables the migration role creates.</p><p>The fix for the second is the CI/CD lesson: the migration role sets its own ALTER DEFAULT PRIVILEGES. Verify with negative tests — report_user must fail to UPDATE — not just positive ones.</p></aside>
                 </section>
 
                 <section>
@@ -859,6 +897,8 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                         in the IdP removes their database access. Without it, offboarding depends on someone
                         remembering to run <code>DROP USER</code>.</p>
                     </div>
+                
+                    <aside class="notes"><p>server.host_based_authentication.configuration is a cluster setting in Postgres HBA syntax: cert for service accounts, password or SCRAM for humans, SSO via OIDC for the console. Read it back with SHOW CLUSTER SETTING — pg_hba_file_rules is always empty in CockroachDB; it is a compatibility view.</p><p>NOLOGIN is the quick way to disable an account without dropping it. Lab 12 sets an HBA config, verifies it, and resets it so nothing else in the course is affected.</p><p><strong>Terms:</strong> <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable. <strong>HBA</strong> — host-based authentication rules (cert, password, SCRAM per user and address), held in a cluster setting; <code>pg_hba_file_rules</code> is always empty. <strong>SCRAM</strong> — salted challenge-response password authentication; the default password scheme.</p></aside>
                 </section>
 
                 <section>
@@ -878,6 +918,8 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                         <p class="small-text"><strong>Ship it off-box.</strong> An attacker with node access can delete
                         local log files. Audit records that already left the machine cannot be un-sent.</p>
                     </div>
+                
+                    <aside class="notes"><p>EXPERIMENTAL_AUDIT SET READ WRITE on a table emits a SENSITIVE_ACCESS event for every access, with user, table, statement, application, and remote address. Route that channel to an auditable sink — auditable: true, buffered-writes: false so nothing is lost on crash — and ship it off-box with an HTTP sink.</p><p>Lab 12 writes the config, restarts with the overlay, generates access as different users, and reads the JSON events back from lab12/logs. The fields table on the slide is what an auditor asks for; show that they are all present.</p><p><strong>Terms:</strong> <strong>SENSITIVE_ACCESS</strong> — the log channel per-table auditing writes to; route it to an <code>auditable</code> sink. <strong>log channel</strong> — a named category of log events (HEALTH, OPS, SENSITIVE_ACCESS, …) routed to sinks by a log config file.</p></aside>
                 </section>
 
                 <section>
@@ -914,6 +956,8 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                     </div>
                     <p class="fragment small-text"><strong>Always <code>--redact</code></strong> anything leaving your
                     organization — a raw zip contains query text with literal values.</p>
+                
+                    <aside class="notes"><p>cockroach debug zip collects logs, settings, node status, ranges, jobs, and statement statistics into one archive — the thing support asks for first. --redact strips query literals for cases where the data is sensitive. EXPLAIN ANALYZE (DEBUG) does the same for one statement.</p><p>In this course the zip is written inside the node and copied out with scripts/crdb cp. Lab 9 produces both the full and redacted versions and inspects the contents.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable.</p></aside>
                 </section>
 
                 <section>
@@ -931,6 +975,8 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                     </table>
                     <p class="fragment small-text">Notice how many of these are answered by <em>schema</em> and
                     <em>topology</em> choices, not by a security product.</p>
+                
+                    <aside class="notes"><p>Map features to controls rather than reciting features: encryption in flight (TLS), access control (RBAC, HBA), audit trail (SENSITIVE_ACCESS channel), data retention (TTL, gc.ttlseconds), backup and restore evidence (the drill record from Lab 11).</p><p>The useful framing for students who will face an auditor: every row in this table is something they configured in Labs 9, 11, and 12, and each produces an artifact they can hand over.</p><p><strong>Terms:</strong> <strong>REGIONAL BY ROW</strong> — table locality that partitions rows by a region column so each row's leaseholder lives in its home region. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>zone configuration</strong> — per-database/table/index settings for replication factor, constraints and lease preferences; multi-region SQL writes them for you. <strong>SENSITIVE_ACCESS</strong> — the log channel per-table auditing writes to; route it to an <code>auditable</code> sink. <strong>log channel</strong> — a named category of log events (HEALTH, OPS, SENSITIVE_ACCESS, …) routed to sinks by a log config file.</p></aside>
                 </section>
 
                 <!-- Lab 12 -->

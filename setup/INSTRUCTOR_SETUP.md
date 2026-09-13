@@ -341,7 +341,7 @@ az vm list --resource-group "$RG" --query "[?tags.course=='crdb-4day'].name" -o 
 | **Per-student VM** (this guide) | **All 4 days** | Costs money; everything works |
 
 If you must run Days 1–2 on laptops, the README's install section is the student-facing
-instructions. Days 3–4 need Docker, kind, and 32 GB — plan for VMs.
+instructions. Days 3–4 need Docker and kind, and 12 GB with the one-stack-at-a-time rule — plan for VMs.
 
 ---
 

@@ -373,6 +373,8 @@
                         </div>
                     </div>
                     <p class="fragment small-text">Sinks: Kafka, webhook, cloud storage (S3/GCS/Azure), Google Pub/Sub.</p>
+                
+                    <aside class="notes"><p>Core changefeeds stream to the SQL client that created them — a single consumer, gone when the session ends; free. Enterprise changefeeds are jobs that write to a sink (Kafka, cloud storage, webhook), survive restarts, and can be paused and resumed; licensed. Both need kv.rangefeed.enabled.</p><p>Lab 13 does both. The core one has a capture gotcha worth naming: redirect it to a file and you get nothing unless you use --format=csv and line-buffered output, because the default table format buffers the whole stream to size columns.</p><p><strong>Terms:</strong> <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>changefeed (core)</strong> — a change stream delivered to the creating SQL session; one consumer, ends with the session, no licence. <strong>changefeed (enterprise)</strong> — a long-running job publishing row changes to a sink; survives restarts, pausable; needs a licence. <strong>sink</strong> — a changefeed's destination (<code>kafka://</code>, cloud storage, webhook); dialled by the database node, so it must be reachable from inside the cluster network. <strong>resolved timestamp</strong> — a changefeed watermark meaning every change at or before this timestamp has been emitted. <strong>at-least-once</strong> — every change is delivered, some more than once; consumers must be idempotent. <strong>enterprise licence</strong> — unlocks incremental/revision_history backups, enterprise changefeeds and multi-region SQL; free for training; ships in <code>.license.env</code>; bound to an empty organization name.</p></aside>
                 </section>
 
                 <section>
@@ -390,6 +392,8 @@
  "before":{"id":"…","status":"new"},
  "key":   ["…"],
  "updated":"1716400000000000000.0000000000"}</code></pre>
+                
+                    <aside class="notes"><p>Each option adds bytes per message: updated adds the MVCC timestamp, diff adds the before image, key_in_value duplicates the key, resolved adds periodic watermark messages. Choose what the consumer needs.</p><p>State the resolved subtlety: resolved='5s' does not mean every five seconds unless min_checkpoint_frequency is also lowered — its default is 30s and it caps emission. The lab sets both, and the test had to be corrected to match.</p><p><strong>Terms:</strong> <strong>MVCC</strong> — multi-version concurrency control: every write is a new version keyed by timestamp; readers see the version at their timestamp and never block writers. <strong>envelope</strong> — the JSON shape of a changefeed message; options add <code>updated</code>, <code>diff</code>, <code>key_in_value</code>, <code>resolved</code>. <strong>resolved timestamp</strong> — a changefeed watermark meaning every change at or before this timestamp has been emitted. <strong>frontier</strong> — in a consumer, the highest resolved timestamp seen; rows at or below it are final and can be applied in order.</p></aside>
                 </section>
 
                 <section>
@@ -409,6 +413,8 @@
                         <tr><td>Can I close yesterday's books?</td><td>Yes, iff frontier ≥ midnight</td></tr>
                         <tr><td>Did I miss events during the outage?</td><td>No, iff you restart from the last frontier</td></tr>
                     </table>
+                
+                    <aside class="notes"><p>A resolved message says: every change up to this timestamp has been emitted; nothing older is still coming. A consumer that buffers rows and applies them only when the frontier passes them gets ordering across an at-least-once stream.</p><p>Lab 13's consumer.py does exactly that and prints each frontier advance. One operational note from the test: a resolved watermark every few seconds means the Kafka console consumer never goes idle, so its --timeout-ms (an inactivity timeout) never fires — students stop it with Ctrl+C.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>resolved timestamp</strong> — a changefeed watermark meaning every change at or before this timestamp has been emitted. <strong>frontier</strong> — in a consumer, the highest resolved timestamp seen; rows at or below it are final and can be applied in order.</p></aside>
                 </section>
 
                 <section>
@@ -426,6 +432,8 @@
                         the ledger is the only safe option. You cannot "re-send" an email idempotently
                         by upserting a row.</p>
                     </div>
+                
+                    <aside class="notes"><p>Restarts, retries, and rebalances all replay messages. The consumer must be idempotent: keep a ledger of key to last-applied timestamp and skip anything at or below it. That ledger is what makes replays harmless.</p><p>Lab 13 restarts the changefeed with a cursor and watches the consumer skip the duplicates. The design point for students: idempotency is the consumer's job, not something the producer can promise.</p><p><strong>Terms:</strong> <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>at-least-once</strong> — every change is delivered, some more than once; consumers must be idempotent. <strong>idempotency key</strong> — a client-supplied identifier stored with an operation's result so a retry returns the stored result instead of repeating the work. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
                 </section>
 
                 <section>
@@ -446,6 +454,8 @@
                         stops MVCC garbage collection. A changefeed left paused for days grows your storage and
                         slows every scan. Check <code>SHOW CHANGEFEED JOBS</code> for the feed nobody remembered.</p>
                     </div>
+                
+                    <aside class="notes"><p>Additive changes — a new nullable column — flow through; the envelope simply grows and a consumer that ignores unknown fields keeps working. Renames and type changes are breaking. schema_change_policy decides whether the feed stops, backfills, or ignores.</p><p>Lab 13 adds a column under a live feed and watches the new field appear. Tie back to Day 4's CI/CD slide: the same additive-only rule applies to online schema changes.</p><p><strong>Terms:</strong> <strong>MVCC</strong> — multi-version concurrency control: every write is a new version keyed by timestamp; readers see the version at their timestamp and never block writers. <strong>GC TTL</strong> — <code>gc.ttlseconds</code>, how long old MVCC versions are kept (4 h default); bounds AS OF SYSTEM TIME. <strong>online schema change</strong> — DDL that runs as a background job while the table serves traffic; additive changes are safe, renames and type changes are not.</p></aside>
                 </section>
 
                 <!-- Lab 13 -->
@@ -507,6 +517,8 @@ scripts/crdb sql -e "SET CLUSTER SETTING kv.rangefeed.enabled = true;"</code></p
                         (the values you read are stale), and backoff <em>without jitter</em> (all your clients
                         collide again at exactly the same moment).</p>
                     </div>
+                
+                    <aside class="notes"><p>Restate Day 2's point for application developers: 40001 is the database refusing to commit a wrong answer under SERIALIZABLE. The application re-runs the transaction. Every driver has a helper; use it.</p><p>Lab 14 runs the same Python with and without a retry loop under 40 concurrent threads. Without it, callers fail; with it, they succeed, and some give up at a sane retry cap under extreme contention — which the lab treats as correct behaviour, not a bug.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>SERIALIZABLE</strong> — the only isolation level; transactions behave as if run one at a time, and anomalies are prevented by aborting with 40001. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure.</p></aside>
                 </section>
 
                 <section>
@@ -537,6 +549,8 @@ WHERE id = $1;</code></pre>
                     </div>
                     <p class="fragment small-text">Use the driver's helper rather than hand-rolling:
                     <code>crdbpgx.ExecuteTx</code> (Go), <code>run_transaction()</code> (SQLAlchemy).</p>
+                
+                    <aside class="notes"><p>Reduce the contention first: shorter transactions, no user think-time inside BEGIN, the sharded counter, per-tenant co-location, FOR UPDATE on genuinely hot rows. A retry loop is the last line, not the first.</p><p>Lab 14 measures optimistic versus FOR UPDATE on the same hot rows: about 120 ops/s with 175 retries versus 160 with none. The loop is still required — FOR UPDATE reduces retries, it does not eliminate them.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure.</p></aside>
                 </section>
 
                 <section>
@@ -552,6 +566,8 @@ WHERE id = $1;</code></pre>
     VALUES ('order.created', $order_id, $payload);
 COMMIT;
 -- CDC ships events_outbox downstream. One transaction, one truth.</code></pre>
+                
+                    <aside class="notes"><p>The dual-write problem: the application writes the database and then Kafka, and one of them fails. Outbox fixes it by writing the business row and an event row in one transaction, then letting a changefeed publish the outbox table. Atomicity comes from the database; delivery comes from CDC.</p><p>Lab 14 builds it and proves the atomicity by making a transaction fail and showing neither row exists. Lab 13's changefeed is the publisher.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other.</p></aside>
                 </section>
 
                 <section>
@@ -576,6 +592,8 @@ COMMIT;
                         <code>UPDATE … SET status='sent'</code>. Every worker contends on the same rows;
                         throughput caps out no matter how many workers you add.</p>
                     </div>
+                
+                    <aside class="notes"><p>UUID key so inserts spread; a TTL so published events expire without a cleanup job; the payload as JSONB. Never delete from it in the application path — that is a second write and contention on the rows the changefeed is reading.</p><p>Point out the TTL is a table option, ttl_expire_after, swept by a background job on a cron. In Lab 3 students saw that the schedule exists immediately but the job only appears once it has fired.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>SELECT FOR UPDATE</strong> — takes the row lock at read time so conflicts wait instead of restarting; the lock is in leaseholder memory in v23.2. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
                 </section>
 
                 <section>
@@ -593,6 +611,8 @@ COMMIT;
                     </div>
                     <p class="fragment small-text">A concurrent duplicate loses the race on the primary key and
                     rolls back its whole transaction, including the order. Exactly one order exists.</p>
+                
+                    <aside class="notes"><p>The client supplies a key; the server does the work only if the key is unseen and returns the stored result otherwise. Under retries every caller gets the same answer. The insert of the key and the business write must be one transaction.</p><p>Lab 14 runs ten concurrent callers with the same key: all ten get the same order_id, nine are replays. This needs the retry loop too — the test found that without it, contention on the key row aborted all ten.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>idempotency key</strong> — a client-supplied identifier stored with an operation's result so a retry returns the stored result instead of repeating the work. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
                 </section>
 
                 <section>
@@ -625,6 +645,8 @@ COMMIT;</code></pre>
                     </div>
                     <p class="fragment small-text">Lab 14 benchmarks both. Measure your actual contention before choosing —
                     the "obvious" answer flips depending on it.</p>
+                
+                    <aside class="notes"><p>Optimistic: read, compute, write, and let 40001 catch a conflict at commit. Pessimistic: SELECT FOR UPDATE at the start so conflicts wait instead of restart. Optimistic wins when conflicts are rare; pessimistic wins when a few rows are hot.</p><p>Lab 14 measures both on the same rows. One thing the lab surfaced that is worth telling students: a psycopg2 connection left in a transaction holds a stale snapshot, so verification reads need a fresh autocommit connection.</p><p><strong>Terms:</strong> <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>SELECT FOR UPDATE</strong> — takes the row lock at read time so conflicts wait instead of restarting; the lock is in leaseholder memory in v23.2.</p></aside>
                 </section>
 
                 <section>
@@ -644,6 +666,8 @@ COMMIT;</code></pre>
                     </div>
                     <p class="fragment small-text">Transaction pooling breaks session-scoped features — use
                     <code>SET LOCAL</code>, not <code>SET</code>.</p>
+                
+                    <aside class="notes"><p>Each connection is a session on a gateway node; pools should be sized from the concurrency knee measured in Lab 8, not from the number of application threads. Too many connections means queuing inside the database instead of in the pool, where you cannot see it.</p><p>Spread the pool across nodes — a load balancer or a multi-host connection string — or one gateway does all the routing work.</p><p><strong>Terms:</strong> <strong>concurrency knee</strong> — the last concurrency level at which throughput still grows; past it latency rises for nothing. <strong>connection pool</strong> — a set of reused client connections; size it from the measured concurrency knee, not from thread count.</p></aside>
                 </section>
 
                 <section>
@@ -661,6 +685,8 @@ COMMIT;</code></pre>
                         emit <code>SERIAL</code> primary keys by default (change them)? does it wrap every
                         request in one transaction? does it do N+1 queries — each of which is a distributed read?</p>
                     </div>
+                
+                    <aside class="notes"><p>Standard Postgres drivers work; the CockroachDB-specific packages add the retry helper and dialect details: crdb-go (crdbpgx.ExecuteTx), sqlalchemy-cockroachdb (run_transaction), the JDBC dialect. The Go and Java snippets on this slide are illustrative — nothing in the course compiles Go; the Python path is what Lab 14 runs.</p><p>Guidance: use the driver's retry helper rather than writing one, but read the pseudocode from Day 2 once so the helper is not magic.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots.</p></aside>
                 </section>
 
                 <!-- Lab 14 -->
@@ -714,6 +740,8 @@ COMMIT;</code></pre>
                     </div>
                     <p class="fragment small-text">Tooling: Flyway, Liquibase, Atlas, golang-migrate, Alembic —
                     all work. Take a backup before every migration deploy; it costs minutes and buys a rollback.</p>
+                
+                    <aside class="notes"><p>Additive migrations run online and are safe to deploy without a window: add column, add index, add constraint NOT VALID then validate. Renames, drops, and type changes need the expand-migrate-contract sequence over several deploys.</p><p>Migration tools work unchanged — Flyway, Liquibase, Alembic — with one habit: never wrap a schema change and data change in the same transaction. Lab 8 ran CREATE INDEX under load; that is the online behaviour this slide relies on.</p><p><strong>Terms:</strong> <strong>online schema change</strong> — DDL that runs as a background job while the table serves traffic; additive changes are safe, renames and type changes are not. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
                 </section>
 
                 <section>
@@ -734,6 +762,8 @@ COMMIT;</code></pre>
 psql -c "SELECT count(*) FROM information_schema.triggers;"
 psql -c "SELECT extname FROM pg_extension;"
 psql -c "SELECT sequencename FROM pg_sequences;"</code></pre>
+                
+                    <aside class="notes"><p>Walk the rows that change code: SERIAL becomes UUID or a sharded key, READ COMMITTED becomes SERIALIZABLE with retries, sequences become rare, and some system catalogs differ. Most application SQL needs no change.</p><p>The one that surprises people: an INT column is 64-bit. A driver expecting int4 from a migrated int column gets int8.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order.</p></aside>
                 </section>
 
                 <section>
@@ -754,6 +784,8 @@ psql -c "SELECT sequencename FROM pg_sequences;"</code></pre>
                         <p class="small-text"><strong>Keep a <code>legacy_id</code> column</strong> through the migration.
                         Dual-write and shadow-read need to match rows on both sides. Drop it after cutover.</p>
                     </div>
+                
+                    <aside class="notes"><p>Before moving data, redesign the keys. Lab 15 takes a legacy schema with SERIAL keys and one giant events table and rebuilds it with per-tenant composite keys and hash-sharding before the load. The redesign is the migration; the data move is plumbing.</p><p>Lab 15 then compares the same three queries on the old and new shapes with EXPLAIN ANALYZE. Two get faster; one gets slower and the lab says why — and asks whether that query is even needed.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>hash-sharded</strong> — an index whose key is prefixed with a hidden hash-bucket column, spreading sequential keys across ranges at the cost of global order. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
                 </section>
 
                 <section>
@@ -774,6 +806,8 @@ Phase 6  Stop writing PG, decommission              ← rollback: restore from b
                             <li>Backups running on the target, restore drill completed</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>Bulk load, then replicate changes until in sync, then flip, and be able to flip back. MOLT Fetch does the load and replication; MOLT Verify does the row-by-row comparison. In this course both run as containers — cockroachdb/molt on the cluster network, so the URLs use crdb1 and the PostgreSQL container's name.</p><p>The cutover step everyone skips is naming the rollback before flipping. Lab 15 has students write it down.</p><p><strong>Terms:</strong> <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>RPO / RTO</strong> — RPO: how much data may be lost (time since the last backup left the box). RTO: how long until service returns. Both measured, not declared.</p></aside>
                 </section>
 
                 <section>
@@ -791,6 +825,8 @@ Phase 6  Stop writing PG, decommission              ← rollback: restore from b
                         migration.</strong> A freshly loaded table has none, and you'd be measuring the optimizer
                         flying blind.</p>
                     </div>
+                
+                    <aside class="notes"><p>Same query, new key layout, different plan. Run the top queries on both before cutover. Lab 15 finds one that fans out across every tenant's ranges after the redesign and shows the index that fixes it — and the write cost of that index.</p><p>The discipline: EXPLAIN ANALYZE the top twenty statements from statement_statistics on the new cluster before anyone else does.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>follower read</strong> — a read served by a non-leaseholder replica at a slightly past timestamp it has fully applied (~4–5 s); trades staleness for locality. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh.</p></aside>
                 </section>
 
                 <section>
@@ -822,6 +858,8 @@ Phase 6  Stop writing PG, decommission              ← rollback: restore from b
                         </div>
                     </div>
                     <p class="fragment small-text">Being able to argue the ❌ case credibly is what makes the ✅ case believable.</p>
+                
+                    <aside class="notes"><p>Single region, fits one node, never needs to survive a zone loss, heavy use of Postgres extensions or stored procedures: stay on Postgres. Say this plainly. The credibility it buys is worth more than a marginal migration.</p><p>The decision question from Day 1: what has to keep working when a node, a zone, or a region disappears? If the honest answer is "it can be down for an hour", the migration may not pay for itself.</p><p><strong>Terms:</strong> <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
                 </section>
 
                 <!-- Lab 15 -->
@@ -871,6 +909,8 @@ molt verify --source "$PG" --target "$CRDB"</code></pre>
                     </table>
                     <pre class="fragment" style="font-size:0.85em;"><code class="language-bash">kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"nodes":5}}'
 kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"cockroachDBVersion":"v23.2.6"}}'</code></pre>
+                
+                    <aside class="notes"><p>StatefulSet gives stable pod identity, which is what a Raft member needs; a PVC per pod is a store; a headless Service is the join list; topology spread constraints are locality. The operator wraps all of it in a CrdbCluster resource.</p><p>Lab 16 builds it on kind — four Kubernetes nodes in containers, then three CockroachDB pods across them. The operator's admission webhook takes a moment after the deployment reports ready; applying the CrdbCluster in that gap fails with connection refused, and the lab now waits for endpoints.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>store</strong> — one disk on a node; capacity, storage-engine and queue metrics belong to stores (<code>kv_store_status</code>, not <code>kv_node_status</code>). <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs. <strong>PVC</strong> — persistent volume claim: a pod's durable disk, one per CockroachDB pod, equal to a store.</p></aside>
                 </section>
 
                 <section>
@@ -892,6 +932,8 @@ kubectl exec cockroachdb-client-secure -- ./cockroach node decommission 5 \
 kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
                     </div>
                     <p class="fragment small-text">Decommission is slower <em>because</em> it is correct.</p>
+                
+                    <aside class="notes"><p>One: no locality, so the scheduler puts all three replicas of a range on nodes in the same zone. Two: scaling the StatefulSet down before decommissioning, which deletes a pod and its replicas instantly instead of draining them.</p><p>Decommission first, then scale. In Lab 16 that is cockroach node decommission run from the client pod against crdb-public, then the patch. Slower because it is correct.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
                 </section>
 
                 <section>
@@ -914,6 +956,8 @@ kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
                             <li>Scheduled backups + a completed restore drill</li>
                         </ul>
                     </div>
+                
+                    <aside class="notes"><p>The operator handles certs, rolling upgrades, scaling, and decommission ordering. Helm gives you a chart and leaves the ordering to you. Manual manifests give you everything and protect you from nothing. Lab 16 uses the operator and compares against the Helm chart's values — helm runs as a container, alpine/helm, with its config directories mounted so repo add persists between commands.</p><p>Recommendation: operator unless there is a specific reason. The two mistakes on the previous slide are exactly what it prevents.</p><p><strong>Terms:</strong> <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>operator</strong> — the Kubernetes controller that turns a <code>CrdbCluster</code> resource into a correctly ordered StatefulSet. <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs.</p></aside>
                 </section>
 
                 <!-- Lab 16 -->
@@ -963,6 +1007,8 @@ kubectl apply -f crdb.yaml</code></pre>
                     </table>
                     <p class="fragment small-text">Version matters for several of these — check the release notes
                     for the version you actually run, not the newest one.</p>
+                
+                    <aside class="notes"><p>Name them and point to where they were touched: TTL (Labs 3, 14), changefeeds (13), multi-region (7), follower reads (5), admission control (10), row-level security and SSO (12). The survey is a map, not new material.</p><p>If time is short, skip this slide; nothing on it is examined and everything on it was covered.</p><p><strong>Terms:</strong> <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>follower read</strong> — a read served by a non-leaseholder replica at a slightly past timestamp it has fully applied (~4–5 s); trades staleness for locality. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
                 </section>
 
                 <section>
@@ -981,6 +1027,8 @@ kubectl apply -f crdb.yaml</code></pre>
                     <p class="fragment small-text">Enterprise vs Core changes what's available around the edges
                     (some backup, changefeed, and multi-region features) — check the current matrix for your version
                     rather than trusting a slide.</p>
+                
+                    <aside class="notes"><p>Self-hosted (this course), dedicated cloud, serverless. The trade is control versus operations: self-hosted means you run the allocator's hardware; serverless means you pay per request and give up locality control.</p><p>The cost point that connects to Day 3: write amplification and replication mean storage is three times the data and IOPS are ten times the writes, on every model. Size from the formula, not the raw data volume.</p><p><strong>Terms:</strong> <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
                 </section>
 
                 <section>
@@ -997,6 +1045,8 @@ kubectl apply -f crdb.yaml</code></pre>
                         <tr><td>No 40001 retry loop</td><td>It will drop requests under load</td></tr>
                         <tr><td>Pool of 200 per app instance</td><td>Size it from the measured knee</td></tr>
                     </table>
+                
+                    <aside class="notes"><p>This is Day 1's cheat-sheet promoted to a review tool. For each line students should be able to say what breaks, which lab showed it, and what the fix is. Run through two or three quickly as a call-and-response.</p><p>The intent of the whole course is that students catch these in a pull request before they reach production.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>UUID</strong> — a random 128-bit key (<code>gen_random_uuid()</code>) that spreads inserts uniformly across ranges; no time order. <strong>hash-sharded</strong> — an index whose key is prefixed with a hidden hash-bucket column, spreading sequential keys across ranges at the cost of global order. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>concurrency knee</strong> — the last concurrency level at which throughput still grows; past it latency rises for nothing. <strong>connection pool</strong> — a set of reused client connections; size it from the measured concurrency knee, not from thread count.</p></aside>
                 </section>
 
                 <section>
@@ -1016,6 +1066,8 @@ kubectl apply -f crdb.yaml</code></pre>
                     <p class="fragment"><strong>Take home:</strong> the
                     <a href="../labs/SCHEMA_PATTERNS_PLAYBOOK.md">Schema Patterns Playbook</a> —
                     ten patterns, each with the trap it avoids and the measurement that proves it.</p>
+                
+                    <aside class="notes"><p>The idea: the primary key decides where data lives, and where data lives decides everything else — throughput, latency, contention, survival. Every lab was an application of it.</p><p>Close with the measurement discipline: the course asserted nothing it did not then measure. Ask them to do the same on their own schemas.</p><p><strong>Terms:</strong> <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors.</p></aside>
                 </section>
 
                 <section>
@@ -1039,6 +1091,8 @@ kubectl apply -f crdb.yaml</code></pre>
                     <p class="fragment" style="text-align:center; font-size:1.2em;">
                         <span class="crdb-logo">🪳</span> Thank you — go break something on purpose.
                     </p>
+                
+                    <aside class="notes"><p>Point at the docs, the Playbook in the repo, and the test suite — the tests drive exactly what the labs do, so a student who wants to replay any lab non-interactively can run its test.</p><p>The repo stays available; pull_latest fetches updates. Encourage them to bring a real schema to the patterns and run the Lab 8 measurements against it.</p><p><strong>Terms:</strong> <strong>RPO / RTO</strong> — RPO: how much data may be lost (time since the last backup left the box). RTO: how long until service returns. Both measured, not declared. <strong>concurrency knee</strong> — the last concurrency level at which throughput still grows; past it latency rises for nothing.</p></aside>
                 </section>
             </section>
         </div>

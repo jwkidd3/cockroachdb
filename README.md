@@ -33,8 +33,8 @@ Per learner:
 
 | | Days 1–2 | Days 3–4 |
 | --- | --- | --- |
-| RAM | 16 GB | **32 GB** |
-| Disk | 60 GB | **150 GB** |
+| RAM | 8 GB | **12 GB** (stop the lab cluster before Labs 7, 10, 16) |
+| Disk | 60 GB | **100 GB** |
 | Tools | Docker | plus `kind` + `kubectl` (Lab 16 only) — `molt` and `helm` run as containers |
 
 **On Windows, work inside WSL2** — it is Linux, so every command in the course runs verbatim.
