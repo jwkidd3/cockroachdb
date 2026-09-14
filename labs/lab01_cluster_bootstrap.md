@@ -285,12 +285,15 @@ on your machine — so any PostgreSQL client works, containerised or not.
 
 3. **Python** — again, no local install needed:
    ```bash
-   docker run --rm --network crdb-labs_default -e PGPASSWORD= python:3.12-slim bash -c \
-     "pip install -q psycopg2-binary && python -c \"
+   docker run --rm -i --network crdb-labs_default python:3.12-slim \
+     bash -c "pip install -q psycopg2-binary 2>/dev/null && python -" <<'PY'
    import psycopg2
    c = psycopg2.connect('postgresql://root@crdb1:26257/lab1?sslmode=disable')
-   cur = c.cursor(); cur.execute('SELECT count(*) FROM notes'); print('rows:', cur.fetchone()[0])\""
+   cur = c.cursor(); cur.execute('SELECT count(*) FROM notes'); print('rows:', cur.fetchone()[0])
+   PY
    ```
+   (The script arrives on stdin through a heredoc, so there is no quoting to get wrong when
+   pasting. Takes ~20 s the first time while the driver installs.)
 
    > **Two addresses, one cluster.** From your machine it is `localhost:26257` (the published
    > port). From another container on the same Docker network it is `crdb1:26257`. Mixing
