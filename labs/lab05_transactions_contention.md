@@ -1,4 +1,4 @@
-# Lab 5: Transactions, Contention & Retry Loops (75 min)
+# Lab 5: Transactions, Contention & Retry Loops (65 min)
 
 > Pairs with the [Schema Patterns Playbook](SCHEMA_PATTERNS_PLAYBOOK.md). Part E is Playbook #5 (Sharded Counter).
 
@@ -343,6 +343,12 @@ Single-row counters (`UPDATE counters SET n = n + 1`) are a classic CockroachDB 
    GROUP BY 1
    ORDER BY 3 DESC;
    ```
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part G: Predict the Behavior (10 min)
 

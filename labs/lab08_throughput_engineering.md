@@ -1,4 +1,4 @@
-# Lab 8: Throughput Engineering — Bulk Import, Batching & the Schema Pattern Playbook (75 min)
+# Lab 8: Throughput Engineering — Bulk Import, Batching & the Schema Pattern Playbook (60 min)
 
 > This is the **performance capstone of Day 2**. Everything you measure here is a number you can
 > quote in a design review. Pairs with the [Schema Patterns Playbook](SCHEMA_PATTERNS_PLAYBOOK.md).
@@ -457,6 +457,26 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
 > two, cap around 64. Too few shards leaves contention; too many makes the read scan wide and
 > spreads the rows over more ranges than the workload needs.
 
+
+## Results Summary — Fill This In
+
+| Measurement | Your number | Rule of thumb |
+| --- | --- | --- |
+| Single-row insert rows/sec | | latency-bound, ~1/RTT |
+| Multi-row insert rows/sec | | 10–100× single-row |
+| `IMPORT INTO` rows/sec | | fastest, table offline |
+| Batch-size knee | | usually 500–2,000 |
+| Pre-split speedup | | biggest on sequential keys |
+| Best PK design (writes) | | hash-sharded or UUID |
+| Worst PK design (writes) | | `SERIAL` |
+| Sharded counter speedup | | grows with concurrency |
+| Concurrency knee | | pool size starts here |
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 15 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
 ### Part F: Online Schema Change Under Load (8 min)
 
 1. **Start a background write stream:**
@@ -539,20 +559,6 @@ throughput still climbs meaningfully. Past it you are buying latency with no thr
 > the knee divided by the number of app instances, then add a small headroom margin.
 > An oversized pool does not add throughput; it moves the queue from your app into the database,
 > where it is harder to see and more expensive to drain.
-
-## Results Summary — Fill This In
-
-| Measurement | Your number | Rule of thumb |
-| --- | --- | --- |
-| Single-row insert rows/sec | | latency-bound, ~1/RTT |
-| Multi-row insert rows/sec | | 10–100× single-row |
-| `IMPORT INTO` rows/sec | | fastest, table offline |
-| Batch-size knee | | usually 500–2,000 |
-| Pre-split speedup | | biggest on sequential keys |
-| Best PK design (writes) | | hash-sharded or UUID |
-| Worst PK design (writes) | | `SERIAL` |
-| Sharded counter speedup | | grows with concurrency |
-| Concurrency knee | | pool size starts here |
 
 ## Cleanup
 

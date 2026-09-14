@@ -1,4 +1,4 @@
-# Lab 3: Schema Design — High-Volume Patterns & Hotspot Avoidance (90 min)
+# Lab 3: Schema Design — High-Volume Patterns & Hotspot Avoidance (70 min)
 
 > Pairs with the [Schema Patterns Playbook](SCHEMA_PATTERNS_PLAYBOOK.md). Each part of this lab corresponds to one named pattern in the Playbook — that's your take-home reference.
 
@@ -266,6 +266,60 @@ Sometimes you know up front your keys will be sequential (e.g., a one-time impor
    ```
    Roughly even? If not, the allocator may not yet have rebalanced; wait a minute and re-check.
 
+### Part G: Append-Only Event Log with TTL *(Playbook #2, #9)* (10 min)
+
+For high-volume audit logs, metric streams, and anything that's "write once, read recently, age out":
+
+1. **Create the event log with a TTL clause:**
+   ```sql
+   CREATE TABLE event_log (
+     id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     ts       TIMESTAMPTZ DEFAULT now(),
+     payload  JSONB
+   ) WITH (ttl_expire_after = '30 days', ttl_job_cron = '@hourly');
+   ```
+   Random UUID PK distributes writes; the TTL job sweeps anything older than 30 days every hour.
+
+2. **Insert 50,000 fake events:**
+   ```sql
+   INSERT INTO event_log (payload)
+   SELECT jsonb_build_object('user', g, 'action', 'view')
+   FROM generate_series(1, 50000) g;
+   ```
+
+3. **Inspect the TTL job:**
+   ```sql
+   SELECT job_id, status, description
+   FROM [SHOW JOBS]
+   WHERE description ILIKE '%ttl%event_log%'
+   ORDER BY created DESC LIMIT 5;
+   ```
+   You'll see a recurring `ROW LEVEL TTL` job for `event_log`. It runs on your `@hourly` cron.
+
+4. **Set a tiny TTL on a test table to see the sweep work in real time:**
+   ```sql
+   CREATE TABLE ttl_demo (
+     id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     ts  TIMESTAMPTZ DEFAULT now()
+   ) WITH (ttl_expire_after = '30 seconds', ttl_job_cron = '* * * * *');
+
+   -- list the column: SELECT NULL, now() would try to write NULL into the PK
+   INSERT INTO ttl_demo (ts) SELECT now() FROM generate_series(1, 100);
+   SELECT count(*) FROM ttl_demo;        -- 100
+
+   -- Wait ~90 seconds for TTL to expire + a job run
+   SELECT pg_sleep(90);
+   SELECT count(*) FROM ttl_demo;        -- 0 (rows swept by the TTL job)
+   ```
+
+5. **Why this beats `DELETE FROM ... WHERE created < ...`:** the TTL job is bounded, monitored as a job, and runs without your application code remembering to schedule it.
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 25 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
 ### Part F: A Code-Review Checklist for PKs (10 min)
 
 Build a mental shortcut. For each of the following CREATE TABLE statements, predict (out loud or in a comment) whether it will hotspot, and if so, what to fix. Then verify your prediction by creating the table and inserting 5,000 rows.
@@ -331,54 +385,6 @@ CREATE TABLE tbl5b (
 > **5b is what you actually want:** `USING HASH` builds and maintains the shard column for you,
 > with no hand-written expression to get wrong. Hand-rolled shard columns were the pattern
 > before `USING HASH` existed; there is no reason to write one now.
-
-### Part G: Append-Only Event Log with TTL *(Playbook #2, #9)* (10 min)
-
-For high-volume audit logs, metric streams, and anything that's "write once, read recently, age out":
-
-1. **Create the event log with a TTL clause:**
-   ```sql
-   CREATE TABLE event_log (
-     id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-     ts       TIMESTAMPTZ DEFAULT now(),
-     payload  JSONB
-   ) WITH (ttl_expire_after = '30 days', ttl_job_cron = '@hourly');
-   ```
-   Random UUID PK distributes writes; the TTL job sweeps anything older than 30 days every hour.
-
-2. **Insert 50,000 fake events:**
-   ```sql
-   INSERT INTO event_log (payload)
-   SELECT jsonb_build_object('user', g, 'action', 'view')
-   FROM generate_series(1, 50000) g;
-   ```
-
-3. **Inspect the TTL job:**
-   ```sql
-   SELECT job_id, status, description
-   FROM [SHOW JOBS]
-   WHERE description ILIKE '%ttl%event_log%'
-   ORDER BY created DESC LIMIT 5;
-   ```
-   You'll see a recurring `ROW LEVEL TTL` job for `event_log`. It runs on your `@hourly` cron.
-
-4. **Set a tiny TTL on a test table to see the sweep work in real time:**
-   ```sql
-   CREATE TABLE ttl_demo (
-     id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-     ts  TIMESTAMPTZ DEFAULT now()
-   ) WITH (ttl_expire_after = '30 seconds', ttl_job_cron = '* * * * *');
-
-   -- list the column: SELECT NULL, now() would try to write NULL into the PK
-   INSERT INTO ttl_demo (ts) SELECT now() FROM generate_series(1, 100);
-   SELECT count(*) FROM ttl_demo;        -- 100
-
-   -- Wait ~90 seconds for TTL to expire + a job run
-   SELECT pg_sleep(90);
-   SELECT count(*) FROM ttl_demo;        -- 0 (rows swept by the TTL job)
-   ```
-
-5. **Why this beats `DELETE FROM ... WHERE created < ...`:** the TTL job is bounded, monitored as a job, and runs without your application code remembering to schedule it.
 
 ### Part H: Outbox Pattern with CDC *(Playbook #8)* (15 min)
 

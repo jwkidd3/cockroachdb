@@ -59,10 +59,10 @@ By the end of the course, attendees will be able to:
 
 | # | Lab | Duration |
 | --- | --- | --- |
-| 1 | Cluster Bootstrap & Lifecycle | 75 min |
-| 2 | DB Console & SQL Operational Tour | 70 min |
+| 1 | Cluster Bootstrap & Lifecycle | 65 min |
+| 2 | DB Console & SQL Operational Tour | 60 min |
 | 3 | Schema Design — Hotspots & Distribution Strategies | 70 min |
-| 4 | Indexing Strategies — Every Index Type That Matters | 70 min |
+| 4 | Indexing Strategies — Every Index Type That Matters | 60 min |
 
 ---
 
@@ -112,10 +112,10 @@ By the end of the course, attendees will be able to:
 
 | # | Lab | Duration |
 | --- | --- | --- |
-| 5 | Transactions, Contention & Retry Loops | 75 min |
-| 6 | EXPLAIN ANALYZE & Query Tuning | 70 min |
-| 7 | Multi-Region Topologies & Survival Goals | 75 min |
-| 8 | **Throughput Engineering — Bulk Import, Batching & Schema Pattern Playbook** | 75 min |
+| 5 | Transactions, Contention & Retry Loops | 65 min |
+| 6 | EXPLAIN ANALYZE & Query Tuning | 60 min |
+| 7 | Multi-Region Topologies & Survival Goals | 65 min |
+| 8 | **Throughput Engineering — Bulk Import, Batching & Schema Pattern Playbook** | 60 min |
 
 ---
 
@@ -162,10 +162,10 @@ By the end of the course, attendees will be able to:
 
 | # | Lab | Duration |
 | --- | --- | --- |
-| 9 | Build a Prometheus + Grafana Observability Stack with SLO Dashboards | 75 min |
-| 10 | TPC-C Benchmark & Capacity Sizing Exercise | 75 min |
-| 11 | BACKUP / RESTORE / Schedules & Cross-Cluster DR Drill | 75 min |
-| 12 | Security Hardening End-to-End — TLS Rotation, SSO, Audit Pipeline | 75 min |
+| 9 | Build a Prometheus + Grafana Observability Stack with SLO Dashboards | 60 min |
+| 10 | TPC-C Benchmark & Capacity Sizing Exercise | 65 min |
+| 11 | BACKUP / RESTORE / Schedules & Cross-Cluster DR Drill | 65 min |
+| 12 | Security Hardening End-to-End — TLS Rotation, SSO, Audit Pipeline | 55 min |
 
 ---
 
@@ -223,10 +223,10 @@ By the end of the course, attendees will be able to:
 
 | # | Lab | Duration |
 | --- | --- | --- |
-| 13 | CDC → Kafka → Downstream Consumer with Resolved-Timestamp Frontier | 75 min |
-| 14 | Outbox Pattern + Idempotent Retry Loop in Python/Go | 75 min |
-| 15 | Migrate a PostgreSQL Schema and Live Data with MOLT | 90 min |
-| 16 | Deploy CockroachDB on Kubernetes with cockroach-operator and kind | 90 min |
+| 13 | CDC → Kafka → Downstream Consumer with Resolved-Timestamp Frontier | 55 min |
+| 14 | Outbox Pattern + Idempotent Retry Loop in Python/Go | 55 min |
+| 15 | Migrate a PostgreSQL Schema and Live Data with MOLT | 55 min |
+| 16 | Deploy CockroachDB on Kubernetes with cockroach-operator and kind | 70 min |
 
 ---
 
@@ -234,13 +234,17 @@ By the end of the course, attendees will be able to:
 
 | Day | Lab Time | Lecture Time | Total |
 | --- | --- | --- | --- |
-| Day 1 | 4 × 70 = 285 min | ~135 min | ~7 hrs |
-| Day 2 | 3 × 70 + 2 × 75 = 290 min | ~130 min | ~7 hrs |
-| Day 3 | 4 × 75 = 300 min | ~120 min | ~7 hrs |
-| Day 4 | 2 × 75 + 2 × 90 = 330 min | ~90 min | ~7 hrs |
-| **Total** | **~1205 min** | **~475 min** | **~28 hrs** |
+| Day 1 | 255 min | ~45 min | 6 hrs |
+| Day 2 | 250 min | ~45 min | 6 hrs |
+| Day 3 | 245 min | ~45 min | 6 hrs |
+| Day 4 | 235 min | ~45 min | 6 hrs |
+| **Total** | **985 min** | **~180 min** | **24 hrs** |
 
-**Lab share: ~72%   Lecture share: ~28%**
+**Lab share: ~68%   Lecture share: ~12%   Breaks and buffer: ~20%**
+
+Class days are Monday–Thursday, six hours each. Every lab has a core set of parts sized to the
+figures above plus an *Optional — If Time Allows* section; each deck ends with an
+*Appendix — If Time Allows* stack of deep-dive slides. Neither is needed to follow the course.
 
 ---
 

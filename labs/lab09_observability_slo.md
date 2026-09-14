@@ -1,4 +1,4 @@
-# Lab 9: Prometheus + Grafana Observability Stack with SLO Dashboards (75 min)
+# Lab 9: Prometheus + Grafana Observability Stack with SLO Dashboards (60 min)
 
 ## Learning Objectives
 
@@ -344,6 +344,12 @@ audit trail.
    ```
    Note the fields a SIEM cares about: `Timestamp`, `EventType`, `User`, `TableName`,
    `Statement`, `ApplicationName`.
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part E: `debug zip` — What On-Call Actually Captures (10 min)
 

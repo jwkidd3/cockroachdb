@@ -1,4 +1,4 @@
-# Lab 15: Migrate a PostgreSQL Schema and Live Data with MOLT (90 min)
+# Lab 15: Migrate a PostgreSQL Schema and Live Data with MOLT (55 min)
 
 ## Learning Objectives
 
@@ -105,6 +105,7 @@ psql "$PG" -c "SELECT count(*) FROM customers; SELECT count(*) FROM orders; SELE
 
 ```bash
 scripts/crdb up
+scripts/crdb sql -e "CREATE DATABASE target;"
 export CRDB='postgresql://root@localhost:26257/target?sslmode=disable'
 ```
 
@@ -113,43 +114,6 @@ export CRDB='postgresql://root@localhost:26257/target?sslmode=disable'
 > `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
 
 ## Tasks
-
-### Part A: Dialect Differences — What Actually Breaks (15 min)
-
-1. **Dump the source schema and try it verbatim:**
-   ```bash
-   pg_dump "$PG" --schema-only --no-owner --no-privileges > /tmp/lab15/schema.sql
-   scripts/crdb sql -f /tmp/lab15/schema.sql 2>&1 | tee /tmp/lab15/errors.log
-   grep -i error /tmp/lab15/errors.log | head -20
-   ```
-
-2. **The cheat sheet.** Every row here is something you will hit:
-
-   | PostgreSQL | CockroachDB | Action |
-   | --- | --- | --- |
-   | `SERIAL` / `BIGSERIAL` | Works, but means `unique_rowid()` | **Change to `UUID DEFAULT gen_random_uuid()`** |
-   | Sequences (`nextval`) | Supported but serialize on one range | Avoid on hot paths; use UUID |
-   | `plpgsql` triggers | Not supported | Move to application code or a UDF where possible |
-   | Stored procedures | UDFs only (`CREATE FUNCTION`) | Rewrite |
-   | `JSON` | Stored as `JSONB` | Fine — inverted-index it if you query into it |
-   | `VARCHAR(n)` | Supported; `STRING` is idiomatic | Cosmetic |
-   | `TIMESTAMP` | Prefer `TIMESTAMPTZ` | **Change** — timezone bugs are forever |
-   | `text` search (`tsvector`) | Full-text search differs | Re-test |
-   | PostGIS extension | Spatial is built in, syntax mostly compatible | Re-test |
-   | `SELECT ... FOR UPDATE` | Supported | Behaviour differs under SERIALIZABLE |
-   | Foreign keys | Supported; each FK check is a distributed read | Audit hot-path FKs |
-   | `ON DELETE CASCADE` | Supported | Cascades can be surprisingly expensive |
-   | Materialized views | Supported, manual refresh | Re-test refresh cost |
-   | Table inheritance | Not supported | Redesign |
-   | `pg_*` extensions | Not supported | Find built-in equivalent |
-
-3. **Ask the source what it uses** — do this before you promise a timeline:
-   ```bash
-   psql "$PG" -c "SELECT count(*) FROM information_schema.triggers;"
-   psql "$PG" -c "SELECT proname, prolang::regtype FROM pg_proc WHERE pronamespace = 'public'::regnamespace;"
-   psql "$PG" -c "SELECT extname FROM pg_extension;"
-   psql "$PG" -c "SELECT sequencename FROM pg_sequences;"
-   ```
 
 ### Part B: Redesign the Schema for Distribution (20 min)
 
@@ -362,6 +326,49 @@ Migrations regress queries. Find out which ones before your users do.
    | Slow `COUNT(*)` on a big table | Distributed scan, no shortcut | `AS OF SYSTEM TIME` follower read, or maintain a counter |
    | Slow FK-heavy inserts | Each FK is a distributed read | Batch inserts; consider dropping non-critical FKs |
    | High p99 with fine p50 | Contention or cross-range transactions | Lab 5/Lab 8 techniques |
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 35 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
+### Part A: Dialect Differences — What Actually Breaks (15 min)
+
+1. **Dump the source schema and try it verbatim:**
+   ```bash
+   pg_dump "$PG" --schema-only --no-owner --no-privileges > /tmp/lab15/schema.sql
+   scripts/crdb sql -f /tmp/lab15/schema.sql 2>&1 | tee /tmp/lab15/errors.log
+   grep -i error /tmp/lab15/errors.log | head -20
+   ```
+
+2. **The cheat sheet.** Every row here is something you will hit:
+
+   | PostgreSQL | CockroachDB | Action |
+   | --- | --- | --- |
+   | `SERIAL` / `BIGSERIAL` | Works, but means `unique_rowid()` | **Change to `UUID DEFAULT gen_random_uuid()`** |
+   | Sequences (`nextval`) | Supported but serialize on one range | Avoid on hot paths; use UUID |
+   | `plpgsql` triggers | Not supported | Move to application code or a UDF where possible |
+   | Stored procedures | UDFs only (`CREATE FUNCTION`) | Rewrite |
+   | `JSON` | Stored as `JSONB` | Fine — inverted-index it if you query into it |
+   | `VARCHAR(n)` | Supported; `STRING` is idiomatic | Cosmetic |
+   | `TIMESTAMP` | Prefer `TIMESTAMPTZ` | **Change** — timezone bugs are forever |
+   | `text` search (`tsvector`) | Full-text search differs | Re-test |
+   | PostGIS extension | Spatial is built in, syntax mostly compatible | Re-test |
+   | `SELECT ... FOR UPDATE` | Supported | Behaviour differs under SERIALIZABLE |
+   | Foreign keys | Supported; each FK check is a distributed read | Audit hot-path FKs |
+   | `ON DELETE CASCADE` | Supported | Cascades can be surprisingly expensive |
+   | Materialized views | Supported, manual refresh | Re-test refresh cost |
+   | Table inheritance | Not supported | Redesign |
+   | `pg_*` extensions | Not supported | Find built-in equivalent |
+
+3. **Ask the source what it uses** — do this before you promise a timeline:
+   ```bash
+   psql "$PG" -c "SELECT count(*) FROM information_schema.triggers;"
+   psql "$PG" -c "SELECT proname, prolang::regtype FROM pg_proc WHERE pronamespace = 'public'::regnamespace;"
+   psql "$PG" -c "SELECT extname FROM pg_extension;"
+   psql "$PG" -c "SELECT sequencename FROM pg_sequences;"
+   ```
 
 ### Part E: Zero-Downtime Cutover (15 min)
 

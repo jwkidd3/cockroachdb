@@ -1,4 +1,4 @@
-# Lab 10: TPC-C Benchmark & Capacity Sizing Exercise (75 min)
+# Lab 10: TPC-C Benchmark & Capacity Sizing Exercise (65 min)
 
 > The other half of Lab 8. Lab 8 asked "how fast can this schema go?" This lab asks
 > "how much hardware do I buy to hit a number?"
@@ -197,51 +197,6 @@ you defend in a design review.
    That factor is the single most useful number in a capacity conversation, and it is decided
    by your **schema**, not your hardware.
 
-### Part D: Admission Control Under Overload (10 min)
-
-1. **Confirm admission control is on** (default in modern versions):
-   ```sql
-   SHOW CLUSTER SETTING admission.kv.enabled;
-   SHOW CLUSTER SETTING admission.sql_kv_response.enabled;
-   SHOW CLUSTER SETTING admission.sql_sql_response.enabled;
-   ```
-
-2. **Overload the cluster deliberately** — a big analytical scan alongside the OLTP workload:
-   ```bash
-   scripts/crdb run workload run tpcc --warehouses=10 --duration=3m 'postgresql://root@crdb1:26257?sslmode=disable' > /tmp/lab10/oltp.log 2>&1 &
-
-   for i in $(seq 1 8); do
-     scripts/crdb sql -e "
-       SELECT count(*), sum(ol_amount) FROM tpcc.order_line;
-       SELECT count(*) FROM tpcc.stock a JOIN tpcc.stock b ON a.s_i_id = b.s_i_id LIMIT 1;" &
-   done
-   wait
-   ```
-
-3. **Watch admission control queue the low-priority work:**
-   ```sql
-   SELECT node_id,
-          metrics->>'admission.wait_durations.kv-p99'          AS kv_wait_p99,
-          metrics->>'admission.wait_queue_length.kv'           AS kv_queue,
-          metrics->>'admission.granter.io_tokens_exhausted_duration.kv' AS io_exhausted
-   FROM crdb_internal.kv_node_status;
-   ```
-
-4. **Compare the OLTP p99 during overload** to the clean run in Part B. Admission control's
-   job is to make the *background* work wait so the *foreground* work degrades gracefully
-   instead of collapsing.
-
-5. **Protect a tenant/workload explicitly:**
-   ```sql
-   -- Tag the analytical connection so its work is deprioritized
-   SET application_name = 'analytics';
-   SET default_transaction_quality_of_service = 'background';
-
-   -- And the OLTP one
-   SET default_transaction_quality_of_service = 'critical';
-   ```
-   Re-run step 2 with the QoS settings applied and compare the OLTP p99.
-
 ### Part E: Sizing Exercises — 1k / 10k / 100k / 1M QPS (20 min)
 
 Work these in pairs. Use your measured numbers from Part C, the reference budgets from the
@@ -294,6 +249,56 @@ defensible answer.
 
 Each pair presents one scenario: node count, instance shape, the binding constraint, and
 the one schema decision that most changes the answer.
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
+### Part D: Admission Control Under Overload (10 min)
+
+1. **Confirm admission control is on** (default in modern versions):
+   ```sql
+   SHOW CLUSTER SETTING admission.kv.enabled;
+   SHOW CLUSTER SETTING admission.sql_kv_response.enabled;
+   SHOW CLUSTER SETTING admission.sql_sql_response.enabled;
+   ```
+
+2. **Overload the cluster deliberately** — a big analytical scan alongside the OLTP workload:
+   ```bash
+   scripts/crdb run workload run tpcc --warehouses=10 --duration=3m 'postgresql://root@crdb1:26257?sslmode=disable' > /tmp/lab10/oltp.log 2>&1 &
+
+   for i in $(seq 1 8); do
+     scripts/crdb sql -e "
+       SELECT count(*), sum(ol_amount) FROM tpcc.order_line;
+       SELECT count(*) FROM tpcc.stock a JOIN tpcc.stock b ON a.s_i_id = b.s_i_id LIMIT 1;" &
+   done
+   wait
+   ```
+
+3. **Watch admission control queue the low-priority work:**
+   ```sql
+   SELECT node_id,
+          metrics->>'admission.wait_durations.kv-p99'          AS kv_wait_p99,
+          metrics->>'admission.wait_queue_length.kv'           AS kv_queue,
+          metrics->>'admission.granter.io_tokens_exhausted_duration.kv' AS io_exhausted
+   FROM crdb_internal.kv_node_status;
+   ```
+
+4. **Compare the OLTP p99 during overload** to the clean run in Part B. Admission control's
+   job is to make the *background* work wait so the *foreground* work degrades gracefully
+   instead of collapsing.
+
+5. **Protect a tenant/workload explicitly:**
+   ```sql
+   -- Tag the analytical connection so its work is deprioritized
+   SET application_name = 'analytics';
+   SET default_transaction_quality_of_service = 'background';
+
+   -- And the OLTP one
+   SET default_transaction_quality_of_service = 'critical';
+   ```
+   Re-run step 2 with the QoS settings applied and compare the OLTP p99.
 
 ## Cleanup
 

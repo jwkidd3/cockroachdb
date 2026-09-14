@@ -1,4 +1,4 @@
-# Lab 7: Multi-Region Topologies & Survival Goals (75 min)
+# Lab 7: Multi-Region Topologies & Survival Goals (65 min)
 
 ## Learning Objectives
 
@@ -392,6 +392,12 @@ Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving 
    ```sql
    SELECT * FROM crdb_internal.zones WHERE target = 'DATABASE shop';
    ```
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part G: Decision Tree (10 min)
 

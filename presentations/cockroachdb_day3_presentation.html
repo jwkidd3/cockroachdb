@@ -329,7 +329,9 @@
                 <div class="agenda-item">🧪 <strong>Lab 11</strong> — BACKUP/RESTORE/schedules &amp; cross-cluster DR drill <em>(75 min)</em></div>
                 <div class="agenda-item">5. Security Hardening &amp; On-Call Practices</div>
                 <div class="agenda-item">🧪 <strong>Lab 12</strong> — Security end-to-end: TLS rotation, SSO, audit pipeline <em>(75 min)</em></div>
-            </section>
+            
+                    <aside class="notes"><p><strong>Six-hour day.</strong> About 45 minutes of lecture in total across the sections, four labs of 55–70 minutes each (the core parts only), and two 15-minute breaks. That leaves roughly 20–30 minutes of buffer. Each lab ends with an <em>Optional — If Time Allows</em> section and this deck ends with an <em>Appendix — If Time Allows</em> stack; use them only if ahead. Teaching content always precedes its lab callout, so run the lab as soon as its section is done rather than batching labs at the end.</p></aside>
+                </section>
 
             <!-- Where we are -->
             <section>
@@ -465,7 +467,7 @@
 
                 <!-- Lab 9 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 9: Prometheus + Grafana with SLO Dashboards<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 9: Prometheus + Grafana with SLO Dashboards<span class="lab-duration">⏱ 60 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -564,24 +566,7 @@ utilization_target = 0.5</code></pre>
                     <aside class="notes"><p>Walk the arithmetic once with real numbers from the room. Storage: raw data times replication factor times a compaction headroom of about 1.5. IOPS: write rate times amplification times replication. CPU from the per-vCPU budget. Take the largest and add headroom for the allocator's own work and for losing a node.</p><p>The step students skip: sizing for N minus one. A 3-node cluster must run on 2 during maintenance.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>store</strong> — one disk on a node; capacity, storage-engine and queue metrics belong to stores (<code>kv_store_status</code>, not <code>kv_node_status</code>).</p></aside>
                 </section>
 
-                <section>
-                    <h3>Admission Control — Graceful Degradation</h3>
-                    <p>When demand exceeds capacity, something has to wait. Admission control chooses <em>what</em>.</p>
-                    <pre><code class="language-sql">SHOW CLUSTER SETTING admission.kv.enabled;              -- true by default
-SHOW CLUSTER SETTING admission.sql_kv_response.enabled;
-
--- Tag a workload so its work is deprioritized
-SET default_transaction_quality_of_service = 'background';   -- analytics
-SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre>
-                    <div class="highlight-box fragment">
-                        <p class="small-text">Without admission control, an analytical scan and your checkout path
-                        compete as equals and both get slow. With it, the scan queues and checkout keeps its
-                        latency. <strong>Overload becomes a slowdown of the right thing instead of a collapse
-                        of everything.</strong></p>
-                    </div>
                 
-                    <aside class="notes"><p>When a node's CPU or storage engine is overloaded, admission control queues lower-priority work rather than letting everything slow down together. Foreground SQL beats background jobs; user-settable priority can push one workload ahead of another.</p><p>The metric is admission_wait_durations with a queue suffix. Lab 10 sets default_transaction_quality_of_service to show the knob exists. The teaching point: the cluster degrading gracefully is a feature; seeing admission wait time is the signal to add capacity, not to turn it off.</p><p><strong>Terms:</strong> <strong>admission control</strong> — per-node queueing that delays lower-priority work when CPU or storage is saturated, instead of slowing everything. <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable.</p></aside>
-                </section>
 
                 <section>
                     <h3>Benchmarking: Pick the Right Workload</h3>
@@ -626,7 +611,7 @@ SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre
 
                 <!-- Lab 10 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 10: TPC-C Benchmark &amp; Capacity Sizing<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 10: TPC-C Benchmark &amp; Capacity Sizing<span class="lab-duration">⏱ 65 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -764,7 +749,7 @@ actual RTO     = locate + restore + verify + cut over</code></pre>
 
                 <!-- Lab 11 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 11: BACKUP / RESTORE / Schedules &amp; Cross-Cluster DR<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 11: BACKUP / RESTORE / Schedules &amp; Cross-Cluster DR<span class="lab-duration">⏱ 65 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -836,20 +821,7 @@ scripts/crdb run cert create-client root --certs-dir=/certs --ca-key=/certs/ca.k
                     <aside class="notes"><p>Reissue, then SIGHUP; the node reloads certificates in place and open connections stay open. In the lab that is docker compose kill -s HUP crdbs1.</p><p>The trap is worth two minutes: it works only because the compose file runs the binary as PID 1. Through the image's default shell-script entrypoint the signal is swallowed — the new cert is on disk, cert list shows the new expiry, and the server keeps serving the old one. The lab verifies the served certificate with openssl s_client for exactly this reason. True of any wrapped process.</p><p><strong>Terms:</strong> <strong>PID 1</strong> — the first process in a container and the only one that receives signals; a shell-wrapper PID 1 swallows SIGHUP. <strong>SIGHUP</strong> — the signal that makes a node reload its certificates in place, without a restart.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Rotating the CA — Order Matters</h3>
-                    <pre><code class="language-text">1. Append the NEW CA to ca.crt on every node and client   (both trusted)
-2. SIGHUP every node
-3. Re-issue node and client certs from the new CA, one node at a time
-4. Remove the OLD CA from ca.crt
-5. SIGHUP every node again</code></pre>
-                    <div class="warning-box fragment">
-                        <p>Doing steps 3 and 4 in the wrong order <strong>locks you out of your own cluster</strong>.
-                        Write the procedure down before you need it, and rehearse it on a throwaway cluster.</p>
-                    </div>
                 
-                    <aside class="notes"><p>Both CAs must be trusted everywhere before any cert is reissued from the new one, and the old CA is removed only after every cert has moved. Do steps 3 and 4 in the wrong order and the cluster cannot talk to itself.</p><p>Have students write the order down. Nobody rotates a CA often enough to remember it under pressure.</p><p><strong>Terms:</strong> <strong>SIGHUP</strong> — the signal that makes a node reload its certificates in place, without a restart.</p></aside>
-                </section>
 
                 <section>
                     <h3>RBAC That Survives CI/CD</h3>
@@ -922,66 +894,13 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                     <aside class="notes"><p>EXPERIMENTAL_AUDIT SET READ WRITE on a table emits a SENSITIVE_ACCESS event for every access, with user, table, statement, application, and remote address. Route that channel to an auditable sink — auditable: true, buffered-writes: false so nothing is lost on crash — and ship it off-box with an HTTP sink.</p><p>Lab 12 writes the config, restarts with the overlay, generates access as different users, and reads the JSON events back from lab12/logs. The fields table on the slide is what an auditor asks for; show that they are all present.</p><p><strong>Terms:</strong> <strong>SENSITIVE_ACCESS</strong> — the log channel per-table auditing writes to; route it to an <code>auditable</code> sink. <strong>log channel</strong> — a named category of log events (HEALTH, OPS, SENSITIVE_ACCESS, …) routed to sinks by a log config file.</p></aside>
                 </section>
 
-                <section>
-                    <h3>On-Call: What to Capture Before You Escalate</h3>
-                    <div class="two-column">
-                        <div>
-                            <div class="highlight-box">
-                                <h4><code>debug zip</code></h4>
-                                <pre style="font-size:0.65em;"><code class="language-bash">cockroach debug zip out.zip \
-  --host=... --redact</code></pre>
-                                <ul class="small-text">
-                                    <li>Per-node status and logs</li>
-                                    <li>Changed cluster settings</li>
-                                    <li>Range and lease state</li>
-                                    <li>In-flight queries</li>
-                                    <li>Contention events</li>
-                                    <li>Heap and goroutine dumps</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="highlight-box">
-                                <h4>Statement bundle</h4>
-                                <pre style="font-size:0.65em;"><code class="language-sql">EXPLAIN ANALYZE (DEBUG)
-  SELECT ...;</code></pre>
-                                <ul class="small-text">
-                                    <li>Narrower and usually more useful</li>
-                                    <li>Plan, statistics, trace, environment</li>
-                                    <li>Reproducible by support</li>
-                                    <li>Also available in DB Console → Statements</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                    <p class="fragment small-text"><strong>Always <code>--redact</code></strong> anything leaving your
-                    organization — a raw zip contains query text with literal values.</p>
                 
-                    <aside class="notes"><p>cockroach debug zip collects logs, settings, node status, ranges, jobs, and statement statistics into one archive — the thing support asks for first. --redact strips query literals for cases where the data is sensitive. EXPLAIN ANALYZE (DEBUG) does the same for one statement.</p><p>In this course the zip is written inside the node and copied out with scripts/crdb cp. Lab 9 produces both the full and redacted versions and inspects the contents.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable.</p></aside>
-                </section>
 
-                <section>
-                    <h3>Compliance Mapping</h3>
-                    <table style="font-size: 0.62em;">
-                        <tr><th>Control</th><th>Framework</th><th>Feature</th></tr>
-                        <tr><td>Encryption in transit</td><td>SOC 2, HIPAA</td><td>TLS node + client certs</td></tr>
-                        <tr><td>Encryption at rest</td><td>SOC 2, HIPAA</td><td>Enterprise encryption-at-rest</td></tr>
-                        <tr><td>Least privilege</td><td>SOC 2, GDPR</td><td>Roles + default privileges</td></tr>
-                        <tr><td>Audit trail</td><td>SOC 2, HIPAA</td><td><code>SENSITIVE_ACCESS</code> channel</td></tr>
-                        <tr><td>Right to erasure</td><td>GDPR</td><td>Row deletion + TTL + backup expiry</td></tr>
-                        <tr><td>Data residency</td><td>GDPR</td><td><code>REGIONAL BY ROW</code> + zone configs</td></tr>
-                        <tr><td>Recoverability</td><td>SOC 2</td><td>Scheduled backups + a measured DR drill</td></tr>
-                        <tr><td>Deprovisioning</td><td>SOC 2</td><td>SSO / OIDC</td></tr>
-                    </table>
-                    <p class="fragment small-text">Notice how many of these are answered by <em>schema</em> and
-                    <em>topology</em> choices, not by a security product.</p>
                 
-                    <aside class="notes"><p>Map features to controls rather than reciting features: encryption in flight (TLS), access control (RBAC, HBA), audit trail (SENSITIVE_ACCESS channel), data retention (TTL, gc.ttlseconds), backup and restore evidence (the drill record from Lab 11).</p><p>The useful framing for students who will face an auditor: every row in this table is something they configured in Labs 9, 11, and 12, and each produces an artifact they can hand over.</p><p><strong>Terms:</strong> <strong>REGIONAL BY ROW</strong> — table locality that partitions rows by a region column so each row's leaseholder lives in its home region. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>zone configuration</strong> — per-database/table/index settings for replication factor, constraints and lease preferences; multi-region SQL writes them for you. <strong>SENSITIVE_ACCESS</strong> — the log channel per-table auditing writes to; route it to an <code>auditable</code> sink. <strong>log channel</strong> — a named category of log events (HEALTH, OPS, SENSITIVE_ACCESS, …) routed to sinks by a log config file.</p></aside>
-                </section>
 
                 <!-- Lab 12 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 12: Security Hardening End-to-End<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 12: Security Hardening End-to-End<span class="lab-duration">⏱ 55 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -1023,6 +942,100 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                     migrating off PostgreSQL, and running all of it on Kubernetes.</p>
                 </div>
             </section>
+        
+                <section>
+                    <section class="section-title">
+                        <h2>📎 Appendix — If Time Allows</h2>
+                        <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
+                    </section>
+                    <section>
+                    <h3>Admission Control — Graceful Degradation</h3>
+                    <p>When demand exceeds capacity, something has to wait. Admission control chooses <em>what</em>.</p>
+                    <pre><code class="language-sql">SHOW CLUSTER SETTING admission.kv.enabled;              -- true by default
+SHOW CLUSTER SETTING admission.sql_kv_response.enabled;
+
+-- Tag a workload so its work is deprioritized
+SET default_transaction_quality_of_service = 'background';   -- analytics
+SET default_transaction_quality_of_service = 'critical';     -- OLTP</code></pre>
+                    <div class="highlight-box fragment">
+                        <p class="small-text">Without admission control, an analytical scan and your checkout path
+                        compete as equals and both get slow. With it, the scan queues and checkout keeps its
+                        latency. <strong>Overload becomes a slowdown of the right thing instead of a collapse
+                        of everything.</strong></p>
+                    </div>
+                
+                    <aside class="notes"><p>When a node's CPU or storage engine is overloaded, admission control queues lower-priority work rather than letting everything slow down together. Foreground SQL beats background jobs; user-settable priority can push one workload ahead of another.</p><p>The metric is admission_wait_durations with a queue suffix. Lab 10 sets default_transaction_quality_of_service to show the knob exists. The teaching point: the cluster degrading gracefully is a feature; seeing admission wait time is the signal to add capacity, not to turn it off.</p><p><strong>Terms:</strong> <strong>admission control</strong> — per-node queueing that delays lower-priority work when CPU or storage is saturated, instead of slowing everything. <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable.</p></aside>
+                </section>
+                    <section>
+                    <h3>Rotating the CA — Order Matters</h3>
+                    <pre><code class="language-text">1. Append the NEW CA to ca.crt on every node and client   (both trusted)
+2. SIGHUP every node
+3. Re-issue node and client certs from the new CA, one node at a time
+4. Remove the OLD CA from ca.crt
+5. SIGHUP every node again</code></pre>
+                    <div class="warning-box fragment">
+                        <p>Doing steps 3 and 4 in the wrong order <strong>locks you out of your own cluster</strong>.
+                        Write the procedure down before you need it, and rehearse it on a throwaway cluster.</p>
+                    </div>
+                
+                    <aside class="notes"><p>Both CAs must be trusted everywhere before any cert is reissued from the new one, and the old CA is removed only after every cert has moved. Do steps 3 and 4 in the wrong order and the cluster cannot talk to itself.</p><p>Have students write the order down. Nobody rotates a CA often enough to remember it under pressure.</p><p><strong>Terms:</strong> <strong>SIGHUP</strong> — the signal that makes a node reload its certificates in place, without a restart.</p></aside>
+                </section>
+                    <section>
+                    <h3>On-Call: What to Capture Before You Escalate</h3>
+                    <div class="two-column">
+                        <div>
+                            <div class="highlight-box">
+                                <h4><code>debug zip</code></h4>
+                                <pre style="font-size:0.65em;"><code class="language-bash">cockroach debug zip out.zip \
+  --host=... --redact</code></pre>
+                                <ul class="small-text">
+                                    <li>Per-node status and logs</li>
+                                    <li>Changed cluster settings</li>
+                                    <li>Range and lease state</li>
+                                    <li>In-flight queries</li>
+                                    <li>Contention events</li>
+                                    <li>Heap and goroutine dumps</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="highlight-box">
+                                <h4>Statement bundle</h4>
+                                <pre style="font-size:0.65em;"><code class="language-sql">EXPLAIN ANALYZE (DEBUG)
+  SELECT ...;</code></pre>
+                                <ul class="small-text">
+                                    <li>Narrower and usually more useful</li>
+                                    <li>Plan, statistics, trace, environment</li>
+                                    <li>Reproducible by support</li>
+                                    <li>Also available in DB Console → Statements</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="fragment small-text"><strong>Always <code>--redact</code></strong> anything leaving your
+                    organization — a raw zip contains query text with literal values.</p>
+                
+                    <aside class="notes"><p>cockroach debug zip collects logs, settings, node status, ranges, jobs, and statement statistics into one archive — the thing support asks for first. --redact strips query literals for cases where the data is sensitive. EXPLAIN ANALYZE (DEBUG) does the same for one statement.</p><p>In this course the zip is written inside the node and copied out with scripts/crdb cp. Lab 9 produces both the full and redacted versions and inspects the contents.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>cluster setting</strong> — a cluster-wide configuration value set with <code>SET CLUSTER SETTING</code>; distinct from a session variable.</p></aside>
+                </section>
+                    <section>
+                    <h3>Compliance Mapping</h3>
+                    <table style="font-size: 0.62em;">
+                        <tr><th>Control</th><th>Framework</th><th>Feature</th></tr>
+                        <tr><td>Encryption in transit</td><td>SOC 2, HIPAA</td><td>TLS node + client certs</td></tr>
+                        <tr><td>Encryption at rest</td><td>SOC 2, HIPAA</td><td>Enterprise encryption-at-rest</td></tr>
+                        <tr><td>Least privilege</td><td>SOC 2, GDPR</td><td>Roles + default privileges</td></tr>
+                        <tr><td>Audit trail</td><td>SOC 2, HIPAA</td><td><code>SENSITIVE_ACCESS</code> channel</td></tr>
+                        <tr><td>Right to erasure</td><td>GDPR</td><td>Row deletion + TTL + backup expiry</td></tr>
+                        <tr><td>Data residency</td><td>GDPR</td><td><code>REGIONAL BY ROW</code> + zone configs</td></tr>
+                        <tr><td>Recoverability</td><td>SOC 2</td><td>Scheduled backups + a measured DR drill</td></tr>
+                        <tr><td>Deprovisioning</td><td>SOC 2</td><td>SSO / OIDC</td></tr>
+                    </table>
+                    <p class="fragment small-text">Notice how many of these are answered by <em>schema</em> and
+                    <em>topology</em> choices, not by a security product.</p>
+                
+                    <aside class="notes"><p>Map features to controls rather than reciting features: encryption in flight (TLS), access control (RBAC, HBA), audit trail (SENSITIVE_ACCESS channel), data retention (TTL, gc.ttlseconds), backup and restore evidence (the drill record from Lab 11).</p><p>The useful framing for students who will face an auditor: every row in this table is something they configured in Labs 9, 11, and 12, and each produces an artifact they can hand over.</p><p><strong>Terms:</strong> <strong>REGIONAL BY ROW</strong> — table locality that partitions rows by a region column so each row's leaseholder lives in its home region. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>zone configuration</strong> — per-database/table/index settings for replication factor, constraints and lease preferences; multi-region SQL writes them for you. <strong>SENSITIVE_ACCESS</strong> — the log channel per-table auditing writes to; route it to an <code>auditable</code> sink. <strong>log channel</strong> — a named category of log events (HEALTH, OPS, SENSITIVE_ACCESS, …) routed to sinks by a log config file.</p></aside>
+                </section>
+                </section>
         </div>
     </div>
 

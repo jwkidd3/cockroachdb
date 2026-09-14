@@ -317,17 +317,17 @@
                     <h2>Module 2: Distributed Operations &amp; Resilience</h2>
                 </div>
                 <div class="agenda-item">5. Transactions &amp; Consistency
-                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 5 · 75 min</span>
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 5 · 65 min</span>
                 </div>
                 <div class="agenda-item">6. Query Optimization
-                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 6 · 70 min</span>
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 6 · 60 min</span>
                 </div>
                 <div class="agenda-item">7. Multi-Region Topologies &amp; Resilience
-                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 7 · 75 min</span>
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 7 · 65 min</span>
                 </div>
                 <div class="agenda-item">8. High-Volume Schema Patterns</div>
                 <div class="agenda-item">9. Throughput Engineering
-                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 8 · 75 min</span>
+                    <span class="duration" style="font-size: 0.7em; padding: 0.1em 0.6em;">🧪 Lab 8 · 60 min</span>
                 </div>
 
                 <div class="info-box" style="margin-top:0.5em;">
@@ -335,7 +335,9 @@
                     performance problem you meet — contention, slow plans, cross-region latency — traces back
                     to a schema decision. Lab 8 puts numbers on all of them.</p>
                 </div>
-            </section>
+            
+                    <aside class="notes"><p><strong>Six-hour day.</strong> About 45 minutes of lecture in total across the sections, four labs of 55–70 minutes each (the core parts only), and two 15-minute breaks. That leaves roughly 20–30 minutes of buffer. Each lab ends with an <em>Optional — If Time Allows</em> section and this deck ends with an <em>Appendix — If Time Allows</em> stack; use them only if ahead. Teaching content always precedes its lab callout, so run the lab as soon as its section is done rather than batching labs at the end.</p></aside>
+                </section>
 
             <!-- ============================================================ -->
             <!-- Section 5: Transactions & Consistency -->
@@ -423,38 +425,7 @@ ERROR: restart transaction: TransactionRetryWithProtoRefreshError:
                     <aside class="notes"><p>40001 arrives at the client as an error, and the only correct response is to re-run the whole transaction from BEGIN. Not the last statement — the whole thing, because the reads it did are no longer valid.</p><p>Two things students get wrong: catching it and giving up, and retrying without backoff so the same transactions collide again. The retry loop slide shows the shape; Lab 5 has students run eight concurrent writers and watch how many retries it takes. Some giving up under extreme contention is legitimate and the lab says so.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Retry Loop — Pseudocode</h3>
-                    <p class="code-title">Application-side retry pattern</p>
-                    <pre><code class="language-python">
-import psycopg2
-from psycopg2 import errors
-
-MAX_RETRIES = 5
-
-def transfer(conn, src, dst, amount):
-    for attempt in range(MAX_RETRIES):
-        try:
-            with conn:                              # BEGIN
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE accounts SET balance = balance - %s WHERE id = %s",
-                        (amount, src))
-                    cur.execute(
-                        "UPDATE accounts SET balance = balance + %s WHERE id = %s",
-                        (amount, dst))
-            return                                  # COMMIT successful
-        except errors.SerializationFailure:
-            # 40001 — retry the entire transaction
-            continue
-    raise RuntimeError("transfer failed after retries")
-                    </code></pre>
-                    <div class="warning-box fragment small-text">
-                        <p><strong>Common mistake:</strong> catching and ignoring the error. The transaction is already aborted — the next statement on that connection will fail until you start fresh.</p>
-                    </div>
                 
-                    <aside class="notes"><p>Walk it: begin, do the work, commit; on 40001 sleep with jitter and start over; cap the attempts. The savepoint variant lets the server tell you it is retryable, which is cleaner than parsing SQLSTATE.</p><p>Most drivers ship a helper — crdb-go's ExecuteTx, SQLAlchemy's run_transaction. Point students at those rather than hand-rolling, but make them read this once so they know what the helper does. Lab 14 runs the Python version with and without the loop.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>IMPORT INTO</strong> — bulk load into an existing table from staged files; far faster than INSERT, table briefly offline.</p></aside>
-                </section>
 
                 <section>
                     <h3>Follower Reads &amp; AS OF SYSTEM TIME</h3>
@@ -556,7 +527,7 @@ COMMIT;</code></pre>
 
                 <!-- Lab 5: Transactions & Contention -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 5: Transactions, Contention &amp; Retry Loops<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 5: Transactions, Contention &amp; Retry Loops<span class="lab-duration">⏱ 65 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -676,86 +647,15 @@ SHOW HISTOGRAM &lt;histogram_id&gt;;
                     <aside class="notes"><p>The optimizer chooses plans from table statistics: row counts, distinct values, histograms. Statistics refresh automatically when enough rows change, but a freshly loaded table has none until the first collection. CREATE STATISTICS forces it and needs a name in v23.2.</p><p>Lab 6 loads data and then runs CREATE STATISTICS before benchmarking so plans are stable. In production, a bad plan after a bulk load is almost always this.</p><p><strong>Terms:</strong> <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>online schema change</strong> — DDL that runs as a background job while the table serves traffic; additive changes are safe, renames and type changes are not.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Index Hints &amp; Index Recommendations</h3>
-                    <p>Usually the optimizer picks well. When it doesn't, you have two levers:</p>
-                    <p class="code-title">Hint a specific index</p>
-                    <pre><code class="language-sql">
-SELECT * FROM orders@orders_customer_id_idx
-WHERE customer_id = 'abc';
-
--- Force a full table scan (rarely useful, but available)
-SELECT * FROM orders@{NO_INDEX_JOIN}
-WHERE customer_id = 'abc';
-                    </code></pre>
-                    <div class="highlight-box fragment">
-                        <p><strong>CockroachDB will tell you when you're missing an index.</strong> Check the <strong>SQL Activity → Insights</strong> tab in the DB Console — it surfaces queries that would benefit from a new index, and even gives you the <code>CREATE INDEX</code> statement.</p>
-                    </div>
                 
-                    <aside class="notes"><p>Hints (table@index) force a choice; use them to test a hypothesis, not as a permanent fix. Index recommendations in EXPLAIN and the console suggest indexes from observed queries — treat them as candidates to measure, since each one adds write cost.</p><p>The discipline to teach: hypothesis, EXPLAIN ANALYZE before, change, EXPLAIN ANALYZE after, keep only if the numbers moved.</p></aside>
-                </section>
 
-                <section>
-                    <h3>DistSQL &amp; Vectorized Execution</h3>
-                    <p>The plan tells you <em>where</em> the work runs and <em>how</em> it is executed.</p>
-                    <pre><code class="language-sql">EXPLAIN (DISTSQL) SELECT category, count(*) FROM products GROUP BY category;
-EXPLAIN (VEC)     SELECT category, count(*) FROM products GROUP BY category;</code></pre>
-                    <table class="fragment" style="font-size: 0.66em;">
-                        <tr><th>Plan line</th><th>Means</th></tr>
-                        <tr><td><code>distribution: full</code></td><td>Work is spread across nodes — good for big aggregations, waste for a point lookup</td></tr>
-                        <tr><td><code>distribution: local</code></td><td>Runs on the gateway node</td></tr>
-                        <tr><td><code>vectorized: true</code></td><td>Column-at-a-time execution — much faster for scans and aggregates</td></tr>
-                    </table>
-                    <div class="highlight-box fragment">
-                        <p class="small-text"><strong>The diagnostic that matters:</strong> <code>distribution: full</code>
-                        on a query that should touch one tenant means your keys are not co-located.
-                        That is a schema finding, not a query finding.</p>
-                    </div>
-                    <pre class="fragment" style="font-size:0.8em;"><code class="language-sql">-- A downloadable bundle: plan, statistics, trace, environment
-EXPLAIN ANALYZE (DEBUG) SELECT ...;</code></pre>
                 
-                    <aside class="notes"><p>DistSQL pushes work to the nodes holding the data — aggregation and filtering happen where the rows are, and only results travel. Vectorized execution processes columns in batches instead of one row at a time; it is on by default and rarely worth touching.</p><p>Mention this so students understand why a full-table aggregate on a big table is parallel across the cluster while a point lookup is one node. Lab 6 toggles vectorize off to show the difference on one query.</p><p><strong>Terms:</strong> <strong>gateway node</strong> — whichever node the client connected to; it routes each operation to the right leaseholder and is otherwise not special. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>EXPLAIN</strong> — the plan the optimizer chose from statistics, without executing it. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>DistSQL</strong> — the engine that pushes filters, aggregations and joins to the nodes holding the data. <strong>vectorized</strong> — batch-per-column execution instead of row at a time; on by default.</p></aside>
-                </section>
 
-                <section>
-                    <h3>Common Slow-Query Patterns</h3>
-                    <table>
-                        <thead><tr><th>Symptom in EXPLAIN ANALYZE</th><th>Likely cause</th><th>Fix</th></tr></thead>
-                        <tbody>
-                            <tr class="fragment">
-                                <td>Full table scan, span <code>[ - ]</code></td>
-                                <td>Missing index for predicate</td>
-                                <td>Add covering index</td>
-                            </tr>
-                            <tr class="fragment">
-                                <td>Index join shows ≫ rows than final result</td>
-                                <td>Index is too narrow</td>
-                                <td>Add <code>STORING</code> clause</td>
-                            </tr>
-                            <tr class="fragment">
-                                <td>Estimated rows ≪ actual rows</td>
-                                <td>Stale statistics</td>
-                                <td><code>CREATE STATISTICS</code> manually</td>
-                            </tr>
-                            <tr class="fragment">
-                                <td><code>distribution: full</code> for a small query</td>
-                                <td>Cross-range scan</td>
-                                <td>Narrow predicate or co-locate via composite PK</td>
-                            </tr>
-                            <tr class="fragment">
-                                <td>High <code>KV time</code> vs <code>execution time</code></td>
-                                <td>Reading lots of keys to filter little</td>
-                                <td>Better index, partial index, or STORING</td>
-                            </tr>
-                        </tbody>
-                    </table>
                 
-                    <aside class="notes"><p>Walk through each with its fix: missing index (add it, or STORING), stale statistics (CREATE STATISTICS), function on an indexed column in the predicate (rewrite so the index can be used), unbounded LIMIT-less scans, and correlated subqueries the optimizer cannot decorrelate.</p><p>The distributed-specific one: a query whose predicate does not include the leading key column fans out to every range. It looks fine on a small test table and falls over at scale.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>STORING / covering</strong> — <code>STORING</code> copies columns into the index entry's value so the index covers the query with no index join; stored columns cannot be filtered or sorted on. <strong>index join</strong> — the second lookup from an index entry to the primary row when the index lacks needed columns. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh.</p></aside>
-                </section>
 
                 <!-- Lab 6: EXPLAIN ANALYZE -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 6: EXPLAIN ANALYZE &amp; Query Tuning<span class="lab-duration">⏱ 70 min</span></h3>
+                    <h3>🧪 Lab 6: EXPLAIN ANALYZE &amp; Query Tuning<span class="lab-duration">⏱ 60 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -935,7 +835,7 @@ ALTER DATABASE bank SURVIVE REGION FAILURE;
                     </table>
                     <p class="fragment small-text"><strong>The question per table: is this row's audience one region, or all of them?</strong> One region → BY ROW. All, rarely written → GLOBAL. All, stale OK → follower reads. All, written everywhere, must be current → <em>no local option exists</em>; pin BY TABLE to the busier region and let the other pay.</p>
                 
-                    <aside class="notes"><p>Three options. REGIONAL BY TABLE pins a whole table's leaseholders to one region. REGIONAL BY ROW partitions by a region column so each row's leaseholder is in its home region. GLOBAL puts a read-serving replica in every region at the cost of slow writes.</p><p>The question to ask of each table: is this row's audience one region or all of them? One region: BY ROW. All regions, rarely written: GLOBAL. All regions, stale acceptable: follower reads. All regions, written often and must be current: someone pays the round trip; pick the busier region. Make students say the fourth case out loud — it is the one they will try to engineer around, and there is no arrangement on any system that makes two regions both local for current, contended data.</p><p>Lab 7 Part G is this table as an exercise: six workloads, pick the locality and survival goal, defend each.</p><p><strong>Terms:</strong> <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>REGIONAL BY ROW</strong> — table locality that partitions rows by a region column so each row's leaseholder lives in its home region. <strong>REGIONAL BY TABLE</strong> — table locality that pins a whole table's leaseholders to one region. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere.</p></aside>
+                    <aside class="notes"><p>Three options. REGIONAL BY TABLE pins a whole table's leaseholders to one region. REGIONAL BY ROW partitions by a region column so each row's leaseholder is in its home region. GLOBAL puts a read-serving replica in every region at the cost of slow writes.</p><p>The question to ask of each table: is this row's audience one region or all of them? One region: BY ROW. All regions, rarely written: GLOBAL. All regions, stale acceptable: follower reads. All regions, written often and must be current: someone pays the round trip; pick the busier region. Make students say the fourth case out loud — it is the one they will try to engineer around, and there is no arrangement on any system that makes two regions both local for current, contended data.</p><p>Lab 7's optional Part G is this table as an exercise: eight workloads, pick the locality and survival goal, defend each — set it as homework if the lab runs long.</p><p><strong>Terms:</strong> <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>REGIONAL BY ROW</strong> — table locality that partitions rows by a region column so each row's leaseholder lives in its home region. <strong>REGIONAL BY TABLE</strong> — table locality that pins a whole table's leaseholders to one region. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere.</p></aside>
                 </section>
 
                 <section>
@@ -985,27 +885,7 @@ CREATE TABLE country_codes (
                     <aside class="notes"><p>Every region can serve current reads from its local replica because writes commit slightly in the future — all replicas agree by the time a reader can see the value. Reads are fast everywhere; writes carry a global latency penalty.</p><p>Reference data only: currencies, countries, feature flags. Lab 7 Part C reads the same row from nodes in three regions and compares latency. The rule of thumb on the slide is real: more than about a write an hour per row and GLOBAL is wrong.</p><p><strong>Terms:</strong> <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Node Decommissioning &amp; Recovery</h3>
-                    <p class="code-title">Removing a node cleanly</p>
-                    <pre><code class="language-bash">
-# Tell node 4 to drain — it stops being a leaseholder and rebalances replicas off
-scripts/crdb run node decommission 4 --insecure
-
-# Watch progress
-scripts/crdb run node status --insecure --decommission
-                    </code></pre>
-                    <p class="fragment small-text"><code>scripts/crdb run &lt;args&gt;</code> is just <code>cockroach &lt;args&gt;</code> executed inside node 1 — which is why the production form you will find in the docs works unchanged.</p>
-                    <div class="highlight-box fragment">
-                        <ul>
-                            <li>Decommissioning is <strong>online</strong> — no downtime, no read/write interruption</li>
-                            <li>The cluster waits until <em>every</em> range has a replacement replica before marking the node decommissioned</li>
-                            <li>Use this for: scale-down, hardware retirement, planned maintenance, region evacuation</li>
-                        </ul>
-                    </div>
                 
-                    <aside class="notes"><p>Decommission is online: the node keeps serving while the allocator moves its replicas away, and it is marked decommissioned only when every range has a replacement. It is refused when there is nowhere to move replicas — a 3-node cluster at replication factor 3 — which Lab 1 demonstrates.</p><p>Contrast with just stopping the node: after time_until_store_dead (5 minutes) the allocator does the same replica moves, but from a copy that is now behind, and with a window of reduced redundancy in between.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>drain</strong> — gracefully shedding a node's leases and connections before it stops.</p></aside>
-                </section>
 
                 <section>
                     <h3>The Allocator — Who Decides Where Replicas Live</h3>
@@ -1034,26 +914,11 @@ FROM crdb_internal.kv_store_status;</code></pre>
                     <aside class="notes"><p>Every node runs the allocator loop, asking per range: is this where the zone config says, is every replica on a live node, is capacity balanced, is load balanced, are replicas diverse across localities. It acts by adding, removing, and moving replicas and leases.</p><p>The two metrics to watch: ranges_underreplicated, which should return to zero after any failure, and the replicate queue, which is a store metric — it lives in kv_store_status, not kv_node_status. Sustained non-zero on either is the alert.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>under-replicated</strong> — a range with fewer live replicas than its replication factor but still a quorum: serving, and being repaired. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Recovery From an Unplanned Loss</h3>
-                    <p class="code-title">What CockroachDB does automatically</p>
-                    <pre><code class="language-text">
-T+0     Node 3 disappears (kernel panic, network partition, ...)
-T+9s    Lease on Node 3's ranges expires; peers acquire new leases
-T+5min  Allocator decides: too few replicas, start re-replicating
-        Each affected range starts streaming a snapshot to a new node
-T+...   When every range is back to 3 replicas, the cluster is healthy again
-                    </code></pre>
-                    <div class="warning-box fragment">
-                        <p><strong>Operator response:</strong> usually none, unless the node was permanently lost. Use the DB Console's <strong>Replication</strong> dashboard to confirm under-replicated ranges return to zero.</p>
-                    </div>
                 
-                    <aside class="notes"><p>Lose a minority of replicas and nothing is unavailable; the allocator rebuilds redundancy in the background. Lose a majority for a range and that range refuses reads and writes until a replica returns — it will not answer from a minority, by design.</p><p>The operational lesson: replication factor 3 survives one loss; two simultaneous losses in the same range are an outage for that range. Region survival exists for the case where "two at once" is a real correlated risk.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>under-replicated</strong> — a range with fewer live replicas than its replication factor but still a quorum: serving, and being repaired.</p></aside>
-                </section>
 
                 <!-- Lab 7: Multi-Region -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 7: Multi-Region Topologies &amp; Survival Goals<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 7: Multi-Region Topologies &amp; Survival Goals<span class="lab-duration">⏱ 65 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -1195,40 +1060,9 @@ SELECT sum(n) FROM counter_shards WHERE name = 'page_views';</code></pre>
                     <aside class="notes"><p>Split one hot row into N rows; each increment picks one; the read sums them. Contention drops by N. The trap the labs caught: choose the shard on the client, not with random() in the WHERE clause — random() is evaluated per row and the test measured lost increments when it was server-side.</p><p>Lab 5 builds this and counts increments: exactly 200 with client-chosen shards, wrong totals (193 and 211 in the test) with the server-side form. Show that number; it is the most convincing thing in the section.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Patterns 6–10 — The Rest of the Playbook</h3>
-                    <table style="font-size: 0.62em;">
-                        <tr><th>#</th><th>Pattern</th><th>For</th><th>Avoids</th></tr>
-                        <tr><td>6</td><td>Hot/Cold split via partial index</td><td>99% of queries hit a recent slice</td><td>Indexing rows nobody queries</td></tr>
-                        <tr><td>7</td><td><code>GLOBAL</code> reference table</td><td>Small read-anywhere lookup data</td><td>Cross-region reads on hot paths</td></tr>
-                        <tr><td>8</td><td>Outbox + CDC</td><td>Publishing events atomically with writes</td><td>Dual-write inconsistency</td></tr>
-                        <tr><td>9</td><td>TTL table</td><td>Sessions, tokens, soft locks</td><td><code>DELETE</code> jobs competing with live traffic</td></tr>
-                        <tr><td>10</td><td>Pre-split + bulk import</td><td>One-time loads of sequential data</td><td>Writing 100M rows into one range</td></tr>
-                    </table>
-                    <div class="highlight-box fragment">
-                        <p class="small-text">Full catalog with schemas, traps, and where each is taught:
-                        <strong><a href="../labs/SCHEMA_PATTERNS_PLAYBOOK.md">labs/SCHEMA_PATTERNS_PLAYBOOK.md</a></strong>.
-                        Days 3 and 4 keep applying them — capacity math, migration redesign, outbox implementation.</p>
-                    </div>
                 
-                    <aside class="notes"><p>Hot/cold split: a partial index over the hot rows with STORING, so the working set is small and covering. GLOBAL reference table: Lab 7. Outbox plus CDC: Lab 14, the answer to dual writes. TTL table: expiry as a table option, swept by a background job. Pre-split plus bulk import: Lab 8.</p><p>Do not teach each in depth here; name the problem each solves and point to the lab and the Playbook.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>pre-split</strong> — seeding a table's ranges before a bulk load so it starts spread across nodes; released with <code>UNSPLIT ALL</code>.</p></aside>
-                </section>
 
-                <section>
-                    <h3>The Anti-Patterns to Spot in Code Review</h3>
-                    <table style="font-size: 0.64em;">
-                        <tr><th>Spot this</th><th>Because</th></tr>
-                        <tr><td><code>id SERIAL PRIMARY KEY</code> on a high-volume table</td><td>Rightmost-range hotspot</td></tr>
-                        <tr><td><code>UPDATE counters SET n = n + 1 …</code></td><td>40001 retry storms</td></tr>
-                        <tr><td>Low-cardinality lead column (<code>region</code>, <code>status</code>)</td><td>Huge ranges, poor selectivity</td></tr>
-                        <tr><td>"Index everything just in case"</td><td>Each index multiplies every insert</td></tr>
-                        <tr><td><code>DELETE FROM logs WHERE created &lt; …</code> on a cron</td><td>Competes with live traffic — use TTL</td></tr>
-                        <tr><td>App writes to Kafka <em>and</em> the database</td><td>Dual write — use Outbox + CDC</td></tr>
-                        <tr><td>Read-then-write with no transaction</td><td>No atomicity guarantee at all</td></tr>
-                    </table>
                 
-                    <aside class="notes"><p>Reverse of the patterns. The one to emphasise now that students have seen 40001: the single-row counter, because it looks perfectly reasonable and it is the top cause of retry storms.</p><p>The dual-write one (application writes the database and then Kafka) is the setup for Day 4's outbox pattern; plant it now.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
-                </section>
             </section>
 
             <!-- ============================================================ -->
@@ -1358,7 +1192,7 @@ done</code></pre>
 
                 <!-- Lab 8 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 8: Throughput Engineering &amp; the Pattern Playbook<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 8: Throughput Engineering &amp; the Pattern Playbook<span class="lab-duration">⏱ 60 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -1407,6 +1241,189 @@ done</code></pre>
                     and a hardware bill — plus backup/DR drills and security hardening.</p>
                 </div>
             </section>
+        
+                <section>
+                    <section class="section-title">
+                        <h2>📎 Appendix — If Time Allows</h2>
+                        <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
+                    </section>
+                    <section>
+                    <h3>Retry Loop — Pseudocode</h3>
+                    <p class="code-title">Application-side retry pattern</p>
+                    <pre><code class="language-python">
+import psycopg2
+from psycopg2 import errors
+
+MAX_RETRIES = 5
+
+def transfer(conn, src, dst, amount):
+    for attempt in range(MAX_RETRIES):
+        try:
+            with conn:                              # BEGIN
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE accounts SET balance = balance - %s WHERE id = %s",
+                        (amount, src))
+                    cur.execute(
+                        "UPDATE accounts SET balance = balance + %s WHERE id = %s",
+                        (amount, dst))
+            return                                  # COMMIT successful
+        except errors.SerializationFailure:
+            # 40001 — retry the entire transaction
+            continue
+    raise RuntimeError("transfer failed after retries")
+                    </code></pre>
+                    <div class="warning-box fragment small-text">
+                        <p><strong>Common mistake:</strong> catching and ignoring the error. The transaction is already aborted — the next statement on that connection will fail until you start fresh.</p>
+                    </div>
+                
+                    <aside class="notes"><p>Walk it: begin, do the work, commit; on 40001 sleep with jitter and start over; cap the attempts. The savepoint variant lets the server tell you it is retryable, which is cleaner than parsing SQLSTATE.</p><p>Most drivers ship a helper — crdb-go's ExecuteTx, SQLAlchemy's run_transaction. Point students at those rather than hand-rolling, but make them read this once so they know what the helper does. Lab 14 runs the Python version with and without the loop.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>IMPORT INTO</strong> — bulk load into an existing table from staged files; far faster than INSERT, table briefly offline.</p></aside>
+                </section>
+                    <section>
+                    <h3>Index Hints &amp; Index Recommendations</h3>
+                    <p>Usually the optimizer picks well. When it doesn't, you have two levers:</p>
+                    <p class="code-title">Hint a specific index</p>
+                    <pre><code class="language-sql">
+SELECT * FROM orders@orders_customer_id_idx
+WHERE customer_id = 'abc';
+
+-- Force a full table scan (rarely useful, but available)
+SELECT * FROM orders@{NO_INDEX_JOIN}
+WHERE customer_id = 'abc';
+                    </code></pre>
+                    <div class="highlight-box fragment">
+                        <p><strong>CockroachDB will tell you when you're missing an index.</strong> Check the <strong>SQL Activity → Insights</strong> tab in the DB Console — it surfaces queries that would benefit from a new index, and even gives you the <code>CREATE INDEX</code> statement.</p>
+                    </div>
+                
+                    <aside class="notes"><p>Hints (table@index) force a choice; use them to test a hypothesis, not as a permanent fix. Index recommendations in EXPLAIN and the console suggest indexes from observed queries — treat them as candidates to measure, since each one adds write cost.</p><p>The discipline to teach: hypothesis, EXPLAIN ANALYZE before, change, EXPLAIN ANALYZE after, keep only if the numbers moved.</p></aside>
+                </section>
+                    <section>
+                    <h3>DistSQL &amp; Vectorized Execution</h3>
+                    <p>The plan tells you <em>where</em> the work runs and <em>how</em> it is executed.</p>
+                    <pre><code class="language-sql">EXPLAIN (DISTSQL) SELECT category, count(*) FROM products GROUP BY category;
+EXPLAIN (VEC)     SELECT category, count(*) FROM products GROUP BY category;</code></pre>
+                    <table class="fragment" style="font-size: 0.66em;">
+                        <tr><th>Plan line</th><th>Means</th></tr>
+                        <tr><td><code>distribution: full</code></td><td>Work is spread across nodes — good for big aggregations, waste for a point lookup</td></tr>
+                        <tr><td><code>distribution: local</code></td><td>Runs on the gateway node</td></tr>
+                        <tr><td><code>vectorized: true</code></td><td>Column-at-a-time execution — much faster for scans and aggregates</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><strong>The diagnostic that matters:</strong> <code>distribution: full</code>
+                        on a query that should touch one tenant means your keys are not co-located.
+                        That is a schema finding, not a query finding.</p>
+                    </div>
+                    <pre class="fragment" style="font-size:0.8em;"><code class="language-sql">-- A downloadable bundle: plan, statistics, trace, environment
+EXPLAIN ANALYZE (DEBUG) SELECT ...;</code></pre>
+                
+                    <aside class="notes"><p>DistSQL pushes work to the nodes holding the data — aggregation and filtering happen where the rows are, and only results travel. Vectorized execution processes columns in batches instead of one row at a time; it is on by default and rarely worth touching.</p><p>Mention this so students understand why a full-table aggregate on a big table is parallel across the cluster while a point lookup is one node. Lab 6 toggles vectorize off to show the difference on one query.</p><p><strong>Terms:</strong> <strong>gateway node</strong> — whichever node the client connected to; it routes each operation to the right leaseholder and is otherwise not special. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>EXPLAIN</strong> — the plan the optimizer chose from statistics, without executing it. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh. <strong>DistSQL</strong> — the engine that pushes filters, aggregations and joins to the nodes holding the data. <strong>vectorized</strong> — batch-per-column execution instead of row at a time; on by default.</p></aside>
+                </section>
+                    <section>
+                    <h3>Common Slow-Query Patterns</h3>
+                    <table>
+                        <thead><tr><th>Symptom in EXPLAIN ANALYZE</th><th>Likely cause</th><th>Fix</th></tr></thead>
+                        <tbody>
+                            <tr class="fragment">
+                                <td>Full table scan, span <code>[ - ]</code></td>
+                                <td>Missing index for predicate</td>
+                                <td>Add covering index</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Index join shows ≫ rows than final result</td>
+                                <td>Index is too narrow</td>
+                                <td>Add <code>STORING</code> clause</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>Estimated rows ≪ actual rows</td>
+                                <td>Stale statistics</td>
+                                <td><code>CREATE STATISTICS</code> manually</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td><code>distribution: full</code> for a small query</td>
+                                <td>Cross-range scan</td>
+                                <td>Narrow predicate or co-locate via composite PK</td>
+                            </tr>
+                            <tr class="fragment">
+                                <td>High <code>KV time</code> vs <code>execution time</code></td>
+                                <td>Reading lots of keys to filter little</td>
+                                <td>Better index, partial index, or STORING</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                
+                    <aside class="notes"><p>Walk through each with its fix: missing index (add it, or STORING), stale statistics (CREATE STATISTICS), function on an indexed column in the predicate (rewrite so the index can be used), unbounded LIMIT-less scans, and correlated subqueries the optimizer cannot decorrelate.</p><p>The distributed-specific one: a query whose predicate does not include the leading key column fans out to every range. It looks fine on a small test table and falls over at scale.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>STORING / covering</strong> — <code>STORING</code> copies columns into the index entry's value so the index covers the query with no index join; stored columns cannot be filtered or sorted on. <strong>index join</strong> — the second lookup from an index entry to the primary row when the index lacks needed columns. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain. <strong>EXPLAIN ANALYZE</strong> — runs the query and reports actual rows read vs returned, per-operator time, and which nodes did the work. <strong>statistics</strong> — per-table row counts, distinct counts and histograms the optimizer plans from; <code>CREATE STATISTICS name FROM t</code> forces a refresh.</p></aside>
+                </section>
+                    <section>
+                    <h3>Node Decommissioning &amp; Recovery</h3>
+                    <p class="code-title">Removing a node cleanly</p>
+                    <pre><code class="language-bash">
+# Tell node 4 to drain — it stops being a leaseholder and rebalances replicas off
+scripts/crdb run node decommission 4 --insecure
+
+# Watch progress
+scripts/crdb run node status --insecure --decommission
+                    </code></pre>
+                    <p class="fragment small-text"><code>scripts/crdb run &lt;args&gt;</code> is just <code>cockroach &lt;args&gt;</code> executed inside node 1 — which is why the production form you will find in the docs works unchanged.</p>
+                    <div class="highlight-box fragment">
+                        <ul>
+                            <li>Decommissioning is <strong>online</strong> — no downtime, no read/write interruption</li>
+                            <li>The cluster waits until <em>every</em> range has a replacement replica before marking the node decommissioned</li>
+                            <li>Use this for: scale-down, hardware retirement, planned maintenance, region evacuation</li>
+                        </ul>
+                    </div>
+                
+                    <aside class="notes"><p>Decommission is online: the node keeps serving while the allocator moves its replicas away, and it is marked decommissioned only when every range has a replacement. It is refused when there is nowhere to move replicas — a 3-node cluster at replication factor 3 — which Lab 1 demonstrates.</p><p>Contrast with just stopping the node: after time_until_store_dead (5 minutes) the allocator does the same replica moves, but from a copy that is now behind, and with a window of reduced redundancy in between.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>rebalanc</strong> — the allocator moving replicas or leases to even out capacity or load, or to repair replication after a failure. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>drain</strong> — gracefully shedding a node's leases and connections before it stops.</p></aside>
+                </section>
+                    <section>
+                    <h3>Recovery From an Unplanned Loss</h3>
+                    <p class="code-title">What CockroachDB does automatically</p>
+                    <pre><code class="language-text">
+T+0     Node 3 disappears (kernel panic, network partition, ...)
+T+9s    Lease on Node 3's ranges expires; peers acquire new leases
+T+5min  Allocator decides: too few replicas, start re-replicating
+        Each affected range starts streaming a snapshot to a new node
+T+...   When every range is back to 3 replicas, the cluster is healthy again
+                    </code></pre>
+                    <div class="warning-box fragment">
+                        <p><strong>Operator response:</strong> usually none, unless the node was permanently lost. Use the DB Console's <strong>Replication</strong> dashboard to confirm under-replicated ranges return to zero.</p>
+                    </div>
+                
+                    <aside class="notes"><p>Lose a minority of replicas and nothing is unavailable; the allocator rebuilds redundancy in the background. Lose a majority for a range and that range refuses reads and writes until a replica returns — it will not answer from a minority, by design.</p><p>The operational lesson: replication factor 3 survives one loss; two simultaneous losses in the same range are an outage for that range. Region survival exists for the case where "two at once" is a real correlated risk.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>leaseholder</strong> — the one replica per range that serves all reads from its local copy and proposes all writes; a new leaseholder must apply every committed write before serving. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>under-replicated</strong> — a range with fewer live replicas than its replication factor but still a quorum: serving, and being repaired.</p></aside>
+                </section>
+                    <section>
+                    <h3>Patterns 6–10 — The Rest of the Playbook</h3>
+                    <table style="font-size: 0.62em;">
+                        <tr><th>#</th><th>Pattern</th><th>For</th><th>Avoids</th></tr>
+                        <tr><td>6</td><td>Hot/Cold split via partial index</td><td>99% of queries hit a recent slice</td><td>Indexing rows nobody queries</td></tr>
+                        <tr><td>7</td><td><code>GLOBAL</code> reference table</td><td>Small read-anywhere lookup data</td><td>Cross-region reads on hot paths</td></tr>
+                        <tr><td>8</td><td>Outbox + CDC</td><td>Publishing events atomically with writes</td><td>Dual-write inconsistency</td></tr>
+                        <tr><td>9</td><td>TTL table</td><td>Sessions, tokens, soft locks</td><td><code>DELETE</code> jobs competing with live traffic</td></tr>
+                        <tr><td>10</td><td>Pre-split + bulk import</td><td>One-time loads of sequential data</td><td>Writing 100M rows into one range</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p class="small-text">Full catalog with schemas, traps, and where each is taught:
+                        <strong><a href="../labs/SCHEMA_PATTERNS_PLAYBOOK.md">labs/SCHEMA_PATTERNS_PLAYBOOK.md</a></strong>.
+                        Days 3 and 4 keep applying them — capacity math, migration redesign, outbox implementation.</p>
+                    </div>
+                
+                    <aside class="notes"><p>Hot/cold split: a partial index over the hot rows with STORING, so the working set is small and covering. GLOBAL reference table: Lab 7. Outbox plus CDC: Lab 14, the answer to dual writes. TTL table: expiry as a table option, swept by a background job. Pre-split plus bulk import: Lab 8.</p><p>Do not teach each in depth here; name the problem each solves and point to the lab and the Playbook.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>partial index</strong> — an index with a WHERE clause containing only matching rows; smaller and cheaper to maintain. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron. <strong>pre-split</strong> — seeding a table's ranges before a bulk load so it starts spread across nodes; released with <code>UNSPLIT ALL</code>.</p></aside>
+                </section>
+                    <section>
+                    <h3>The Anti-Patterns to Spot in Code Review</h3>
+                    <table style="font-size: 0.64em;">
+                        <tr><th>Spot this</th><th>Because</th></tr>
+                        <tr><td><code>id SERIAL PRIMARY KEY</code> on a high-volume table</td><td>Rightmost-range hotspot</td></tr>
+                        <tr><td><code>UPDATE counters SET n = n + 1 …</code></td><td>40001 retry storms</td></tr>
+                        <tr><td>Low-cardinality lead column (<code>region</code>, <code>status</code>)</td><td>Huge ranges, poor selectivity</td></tr>
+                        <tr><td>"Index everything just in case"</td><td>Each index multiplies every insert</td></tr>
+                        <tr><td><code>DELETE FROM logs WHERE created &lt; …</code> on a cron</td><td>Competes with live traffic — use TTL</td></tr>
+                        <tr><td>App writes to Kafka <em>and</em> the database</td><td>Dual write — use Outbox + CDC</td></tr>
+                        <tr><td>Read-then-write with no transaction</td><td>No atomicity guarantee at all</td></tr>
+                    </table>
+                
+                    <aside class="notes"><p>Reverse of the patterns. The one to emphasise now that students have seen 40001: the single-row counter, because it looks perfectly reasonable and it is the top cause of retry storms.</p><p>The dual-write one (application writes the database and then Kafka) is the setup for Day 4's outbox pattern; plant it now.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>hotspot</strong> — one range's leaseholder doing a disproportionate share of the work, bounding the whole cluster's throughput. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>dual write</strong> — the application writing the database and then a message broker separately, where one can fail without the other. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
+                </section>
+                </section>
         </div>
     </div>
 

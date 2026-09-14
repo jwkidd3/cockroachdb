@@ -1,4 +1,4 @@
-# Lab 6: EXPLAIN ANALYZE & Query Tuning (70 min)
+# Lab 6: EXPLAIN ANALYZE & Query Tuning (60 min)
 
 ## Learning Objectives
 
@@ -217,6 +217,25 @@ The output prints a `cockroach demo` command to load the bundle, plus a path to 
 `scripts/crdb run demo --with-load ...` inside the container, or download the bundle from the
 DB Console and open it on a machine with the binary.) The bundle contains the plan, the schema, statistics, and a small reproducible dataset — perfect for opening a support case or shipping a repro to your team's expert.
 
+### Part G: When Is a Query as Fast as It Can Get? (5 min)
+
+A heuristic checklist. If a query checks all boxes, further tuning is unlikely to help much:
+
+- ✅ Plan is **distribution: local** AND scan span is **single-key** OR
+- ✅ Plan is **distribution: full** AND it's an aggregate over the whole dataset
+- ✅ **Vectorized: true**
+- ✅ **KV time** is the bulk of execution time (you're I/O-bound, not compute-bound)
+- ✅ Estimated and actual row counts match within ~10×
+- ✅ No index joins on hot read paths
+- ✅ No full table scans on tables > a few hundred MB
+
+If any of these fail, there's headroom. Walk through them for Q1, Q2, Q3 again with your latest indexes.
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
 ### Part F: DistSQL & Vectorization (10 min)
 
 CockroachDB ships two executors: **vectorized** (default, batch-oriented) and **row-by-row** (for unsupported types). And every plan picks a **distribution**: local (single-node) or distributed.
@@ -243,20 +262,6 @@ CockroachDB ships two executors: **vectorized** (default, batch-oriented) and **
    SET vectorize = 'on';  -- restore the default
    ```
    You may see a slight performance difference (usually vectorized is faster).
-
-### Part G: When Is a Query as Fast as It Can Get? (5 min)
-
-A heuristic checklist. If a query checks all boxes, further tuning is unlikely to help much:
-
-- ✅ Plan is **distribution: local** AND scan span is **single-key** OR
-- ✅ Plan is **distribution: full** AND it's an aggregate over the whole dataset
-- ✅ **Vectorized: true**
-- ✅ **KV time** is the bulk of execution time (you're I/O-bound, not compute-bound)
-- ✅ Estimated and actual row counts match within ~10×
-- ✅ No index joins on hot read paths
-- ✅ No full table scans on tables > a few hundred MB
-
-If any of these fail, there's headroom. Walk through them for Q1, Q2, Q3 again with your latest indexes.
 
 ## Cleanup
 

@@ -1,4 +1,4 @@
-# Lab 4: Indexing Strategies — Every Index Type That Matters (70 min)
+# Lab 4: Indexing Strategies — Every Index Type That Matters (60 min)
 
 > Pairs with the [Schema Patterns Playbook](SCHEMA_PATTERNS_PLAYBOOK.md). Part C is Playbook #6 (Hot/Cold Split); Part D is Playbook #1 applied at the secondary-index level.
 
@@ -221,32 +221,6 @@ The `placed` column is a write timestamp — perfectly monotonic. A naïve index
 
 5. **Re-run EXPLAIN ANALYZE.** The plan now scans all 8 buckets in parallel — slightly more work per range, but no hotspot.
 
-### Part E: Expression Indexes — Index Computed Expressions (10 min)
-
-You frequently search by lowercased email. Don't add a `lower_email` column — index the expression directly.
-
-1. **Add an expression index:**
-   ```sql
-   CREATE INDEX customers_email_lower
-     ON customers ((lower(email)));
-   ```
-
-2. **Use it:**
-   ```sql
-   EXPLAIN
-   SELECT id, name FROM customers
-   WHERE lower(email) = 'user42@example.com';
-   ```
-   The plan should reference `customers_email_lower` with a single-key span.
-
-3. **What if you write `email = 'User42@Example.com'` instead?**
-   ```sql
-   EXPLAIN
-   SELECT id, name FROM customers
-   WHERE email = 'User42@Example.com';
-   ```
-   This uses the original UNIQUE index, *not* the expression index, because the optimizer can't prove `email = 'X'` is equivalent to `lower(email) = lower('X')` without case-folding both. Expression indexes only help queries that use the *same* expression.
-
 ### Part F: Inverted Index for JSONB (10 min)
 
 Our `orders.payload` is JSONB. A query like "find all orders with `channel = 'mobile'`" can't use a regular index unless we GIN-index the JSONB column.
@@ -315,6 +289,37 @@ Our `orders.payload` is JSONB. A query like "find all orders with `channel = 'mo
    SELECT sum(range_size_mb) AS total_mb
    FROM [SHOW RANGES FROM TABLE orders WITH DETAILS];
    ```
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
+### Part E: Expression Indexes — Index Computed Expressions (10 min)
+
+You frequently search by lowercased email. Don't add a `lower_email` column — index the expression directly.
+
+1. **Add an expression index:**
+   ```sql
+   CREATE INDEX customers_email_lower
+     ON customers ((lower(email)));
+   ```
+
+2. **Use it:**
+   ```sql
+   EXPLAIN
+   SELECT id, name FROM customers
+   WHERE lower(email) = 'user42@example.com';
+   ```
+   The plan should reference `customers_email_lower` with a single-key span.
+
+3. **What if you write `email = 'User42@Example.com'` instead?**
+   ```sql
+   EXPLAIN
+   SELECT id, name FROM customers
+   WHERE email = 'User42@Example.com';
+   ```
+   This uses the original UNIQUE index, *not* the expression index, because the optimizer can't prove `email = 'X'` is equivalent to `lower(email) = lower('X')` without case-folding both. Expression indexes only help queries that use the *same* expression.
 
 ## Cleanup
 

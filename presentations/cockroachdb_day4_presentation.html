@@ -329,7 +329,9 @@
                 <div class="agenda-item">4. Kubernetes Deployment</div>
                 <div class="agenda-item">🧪 <strong>Lab 16</strong> — cockroach-operator on kind <em>(90 min)</em></div>
                 <div class="agenda-item">5. Advanced Features Survey · Cost &amp; Deployment Models · Course Wrap</div>
-            </section>
+            
+                    <aside class="notes"><p><strong>Six-hour day.</strong> About 45 minutes of lecture in total across the sections, four labs of 55–70 minutes each (the core parts only), and two 15-minute breaks. That leaves roughly 20–30 minutes of buffer. Each lab ends with an <em>Optional — If Time Allows</em> section and this deck ends with an <em>Appendix — If Time Allows</em> stack; use them only if ahead. Teaching content always precedes its lab callout, so run the lab as soon as its section is done rather than batching labs at the end.</p></aside>
+                </section>
 
             <!-- ============================================================ -->
             <!-- Section 1: CDC -->
@@ -460,7 +462,7 @@
 
                 <!-- Lab 13 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 13: CDC → Kafka → Frontier Consumer<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 13: CDC → Kafka → Frontier Consumer<span class="lab-duration">⏱ 55 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -670,28 +672,11 @@ COMMIT;</code></pre>
                     <aside class="notes"><p>Each connection is a session on a gateway node; pools should be sized from the concurrency knee measured in Lab 8, not from the number of application threads. Too many connections means queuing inside the database instead of in the pool, where you cannot see it.</p><p>Spread the pool across nodes — a load balancer or a multi-host connection string — or one gateway does all the routing work.</p><p><strong>Terms:</strong> <strong>concurrency knee</strong> — the last concurrency level at which throughput still grows; past it latency rises for nothing. <strong>connection pool</strong> — a set of reused client connections; size it from the measured concurrency knee, not from thread count.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Driver &amp; ORM Landscape</h3>
-                    <table style="font-size: 0.65em;">
-                        <tr><th>Language</th><th>Driver</th><th>ORM</th><th>Retry helper</th></tr>
-                        <tr><td>Python</td><td>psycopg / psycopg2</td><td>SQLAlchemy, Django</td><td><code>sqlalchemy-cockroachdb</code></td></tr>
-                        <tr><td>Go</td><td>pgx</td><td>GORM, sqlx, ent</td><td><code>crdbpgx.ExecuteTx</code></td></tr>
-                        <tr><td>Node.js</td><td>node-postgres</td><td>Prisma, Knex, TypeORM</td><td>Hand-rolled or <code>cockroach-node</code></td></tr>
-                        <tr><td>Java/Kotlin</td><td>pgjdbc</td><td>Hibernate (CRDB dialect), jOOQ</td><td>Retry aspect / interceptor</td></tr>
-                        <tr><td>Ruby</td><td>pg</td><td>ActiveRecord (adapter)</td><td><code>activerecord-cockroachdb</code></td></tr>
-                    </table>
-                    <div class="warning-box fragment">
-                        <p class="small-text"><strong>The ORM checklist:</strong> does it retry 40001? does it
-                        emit <code>SERIAL</code> primary keys by default (change them)? does it wrap every
-                        request in one transaction? does it do N+1 queries — each of which is a distributed read?</p>
-                    </div>
                 
-                    <aside class="notes"><p>Standard Postgres drivers work; the CockroachDB-specific packages add the retry helper and dialect details: crdb-go (crdbpgx.ExecuteTx), sqlalchemy-cockroachdb (run_transaction), the JDBC dialect. The Go and Java snippets on this slide are illustrative — nothing in the course compiles Go; the Python path is what Lab 14 runs.</p><p>Guidance: use the driver's retry helper rather than writing one, but read the pseudocode from Day 2 once so the helper is not magic.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots.</p></aside>
-                </section>
 
                 <!-- Lab 14 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 14: Outbox Pattern + Idempotent Retry Loop<span class="lab-duration">⏱ 75 min</span></h3>
+                    <h3>🧪 Lab 14: Outbox Pattern + Idempotent Retry Loop<span class="lab-duration">⏱ 55 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -864,7 +849,7 @@ Phase 6  Stop writing PG, decommission              ← rollback: restore from b
 
                 <!-- Lab 15 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 15: Migrate a PostgreSQL Schema and Live Data<span class="lab-duration">⏱ 90 min</span></h3>
+                    <h3>🧪 Lab 15: Migrate a PostgreSQL Schema and Live Data<span class="lab-duration">⏱ 55 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -936,33 +921,11 @@ kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
                     <aside class="notes"><p>One: no locality, so the scheduler puts all three replicas of a range on nodes in the same zone. Two: scaling the StatefulSet down before decommissioning, which deletes a pod and its replicas instantly instead of draining them.</p><p>Decommission first, then scale. In Lab 16 that is cockroach node decommission run from the client pod against crdb-public, then the patch. Slower because it is correct.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
                 </section>
 
-                <section>
-                    <h3>Operator vs Helm vs Manual</h3>
-                    <table style="font-size: 0.65em;">
-                        <tr><th>Approach</th><th>Handles for you</th><th>You still own</th></tr>
-                        <tr><td><strong>cockroach-operator</strong></td><td>Certs, rolling upgrades, scaling, decommission ordering</td><td>Locality, storage class, monitoring</td></tr>
-                        <tr><td><strong>Helm chart</strong></td><td>Templating, values-driven config</td><td>Upgrade ordering, cert lifecycle, decommission</td></tr>
-                        <tr><td><strong>Manual StatefulSet</strong></td><td>Nothing</td><td>Everything, including the two mistakes above</td></tr>
-                    </table>
-                    <div class="highlight-box fragment">
-                        <h4>Production checklist</h4>
-                        <ul class="small-text">
-                            <li><code>--locality</code> reflects real failure domains</li>
-                            <li>Topology spread / anti-affinity prevents co-location</li>
-                            <li>PodDisruptionBudget protects quorum</li>
-                            <li>SSD storage class, <code>WaitForFirstConsumer</code></li>
-                            <li>Requests == limits for guaranteed QoS; memory limits set</li>
-                            <li>ServiceMonitor scraping <code>/_status/vars</code></li>
-                            <li>Scheduled backups + a completed restore drill</li>
-                        </ul>
-                    </div>
                 
-                    <aside class="notes"><p>The operator handles certs, rolling upgrades, scaling, and decommission ordering. Helm gives you a chart and leaves the ordering to you. Manual manifests give you everything and protect you from nothing. Lab 16 uses the operator and compares against the Helm chart's values — helm runs as a container, alpine/helm, with its config directories mounted so repo add persists between commands.</p><p>Recommendation: operator unless there is a specific reason. The two mistakes on the previous slide are exactly what it prevents.</p><p><strong>Terms:</strong> <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>operator</strong> — the Kubernetes controller that turns a <code>CrdbCluster</code> resource into a correctly ordered StatefulSet. <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs.</p></aside>
-                </section>
 
                 <!-- Lab 16 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 16: CockroachDB on Kubernetes with kind<span class="lab-duration">⏱ 90 min</span></h3>
+                    <h3>🧪 Lab 16: CockroachDB on Kubernetes with kind<span class="lab-duration">⏱ 70 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
@@ -993,43 +956,9 @@ kubectl apply -f crdb.yaml</code></pre>
                     <h2>🧭 Section 5: Advanced Features, Cost &amp; Wrap-Up</h2>
                 </section>
 
-                <section>
-                    <h3>Advanced Features Survey</h3>
-                    <table style="font-size: 0.65em;">
-                        <tr><th>Feature</th><th>Use it for</th><th>Watch out for</th></tr>
-                        <tr><td>Row-level TTL</td><td>Sessions, tokens, outbox, event logs</td><td>Cron frequency vs foreground load</td></tr>
-                        <tr><td>UDFs</td><td>Replacing simple triggers/procedures</td><td>Not a general procedural language</td></tr>
-                        <tr><td>Spatial types</td><td>Geo queries, PostGIS-style workloads</td><td>Function coverage differs from PostGIS</td></tr>
-                        <tr><td>Vector indexes</td><td>Embeddings, similarity search</td><td>Check your version — recent feature</td></tr>
-                        <tr><td>Full-text search</td><td>Basic text search without a separate engine</td><td>Not a replacement for a search engine</td></tr>
-                        <tr><td>Follower reads</td><td>Stale-tolerant reads at local latency</td><td>Bounded staleness is a product decision</td></tr>
-                        <tr><td><code>GLOBAL</code> tables</td><td>Read-anywhere reference data</td><td>Writes are slow by design</td></tr>
-                    </table>
-                    <p class="fragment small-text">Version matters for several of these — check the release notes
-                    for the version you actually run, not the newest one.</p>
                 
-                    <aside class="notes"><p>Name them and point to where they were touched: TTL (Labs 3, 14), changefeeds (13), multi-region (7), follower reads (5), admission control (10), row-level security and SSO (12). The survey is a map, not new material.</p><p>If time is short, skip this slide; nothing on it is examined and everything on it was covered.</p><p><strong>Terms:</strong> <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>follower read</strong> — a read served by a non-leaseholder replica at a slightly past timestamp it has fully applied (~4–5 s); trades staleness for locality. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
-                </section>
 
-                <section>
-                    <h3>Deployment Models &amp; Cost</h3>
-                    <table style="font-size: 0.65em;">
-                        <tr><th>Model</th><th>Best for</th><th>You operate</th><th>Cost shape</th></tr>
-                        <tr><td>Serverless / Basic</td><td>Dev, small apps, spiky traffic</td><td>Nothing</td><td>Per request + storage</td></tr>
-                        <tr><td>Dedicated / Standard</td><td>Production without an ops team</td><td>Schema and app</td><td>Per node-hour</td></tr>
-                        <tr><td>Self-hosted</td><td>On-prem, regulated, full control</td><td>Everything</td><td>Hardware + staff</td></tr>
-                    </table>
-                    <div class="highlight-box fragment">
-                        <p class="small-text"><strong>The honest comparison</strong> includes the ops salary line.
-                        A self-hosted cluster is cheaper on the invoice and more expensive on the payroll.
-                        Estimate both before deciding.</p>
-                    </div>
-                    <p class="fragment small-text">Enterprise vs Core changes what's available around the edges
-                    (some backup, changefeed, and multi-region features) — check the current matrix for your version
-                    rather than trusting a slide.</p>
                 
-                    <aside class="notes"><p>Self-hosted (this course), dedicated cloud, serverless. The trade is control versus operations: self-hosted means you run the allocator's hardware; serverless means you pay per request and give up locality control.</p><p>The cost point that connects to Day 3: write amplification and replication mean storage is three times the data and IOPS are ten times the writes, on every model. Size from the formula, not the raw data volume.</p><p><strong>Terms:</strong> <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
-                </section>
 
                 <section>
                     <h3>The Anti-Pattern Checklist — Take This to Code Review</h3>
@@ -1095,6 +1024,90 @@ kubectl apply -f crdb.yaml</code></pre>
                     <aside class="notes"><p>Point at the docs, the Playbook in the repo, and the test suite — the tests drive exactly what the labs do, so a student who wants to replay any lab non-interactively can run its test.</p><p>The repo stays available; pull_latest fetches updates. Encourage them to bring a real schema to the patterns and run the Lab 8 measurements against it.</p><p><strong>Terms:</strong> <strong>RPO / RTO</strong> — RPO: how much data may be lost (time since the last backup left the box). RTO: how long until service returns. Both measured, not declared. <strong>concurrency knee</strong> — the last concurrency level at which throughput still grows; past it latency rises for nothing.</p></aside>
                 </section>
             </section>
+        
+                <section>
+                    <section class="section-title">
+                        <h2>📎 Appendix — If Time Allows</h2>
+                        <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
+                    </section>
+                    <section>
+                    <h3>Driver &amp; ORM Landscape</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Language</th><th>Driver</th><th>ORM</th><th>Retry helper</th></tr>
+                        <tr><td>Python</td><td>psycopg / psycopg2</td><td>SQLAlchemy, Django</td><td><code>sqlalchemy-cockroachdb</code></td></tr>
+                        <tr><td>Go</td><td>pgx</td><td>GORM, sqlx, ent</td><td><code>crdbpgx.ExecuteTx</code></td></tr>
+                        <tr><td>Node.js</td><td>node-postgres</td><td>Prisma, Knex, TypeORM</td><td>Hand-rolled or <code>cockroach-node</code></td></tr>
+                        <tr><td>Java/Kotlin</td><td>pgjdbc</td><td>Hibernate (CRDB dialect), jOOQ</td><td>Retry aspect / interceptor</td></tr>
+                        <tr><td>Ruby</td><td>pg</td><td>ActiveRecord (adapter)</td><td><code>activerecord-cockroachdb</code></td></tr>
+                    </table>
+                    <div class="warning-box fragment">
+                        <p class="small-text"><strong>The ORM checklist:</strong> does it retry 40001? does it
+                        emit <code>SERIAL</code> primary keys by default (change them)? does it wrap every
+                        request in one transaction? does it do N+1 queries — each of which is a distributed read?</p>
+                    </div>
+                
+                    <aside class="notes"><p>Standard Postgres drivers work; the CockroachDB-specific packages add the retry helper and dialect details: crdb-go (crdbpgx.ExecuteTx), sqlalchemy-cockroachdb (run_transaction), the JDBC dialect. The Go and Java snippets on this slide are illustrative — nothing in the course compiles Go; the Python path is what Lab 14 runs.</p><p>Guidance: use the driver's retry helper rather than writing one, but read the pseudocode from Day 2 once so the helper is not magic.</p><p><strong>Terms:</strong> <strong>40001 / retryable error</strong> — SQLSTATE 40001: the transaction could not commit serializably and must be re-run from BEGIN; not a failure. <strong>SERIAL</strong> — in CockroachDB, <code>unique_rowid()</code> by default: a timestamp-derived, increasing 64-bit value that still hotspots.</p></aside>
+                </section>
+                    <section>
+                    <h3>Advanced Features Survey</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Feature</th><th>Use it for</th><th>Watch out for</th></tr>
+                        <tr><td>Row-level TTL</td><td>Sessions, tokens, outbox, event logs</td><td>Cron frequency vs foreground load</td></tr>
+                        <tr><td>UDFs</td><td>Replacing simple triggers/procedures</td><td>Not a general procedural language</td></tr>
+                        <tr><td>Spatial types</td><td>Geo queries, PostGIS-style workloads</td><td>Function coverage differs from PostGIS</td></tr>
+                        <tr><td>Vector indexes</td><td>Embeddings, similarity search</td><td>Check your version — recent feature</td></tr>
+                        <tr><td>Full-text search</td><td>Basic text search without a separate engine</td><td>Not a replacement for a search engine</td></tr>
+                        <tr><td>Follower reads</td><td>Stale-tolerant reads at local latency</td><td>Bounded staleness is a product decision</td></tr>
+                        <tr><td><code>GLOBAL</code> tables</td><td>Read-anywhere reference data</td><td>Writes are slow by design</td></tr>
+                    </table>
+                    <p class="fragment small-text">Version matters for several of these — check the release notes
+                    for the version you actually run, not the newest one.</p>
+                
+                    <aside class="notes"><p>Name them and point to where they were touched: TTL (Labs 3, 14), changefeeds (13), multi-region (7), follower reads (5), admission control (10), row-level security and SSO (12). The survey is a map, not new material.</p><p>If time is short, skip this slide; nothing on it is examined and everything on it was covered.</p><p><strong>Terms:</strong> <strong>GLOBAL table</strong> — table locality where every region's replica serves current reads; writes commit slightly in the future and are slow everywhere. <strong>follower read</strong> — a read served by a non-leaseholder replica at a slightly past timestamp it has fully applied (~4–5 s); trades staleness for locality. <strong>outbox</strong> — writing the business row and an event row in one transaction, then publishing the event table with a changefeed; replaces the dual write. <strong>TTL</strong> — row-level expiry: <code>ttl_expire_after</code> on a table, swept by a background job on a cron.</p></aside>
+                </section>
+                    <section>
+                    <h3>Deployment Models &amp; Cost</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Model</th><th>Best for</th><th>You operate</th><th>Cost shape</th></tr>
+                        <tr><td>Serverless / Basic</td><td>Dev, small apps, spiky traffic</td><td>Nothing</td><td>Per request + storage</td></tr>
+                        <tr><td>Dedicated / Standard</td><td>Production without an ops team</td><td>Schema and app</td><td>Per node-hour</td></tr>
+                        <tr><td>Self-hosted</td><td>On-prem, regulated, full control</td><td>Everything</td><td>Hardware + staff</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <p class="small-text"><strong>The honest comparison</strong> includes the ops salary line.
+                        A self-hosted cluster is cheaper on the invoice and more expensive on the payroll.
+                        Estimate both before deciding.</p>
+                    </div>
+                    <p class="fragment small-text">Enterprise vs Core changes what's available around the edges
+                    (some backup, changefeed, and multi-region features) — check the current matrix for your version
+                    rather than trusting a slide.</p>
+                
+                    <aside class="notes"><p>Self-hosted (this course), dedicated cloud, serverless. The trade is control versus operations: self-hosted means you run the allocator's hardware; serverless means you pay per request and give up locality control.</p><p>The cost point that connects to Day 3: write amplification and replication mean storage is three times the data and IOPS are ten times the writes, on every model. Size from the formula, not the raw data volume.</p><p><strong>Terms:</strong> <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
+                </section>
+                    <section>
+                    <h3>Operator vs Helm vs Manual</h3>
+                    <table style="font-size: 0.65em;">
+                        <tr><th>Approach</th><th>Handles for you</th><th>You still own</th></tr>
+                        <tr><td><strong>cockroach-operator</strong></td><td>Certs, rolling upgrades, scaling, decommission ordering</td><td>Locality, storage class, monitoring</td></tr>
+                        <tr><td><strong>Helm chart</strong></td><td>Templating, values-driven config</td><td>Upgrade ordering, cert lifecycle, decommission</td></tr>
+                        <tr><td><strong>Manual StatefulSet</strong></td><td>Nothing</td><td>Everything, including the two mistakes above</td></tr>
+                    </table>
+                    <div class="highlight-box fragment">
+                        <h4>Production checklist</h4>
+                        <ul class="small-text">
+                            <li><code>--locality</code> reflects real failure domains</li>
+                            <li>Topology spread / anti-affinity prevents co-location</li>
+                            <li>PodDisruptionBudget protects quorum</li>
+                            <li>SSD storage class, <code>WaitForFirstConsumer</code></li>
+                            <li>Requests == limits for guaranteed QoS; memory limits set</li>
+                            <li>ServiceMonitor scraping <code>/_status/vars</code></li>
+                            <li>Scheduled backups + a completed restore drill</li>
+                        </ul>
+                    </div>
+                
+                    <aside class="notes"><p>The operator handles certs, rolling upgrades, scaling, and decommission ordering. Helm gives you a chart and leaves the ordering to you. Manual manifests give you everything and protect you from nothing. Lab 16 uses the operator and compares against the Helm chart's values — helm runs as a container, alpine/helm, with its config directories mounted so repo add persists between commands.</p><p>Recommendation: operator unless there is a specific reason. The two mistakes on the previous slide are exactly what it prevents.</p><p><strong>Terms:</strong> <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>operator</strong> — the Kubernetes controller that turns a <code>CrdbCluster</code> resource into a correctly ordered StatefulSet. <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs.</p></aside>
+                </section>
+                </section>
         </div>
     </div>
 

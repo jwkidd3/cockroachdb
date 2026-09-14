@@ -1,4 +1,4 @@
-# Lab 11: BACKUP / RESTORE / Schedules & Cross-Cluster DR Drill (75 min)
+# Lab 11: BACKUP / RESTORE / Schedules & Cross-Cluster DR Drill (65 min)
 
 ## Learning Objectives
 
@@ -236,65 +236,6 @@ SQL
    Extrapolate: at that rate, how long does your 2 TB production database take? That number
    is your **actual** RTO, and it is usually much larger than the one in the runbook.
 
-### Part C: Scheduled Backups & RPO Math (10 min)
-
-1. **Create a schedule:**
-   ```sql
-   -- With a licence: incrementals every 5 minutes, a full every day
-   CREATE SCHEDULE bank_backups
-     FOR BACKUP DATABASE bank INTO 'nodelocal://1/backups/scheduled'
-     RECURRING '*/5 * * * *'
-     FULL BACKUP '@daily'
-     WITH SCHEDULE OPTIONS first_run = 'now';
-   ```
-   On the free path this succeeds but prints:
-   `Without an enterprise license, this schedule will only run full backups.`
-   Make that explicit rather than leaving a surprise in the notice:
-   ```sql
-   CREATE SCHEDULE bank_backups_full
-     FOR BACKUP DATABASE bank INTO 'nodelocal://1/backups/scheduled'
-     RECURRING '@hourly'
-     FULL BACKUP ALWAYS
-     WITH SCHEDULE OPTIONS first_run = 'now';
-   ```
-   > **This is a real capacity-planning point, not a licensing footnote.** Full-only backups make
-   > every cycle cost a complete copy — so on the free tier your practical RPO is bounded by how
-   > often you can afford a full backup, not by how often you'd like one.
-
-2. **Inspect it:**
-   ```sql
-   SHOW SCHEDULES;
-   SELECT id, label, schedule_status, next_run, recurrence FROM [SHOW SCHEDULES]
-   WHERE label LIKE 'bank%';
-   ```
-   Two rows appear: one for the full-backup schedule and one for the incremental.
-
-3. **Watch it fire, then check the jobs it created:**
-   ```sql
-   SELECT job_id, status, created, description
-   FROM [SHOW JOBS] WHERE job_type = 'BACKUP' ORDER BY created DESC LIMIT 5;
-   ```
-
-4. **The RPO math.** With incrementals every 5 minutes:
-   ```
-   worst-case RPO = incremental interval + backup duration + detection time
-   ```
-   If the incremental takes 40 s and it takes you 2 minutes to notice the outage, your true
-   RPO is roughly `5 min + 40 s + 2 min ≈ 7.7 min` — not 5 minutes.
-
-   | Cadence | Nominal RPO | Realistic RPO | Storage cost |
-   | --- | --- | --- | --- |
-   | Hourly incremental | 1 h | | low |
-   | 15-minute incremental | 15 m | | medium |
-   | 5-minute incremental | 5 m | | high |
-   | Continuous (changefeed to object store) | seconds | | highest |
-
-5. **Pause and drop the schedule** so it stops firing for the rest of the lab:
-   ```sql
-   PAUSE SCHEDULES SELECT id FROM [SHOW SCHEDULES] WHERE label LIKE 'bank%';
-   DROP SCHEDULES SELECT id FROM [SHOW SCHEDULES] WHERE label LIKE 'bank%';
-   ```
-
 ### Part D: Cross-Cluster DR Drill (25 min)
 
 The drill that matters: cluster A is gone, bring the data up on cluster B.
@@ -423,6 +364,70 @@ Write the runbook for this drill. It should be short enough to follow while adre
 ```
 
 Swap runbooks with another pair. Can they follow yours without asking you a question?
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
+### Part C: Scheduled Backups & RPO Math (10 min)
+
+1. **Create a schedule:**
+   ```sql
+   -- With a licence: incrementals every 5 minutes, a full every day
+   CREATE SCHEDULE bank_backups
+     FOR BACKUP DATABASE bank INTO 'nodelocal://1/backups/scheduled'
+     RECURRING '*/5 * * * *'
+     FULL BACKUP '@daily'
+     WITH SCHEDULE OPTIONS first_run = 'now';
+   ```
+   On the free path this succeeds but prints:
+   `Without an enterprise license, this schedule will only run full backups.`
+   Make that explicit rather than leaving a surprise in the notice:
+   ```sql
+   CREATE SCHEDULE bank_backups_full
+     FOR BACKUP DATABASE bank INTO 'nodelocal://1/backups/scheduled'
+     RECURRING '@hourly'
+     FULL BACKUP ALWAYS
+     WITH SCHEDULE OPTIONS first_run = 'now';
+   ```
+   > **This is a real capacity-planning point, not a licensing footnote.** Full-only backups make
+   > every cycle cost a complete copy — so on the free tier your practical RPO is bounded by how
+   > often you can afford a full backup, not by how often you'd like one.
+
+2. **Inspect it:**
+   ```sql
+   SHOW SCHEDULES;
+   SELECT id, label, schedule_status, next_run, recurrence FROM [SHOW SCHEDULES]
+   WHERE label LIKE 'bank%';
+   ```
+   Two rows appear: one for the full-backup schedule and one for the incremental.
+
+3. **Watch it fire, then check the jobs it created:**
+   ```sql
+   SELECT job_id, status, created, description
+   FROM [SHOW JOBS] WHERE job_type = 'BACKUP' ORDER BY created DESC LIMIT 5;
+   ```
+
+4. **The RPO math.** With incrementals every 5 minutes:
+   ```
+   worst-case RPO = incremental interval + backup duration + detection time
+   ```
+   If the incremental takes 40 s and it takes you 2 minutes to notice the outage, your true
+   RPO is roughly `5 min + 40 s + 2 min ≈ 7.7 min` — not 5 minutes.
+
+   | Cadence | Nominal RPO | Realistic RPO | Storage cost |
+   | --- | --- | --- | --- |
+   | Hourly incremental | 1 h | | low |
+   | 15-minute incremental | 15 m | | medium |
+   | 5-minute incremental | 5 m | | high |
+   | Continuous (changefeed to object store) | seconds | | highest |
+
+5. **Pause and drop the schedule** so it stops firing for the rest of the lab:
+   ```sql
+   PAUSE SCHEDULES SELECT id FROM [SHOW SCHEDULES] WHERE label LIKE 'bank%';
+   DROP SCHEDULES SELECT id FROM [SHOW SCHEDULES] WHERE label LIKE 'bank%';
+   ```
 
 ## Cleanup
 

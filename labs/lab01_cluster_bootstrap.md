@@ -1,4 +1,4 @@
-# Lab 1: Cluster Bootstrap & Lifecycle (75 min)
+# Lab 1: Cluster Bootstrap & Lifecycle (65 min)
 
 ## Learning Objectives
 
@@ -295,6 +295,12 @@ on your machine — so any PostgreSQL client works, containerised or not.
    > **Two addresses, one cluster.** From your machine it is `localhost:26257` (the published
    > port). From another container on the same Docker network it is `crdb1:26257`. Mixing
    > them up is the most common connection error in the rest of this course.
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part G: Troubleshooting a Cluster That Won't Start (10 min)
 

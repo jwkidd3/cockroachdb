@@ -1,4 +1,4 @@
-# Lab 13: CDC → Kafka → Downstream Consumer with a Resolved-Timestamp Frontier (75 min)
+# Lab 13: CDC → Kafka → Downstream Consumer with a Resolved-Timestamp Frontier (55 min)
 
 ## Learning Objectives
 
@@ -380,6 +380,12 @@ after a job restart, a lease transfer, or a rebalance, messages are re-emitted.
 4. **The rule for downstream contracts:** additive changes (new nullable column) are safe;
    renames and type changes are not. Version your consumer's schema handling the same way
    you'd version an API.
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part F: Lag, Failure & Recovery (10 min)
 

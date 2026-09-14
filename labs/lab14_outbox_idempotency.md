@@ -1,4 +1,4 @@
-# Lab 14: Outbox Pattern + Idempotent Retry Loop in Python/Go (75 min)
+# Lab 14: Outbox Pattern + Idempotent Retry Loop in Python/Go (55 min)
 
 > The application-side counterpart to Lab 5 (contention) and Lab 13 (CDC). Everything here
 > is code you can lift into a real service.
@@ -576,6 +576,12 @@ Two ways to stop two users from overwriting each other. Measure both.
    > (`WriteTooOldError`) for physical write conflicts, and an OCC loop without that `except`
    > crashes under load. Optimistic concurrency is a *complement* to the retry loop, never a
    > replacement for it.
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 8 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part E: Connection Pool Sizing (8 min)
 

@@ -1,4 +1,4 @@
-# Lab 16: Deploy CockroachDB on Kubernetes with `cockroach-operator` and kind (90 min)
+# Lab 16: Deploy CockroachDB on Kubernetes with `cockroach-operator` and kind (70 min)
 
 ## Learning Objectives
 
@@ -285,6 +285,12 @@ rather than decorative.
    > takes its replicas offline instantly; the cluster then has to re-replicate under duress.
    > Decommission moves replicas off *while the node is still serving*, which is why it is
    > slower and correct.
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
 
 ### Part E: Operator vs Helm vs Manual (10 min)
 

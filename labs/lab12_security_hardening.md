@@ -1,4 +1,4 @@
-# Lab 12: Security Hardening End-to-End — TLS Rotation, RBAC, SSO & Audit Pipeline (75 min)
+# Lab 12: Security Hardening End-to-End — TLS Rotation, RBAC, SSO & Audit Pipeline (55 min)
 
 ## Learning Objectives
 
@@ -327,79 +327,6 @@ on a schedule is how they don't.
    GRANT ledger_rw TO app_user;   -- restore for the rest of the lab
    ```
 
-### Part D: Authentication Methods & SSO (10 min)
-
-1. **See the current HBA configuration:**
-   ```sql
-   SHOW CLUSTER SETTING server.host_based_authentication.configuration;
-   ```
-   An empty value means the defaults are in force: cert or password for everyone.
-
-2. **Require certificates for the app, allow passwords for humans:**
-   ```sql
-   SET CLUSTER SETTING server.host_based_authentication.configuration = '
-   # TYPE  DATABASE  USER          ADDRESS       METHOD
-   host    all       app_user      all           cert
-   host    all       report_user   all           cert-password
-   host    all       root          all           cert
-   host    all       all           all           scram-sha-256
-   ';
-   ```
-
-3. **Verify the rules are in force:**
-   ```sql
-   SHOW CLUSTER SETTING server.host_based_authentication.configuration;
-   ```
-
-   > ⚠️ **`pg_hba_file_rules` is empty in CockroachDB.** It exists for PostgreSQL tool
-   > compatibility, but CRDB's HBA configuration lives in the cluster setting above, not in a
-   > `pg_hba.conf` file — so querying that view tells you nothing about what is actually
-   > enforced. Read the setting back instead, and prove the rules with a real connection
-   > attempt (step 6).
-
-4. **Confirm password hashing uses SCRAM:**
-   ```sql
-   SHOW CLUSTER SETTING server.user_login.password_encryption;
-   ```
-   `scram-sha-256` should be the value. `crdb-bcrypt` is the legacy setting — if you see it,
-   plan a migration.
-
-5. **SSO / OIDC — the configuration shape** (needs a real IdP, so this is a walkthrough):
-   ```sql
-   -- DB Console SSO
-   SET CLUSTER SETTING server.oidc_authentication.enabled = true;
-   SET CLUSTER SETTING server.oidc_authentication.provider_url = 'https://idp.example.com';
-   SET CLUSTER SETTING server.oidc_authentication.client_id = '<client-id>';
-   SET CLUSTER SETTING server.oidc_authentication.client_secret = '<secret>';
-   SET CLUSTER SETTING server.oidc_authentication.redirect_url = 'https://crdb.example.com/oidc/v1/callback';
-   SET CLUSTER SETTING server.oidc_authentication.claim_json_key = 'email';
-   SET CLUSTER SETTING server.oidc_authentication.principal_regex = '^([^@]+)@example\.com$';
-
-   -- Cluster SSO for SQL clients (JWT)
-   SET CLUSTER SETTING server.jwt_authentication.enabled = true;
-   SET CLUSTER SETTING server.jwt_authentication.issuers = 'https://idp.example.com';
-   SET CLUSTER SETTING server.jwt_authentication.audience = 'crdb-cluster';
-   ```
-   ```sql
-   -- Roll them back so the rest of the lab keeps working
-   SET CLUSTER SETTING server.oidc_authentication.enabled = false;
-   SET CLUSTER SETTING server.jwt_authentication.enabled = false;
-   ```
-
-   > **The operational point:** with SSO, deprovisioning a human in the IdP removes their
-   > database access. Without it, offboarding depends on someone remembering to run `DROP USER`.
-
-6. **Lock down accounts that should never log in interactively:**
-   ```sql
-   ALTER USER app_user NOLOGIN;   -- then check
-   ```
-   ```bash
-   scripts/crdb sql --user=app_user -e "SELECT 1;" && echo "PROBLEM" || echo "correctly denied"
-   ```
-   ```sql
-   ALTER USER app_user LOGIN;
-   ```
-
 ### Part E: The Audit Pipeline (15 min)
 
 1. **Route security channels to their own auditable sink** — write `lab12/logs.yaml`
@@ -480,6 +407,85 @@ on a schedule is how they don't.
 7. **Turn the audit off when you're done** (it is not free — it logs every access):
    ```sql
    ALTER TABLE ledger.public.accounts EXPERIMENTAL_AUDIT SET OFF;
+   ```
+
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 18 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
+### Part D: Authentication Methods & SSO (10 min)
+
+1. **See the current HBA configuration:**
+   ```sql
+   SHOW CLUSTER SETTING server.host_based_authentication.configuration;
+   ```
+   An empty value means the defaults are in force: cert or password for everyone.
+
+2. **Require certificates for the app, allow passwords for humans:**
+   ```sql
+   SET CLUSTER SETTING server.host_based_authentication.configuration = '
+   # TYPE  DATABASE  USER          ADDRESS       METHOD
+   host    all       app_user      all           cert
+   host    all       report_user   all           cert-password
+   host    all       root          all           cert
+   host    all       all           all           scram-sha-256
+   ';
+   ```
+
+3. **Verify the rules are in force:**
+   ```sql
+   SHOW CLUSTER SETTING server.host_based_authentication.configuration;
+   ```
+
+   > ⚠️ **`pg_hba_file_rules` is empty in CockroachDB.** It exists for PostgreSQL tool
+   > compatibility, but CRDB's HBA configuration lives in the cluster setting above, not in a
+   > `pg_hba.conf` file — so querying that view tells you nothing about what is actually
+   > enforced. Read the setting back instead, and prove the rules with a real connection
+   > attempt (step 6).
+
+4. **Confirm password hashing uses SCRAM:**
+   ```sql
+   SHOW CLUSTER SETTING server.user_login.password_encryption;
+   ```
+   `scram-sha-256` should be the value. `crdb-bcrypt` is the legacy setting — if you see it,
+   plan a migration.
+
+5. **SSO / OIDC — the configuration shape** (needs a real IdP, so this is a walkthrough):
+   ```sql
+   -- DB Console SSO
+   SET CLUSTER SETTING server.oidc_authentication.enabled = true;
+   SET CLUSTER SETTING server.oidc_authentication.provider_url = 'https://idp.example.com';
+   SET CLUSTER SETTING server.oidc_authentication.client_id = '<client-id>';
+   SET CLUSTER SETTING server.oidc_authentication.client_secret = '<secret>';
+   SET CLUSTER SETTING server.oidc_authentication.redirect_url = 'https://crdb.example.com/oidc/v1/callback';
+   SET CLUSTER SETTING server.oidc_authentication.claim_json_key = 'email';
+   SET CLUSTER SETTING server.oidc_authentication.principal_regex = '^([^@]+)@example\.com$';
+
+   -- Cluster SSO for SQL clients (JWT)
+   SET CLUSTER SETTING server.jwt_authentication.enabled = true;
+   SET CLUSTER SETTING server.jwt_authentication.issuers = 'https://idp.example.com';
+   SET CLUSTER SETTING server.jwt_authentication.audience = 'crdb-cluster';
+   ```
+   ```sql
+   -- Roll them back so the rest of the lab keeps working
+   SET CLUSTER SETTING server.oidc_authentication.enabled = false;
+   SET CLUSTER SETTING server.jwt_authentication.enabled = false;
+   ```
+
+   > **The operational point:** with SSO, deprovisioning a human in the IdP removes their
+   > database access. Without it, offboarding depends on someone remembering to run `DROP USER`.
+
+6. **Lock down accounts that should never log in interactively:**
+   ```sql
+   ALTER USER app_user NOLOGIN;   -- then check
+   ```
+   ```bash
+   scripts/crdb sql --user=app_user -e "SELECT 1;" && echo "PROBLEM" || echo "correctly denied"
+   ```
+   ```sql
+   ALTER USER app_user LOGIN;
    ```
 
 ### Part F: Compliance Mapping (8 min)

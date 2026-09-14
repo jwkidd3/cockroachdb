@@ -1,4 +1,4 @@
-# Lab 2: DB Console & SQL Operational Tour (70 min)
+# Lab 2: DB Console & SQL Operational Tour (60 min)
 
 ## Learning Objectives
 
@@ -185,39 +185,6 @@ The DB Console is built on top of `crdb_internal`. Anything visible in the UI is
    FROM crdb_internal.transaction_contention_events;
    ```
 
-### Part D: Build a "Custom Dashboard" From SQL (10 min)
-
-Imagine your team wants a daily Slack message: nodes up, hottest table, contention level, top slow statements. Compose those answers as SQL — exactly what you'd put in a cron.
-
-1. **Compose this one big query** that gives a complete cluster snapshot:
-   ```sql
-   WITH
-     liveness AS (
-       SELECT count(*) FILTER (WHERE is_live) AS up,
-              count(*) FILTER (WHERE NOT is_live) AS down
-       FROM crdb_internal.gossip_nodes
-     ),
-     top_table_by_size AS (
-       SELECT table_name, range_size_mb
-       FROM [SHOW CLUSTER RANGES WITH TABLES, DETAILS]
-       WHERE table_name IS NOT NULL
-       ORDER BY range_size_mb DESC NULLS LAST
-       LIMIT 1
-     ),
-     contention AS (
-       SELECT count(*) AS contention_events
-       FROM crdb_internal.transaction_contention_events
-       WHERE collection_ts > now() - INTERVAL '5 minutes'
-     )
-   SELECT
-     (SELECT up FROM liveness)              AS nodes_up,
-     (SELECT down FROM liveness)            AS nodes_down,
-     (SELECT table_name FROM top_table_by_size) AS biggest_range_table,
-     (SELECT contention_events FROM contention) AS recent_contention;
-   ```
-
-2. **Schedule it conceptually** — what's your alerting threshold for each column?
-
 ### Part E: Jobs — Long-Running Background Work (10 min)
 
 Schema changes, backups, restores, changefeeds, decommissions, and IMPORTs all run as **jobs**. Here's how to find and manage them.
@@ -271,6 +238,44 @@ You suddenly need to kill someone's runaway query. Here's how.
    -- CANCEL SESSION '<session_id>';
    ```
    (Don't actually cancel your own — it disconnects you.)
+
+
+## Optional — If Time Allows
+
+These parts are not required to complete the lab; they extend it by about 10 minutes. Do them if you finish early, or after class — the cluster and data from the core parts carry over.
+
+### Part D: Build a "Custom Dashboard" From SQL (10 min)
+
+Imagine your team wants a daily Slack message: nodes up, hottest table, contention level, top slow statements. Compose those answers as SQL — exactly what you'd put in a cron.
+
+1. **Compose this one big query** that gives a complete cluster snapshot:
+   ```sql
+   WITH
+     liveness AS (
+       SELECT count(*) FILTER (WHERE is_live) AS up,
+              count(*) FILTER (WHERE NOT is_live) AS down
+       FROM crdb_internal.gossip_nodes
+     ),
+     top_table_by_size AS (
+       SELECT table_name, range_size_mb
+       FROM [SHOW CLUSTER RANGES WITH TABLES, DETAILS]
+       WHERE table_name IS NOT NULL
+       ORDER BY range_size_mb DESC NULLS LAST
+       LIMIT 1
+     ),
+     contention AS (
+       SELECT count(*) AS contention_events
+       FROM crdb_internal.transaction_contention_events
+       WHERE collection_ts > now() - INTERVAL '5 minutes'
+     )
+   SELECT
+     (SELECT up FROM liveness)              AS nodes_up,
+     (SELECT down FROM liveness)            AS nodes_down,
+     (SELECT table_name FROM top_table_by_size) AS biggest_range_table,
+     (SELECT contention_events FROM contention) AS recent_contention;
+   ```
+
+2. **Schedule it conceptually** — what's your alerting threshold for each column?
 
 ## Cleanup
 
