@@ -307,6 +307,7 @@
                 <p style="margin-top: 1em; opacity: 0.9;">
                     From "It Works" to "It Works Under Load"
                 </p>
+            <aside class="notes"><p>Before starting: every student should have a running cluster from <code>scripts/crdb up</code> and a second terminal open — Lab 5 needs two sessions from the first minute. Ask who ran <code>scripts/crdb down</code> last night; anyone who did not is fine, the wrapper is idempotent.</p><p>Today is the heaviest lecture day: transactions, plan reading, multi-region and the pattern playbook. Keep each section to its budget — the labs are where the learning happens, and Lab 7 alone needs its full 65 minutes.</p></aside>
             </section>
 
             <!-- Day 2 Schedule -->
@@ -345,6 +346,7 @@
             <section>
                 <section class="section-title">
                     <h2>🔄 5. Transactions &amp; Consistency</h2>
+                <aside class="notes"><p>About 12 minutes for seven slides. The thread to keep pulling: the database never returns a wrong answer; when it cannot guarantee that it aborts with 40001 and the application retries. Everything in this section — MVCC, intents, follower reads, FOR UPDATE — is either how that guarantee is implemented or how to reduce the retries it causes.</p><p>Do not go into retry-loop code here; the pseudocode slide is in the appendix and Lab 5 Part B has students write one.</p></aside>
                 </section>
 
                 <section>
@@ -553,6 +555,7 @@ COMMIT;</code></pre>
                             <li><strong>Part C:</strong> Switch the read to <code>AS OF SYSTEM TIME</code> and observe the contention disappear</li>
                         </ul>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb up</code> (or <code>reset</code> if the cluster is dirty from Lab 4). Two terminals, both in <code>scripts/crdb sql</code>. <strong>Core: Parts A–F, 65 min.</strong> Part G (predict the behaviour) is optional.</p><p><strong>Where students get stuck:</strong> Part A only produces a 40001 if both sessions are inside an explicit <code>BEGIN</code> and write the <em>same</em> row in the overlapping window — the most common failure is committing session 1 before session 2 writes. Part C uses <code>AS OF SYSTEM TIME follower_read_timestamp()</code> — about 4.8 s in the past on v23.2 — so the report reads a version that predates the open write and never waits on it. Part F: the Console's Transactions and Insights pages populate a few seconds behind; have them re-run the contention from Part A if the page is empty.</p><p><strong>Debrief (5 min):</strong> ask what the retry loop does if the transaction is not idempotent — that is the bridge to Day 4's idempotency keys. Ask who saw contention on the sharded counter in Part E; nobody should have.</p></aside>
                 </section>
             </section>
 
@@ -562,6 +565,7 @@ COMMIT;</code></pre>
             <section>
                 <section class="section-title">
                     <h2>🔍 6. Query Optimization</h2>
+                <aside class="notes"><p>About 8 minutes for three slides. One habit to install: <em>predict the plan before you look at it</em>. Students who can say “this should be an index join on <code>customer_id</code>” before running EXPLAIN find regressions in code review; students who only read plans find them in production.</p><p>Index hints, DistSQL and the slow-query catalogue are in the appendix — mention they exist and move on.</p></aside>
                 </section>
 
                 <section>
@@ -681,6 +685,7 @@ SHOW HISTOGRAM &lt;histogram_id&gt;;
                             <li><strong>Part C:</strong> Use the SQL Activity → Insights tab to find a recommendation</li>
                         </ul>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> same cluster; the lab loads its own tables. <strong>Core: Parts A–E and G, 60 min.</strong> Part F (DistSQL and vectorisation) is optional.</p><p><strong>Where students get stuck:</strong> Part A insists they write down a prediction before running EXPLAIN — enforce it, it is the point of the lab. Part D depends on statistics being stale; automatic stats collection can refresh them after a 20% row change, so if a student's plan is already good, have them <code>CREATE STATISTICS</code> anyway and compare the two plan costs. Part E's <code>EXPLAIN ANALYZE (DEBUG)</code> prints the bundle path inside the node's container and a <code>cockroach demo</code> command to load it; <code>scripts/crdb cp</code> gets it out if anyone wants to open the zip. Part C's Insights page needs a few executions of the slow query before it lists anything; in WSL the browser runs on Windows and <code>localhost:8080</code> still works.</p><p><strong>Debrief:</strong> Part G's question — when is a query as fast as it can get — is the one to discuss: rows read equals rows returned, one range, one round trip. Anything past that is hardware.</p></aside>
                 </section>
             </section>
 
@@ -690,6 +695,7 @@ SHOW HISTOGRAM &lt;histogram_id&gt;;
             <section>
                 <section class="section-title">
                     <h2>🌍 7. Multi-Region Topologies &amp; Resilience</h2>
+                <aside class="notes"><p>Largest lecture block of the day: nine slides, about 18 minutes. Three building blocks in order — <strong>locality</strong> (what the operator tags on each node), <strong>survival goal</strong> (how many voters and how far apart), <strong>table locality</strong> (which region a row's leaseholder should be in). The “How a Region Becomes Placement” slide is the mechanism that connects them; give it its full time, including the silent-typo warning.</p><p>Students will ask whether this needs a licence. Yes — multi-region SQL is an enterprise feature; Lab 7 uses <code>cockroach demo</code>, which ships one, and the class licence covers everything else.</p></aside>
                 </section>
 
                 <section>
@@ -944,6 +950,7 @@ FROM crdb_internal.kv_store_status;</code></pre>
                             <li><strong>Part C:</strong> Use <code>\demo shutdown</code> to kill a region; verify availability</li>
                         </ul>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> this lab does <em>not</em> use the compose cluster. Students run <code>scripts/crdb down</code> first, then the <code>docker run … demo --global --nodes 9</code> command from the lab; the Console is on <strong>localhost:8090</strong>. <code>demo --global</code> simulates inter-region latency, which is what makes the measurements in Parts A and C meaningful. <strong>Core: Parts A–F, 65 min.</strong> Part G (decision tree) is optional.</p><p><strong>Where students get stuck:</strong> the whole cluster is one in-memory container — if the terminal closes, everything is gone and they restart from Setup. Part B: after <code>ALTER TABLE … SET LOCALITY REGIONAL BY ROW</code>, replica placement takes about two minutes to converge; tell them to run the <code>SHOW RANGES</code> check, move on to Part C, and come back. Part E's <code>\demo shutdown 7/8/9</code> is typed inside the demo shell, not in a separate terminal. Part F: a locality string typo does not error — it just never matches; if placement looks wrong, read the locality back with <code>SHOW REGIONS</code> first.</p><p><strong>Debrief:</strong> Part A's numbers — write latency under SURVIVE ZONE vs SURVIVE REGION — on the whiteboard. That cost is the whole decision.</p></aside>
                 </section>
             </section>
             <!-- ============================================================ -->
@@ -953,6 +960,7 @@ FROM crdb_internal.kv_store_status;</code></pre>
                 <section class="section-title">
                     <h2>🧱 8. High-Volume Schema Patterns</h2>
                     <p>The Playbook, applied</p>
+                <aside class="notes"><p>About 8 minutes, four slides. Day 1 named the patterns; today three of them are demonstrated and Lab 8 measures them. Patterns 1 (hash-sharded time-series), 2/3 (append-only log, per-tenant co-located key) and 5 (sharded counter) are here; 6–10 and the anti-pattern list are in the appendix.</p><p>Keep pointing back to the sorted key space: every pattern is a way of deciding <em>which range a write lands in</em>.</p></aside>
                 </section>
 
                 <section>
@@ -1072,6 +1080,7 @@ SELECT sum(n) FROM counter_shards WHERE name = 'page_views';</code></pre>
                 <section class="section-title">
                     <h2>🚀 9. Throughput Engineering</h2>
                     <p>Numbers you can quote in a design review</p>
+                <aside class="notes"><p>About 10 minutes, five slides, then Lab 8. The section exists to replace folklore with measured numbers: how much faster is a multi-row INSERT than single rows, at what batch size does it stop helping, what does a pre-split save, where is the concurrency knee.</p><p>On the class VMs the absolute numbers will be small — three nodes in Docker on one machine. Say so before the lab: the <em>ratios</em> transfer to production, the absolutes do not.</p></aside>
                 </section>
 
                 <section>
@@ -1219,6 +1228,7 @@ done</code></pre>
                         batch knee, pre-split speedup, best/worst PK design, sharded-counter speedup, and a
                         pool size you derived rather than inherited.</p>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> back on the compose cluster — <code>scripts/crdb up</code> after the Lab 7 container is gone. Timing is via <code>\set show_times</code> inside <code>scripts/crdb sql</code>. <strong>Core: Parts A–E, 60 min.</strong> Parts F (online schema change under load) and G (concurrency knee with <code>cockroach workload</code>) are optional.</p><p><strong>Where students get stuck:</strong> the Results Summary table in the lab is the deliverable — check it is being filled in as they go, not reconstructed at the end. Part A's <code>IMPORT INTO</code> variant needs the CSV inside the node's container — <code>scripts/crdb cp /tmp/load_test.csv crdb1:/tmp/load_test.csv</code> — and the table is offline while it runs; that is the trade-off the lab wants them to record. Part D's concurrent writers are background subshells piping into <code>scripts/crdb sql</code>; if a student's terminal looks hung, it is waiting on those — <code>wait</code> or a second terminal. Part E: the single-row counter should show visible contention in the Console; if it does not, their writer count is too low.</p><p><strong>Debrief:</strong> collect three numbers from the room — batch-size knee, pre-split speed-up, sequential-vs-UUID write ratio. Those come back tomorrow as capacity inputs.</p></aside>
                 </section>
             </section>
 
@@ -1240,12 +1250,14 @@ done</code></pre>
                     <p><strong>Tomorrow (Day 3):</strong> those same numbers become dashboards, alerts, node counts,
                     and a hardware bill — plus backup/DR drills and security hardening.</p>
                 </div>
+            <aside class="notes"><p>Five fragments, one sentence each; do not re-teach. Two questions for the room: “What does your application do when it receives 40001?” and “Which pattern from today applies to a table you own?”</p><p>Preview Day 3 in one line: the same numbers become dashboards, node counts and a hardware bill. Ask students to run <code>scripts/crdb down</code> before they leave so tomorrow starts clean.</p></aside>
             </section>
         
                 <section>
                     <section class="section-title">
                         <h2>📎 Appendix — If Time Allows</h2>
                         <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
+                    <aside class="notes"><p>Only if ahead of schedule — the Day 2 schedule has 20–30 minutes of buffer, and Lab 7 usually consumes it. Eight slides: retry-loop pseudocode, index hints, DistSQL/vectorised execution, common slow-query patterns, node decommissioning and unplanned loss, playbook patterns 6–10, and the code-review anti-pattern list. The decommissioning pair is the most useful if there is time for only one topic — it is the Day 2 content operators ask for.</p></aside>
                     </section>
                     <section>
                     <h3>Retry Loop — Pseudocode</h3>
@@ -1295,7 +1307,7 @@ WHERE customer_id = 'abc';
                         <p><strong>CockroachDB will tell you when you're missing an index.</strong> Check the <strong>SQL Activity → Insights</strong> tab in the DB Console — it surfaces queries that would benefit from a new index, and even gives you the <code>CREATE INDEX</code> statement.</p>
                     </div>
                 
-                    <aside class="notes"><p>Hints (table@index) force a choice; use them to test a hypothesis, not as a permanent fix. Index recommendations in EXPLAIN and the console suggest indexes from observed queries — treat them as candidates to measure, since each one adds write cost.</p><p>The discipline to teach: hypothesis, EXPLAIN ANALYZE before, change, EXPLAIN ANALYZE after, keep only if the numbers moved.</p></aside>
+                    <aside class="notes"><p>Hints (table@index) force a choice; use them to test a hypothesis, not as a permanent fix. Index recommendations in EXPLAIN and the console suggest indexes from observed queries — treat them as candidates to measure, since each one adds write cost.</p><p>The discipline to teach: hypothesis, EXPLAIN ANALYZE before, change, EXPLAIN ANALYZE after, keep only if the numbers moved. A hint that is still in the code six months later is a plan the optimiser was never allowed to improve — when statistics or data shape change, the hinted plan does not.</p><p><strong>Terms:</strong> <strong>index hint</strong> — <code>FROM t@idx</code>, forces the optimizer to use that index; <code>FROM t@{FORCE_INDEX=idx}</code> is the long form, <code>{NO_FULL_SCAN}</code> errors instead of scanning. <strong>index recommendation</strong> — a suggested <code>CREATE INDEX</code> emitted by EXPLAIN and shown on the Console's Insights page, derived from observed predicates and joins.</p></aside>
                 </section>
                     <section>
                     <h3>DistSQL &amp; Vectorized Execution</h3>

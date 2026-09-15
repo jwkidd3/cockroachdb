@@ -310,6 +310,7 @@
                 <p style="margin-top: 1em; opacity: 0.9;">
                     CDC · Application Patterns · Migration · Kubernetes · Cost
                 </p>
+            <aside class="notes"><p>Day 4 is application integration and platform: CDC, outbox and idempotency, migrating from PostgreSQL, Kubernetes. Kubernetes is deliberately last — Lab 16 replaces the Docker cluster with a kind cluster and is the only lab that should follow nothing.</p><p>Confirm nobody still has <code>CRDB_COMPOSE</code> exported from Lab 12. Lab 13 needs the default stack up <em>before</em> Kafka is started.</p></aside>
             </section>
 
             <!-- Day 4 Schedule -->
@@ -340,6 +341,7 @@
                 <section class="section-title">
                     <h2>📡 Section 1: Change Data Capture in Depth</h2>
                     <p>Getting data out, correctly</p>
+                <aside class="notes"><p>About 10 minutes, five slides. Two flavours (core to the SQL session, enterprise to a sink), what the envelope options cost, the resolved-timestamp frontier as the consumer's correctness tool, at-least-once meaning duplicates are normal, and what a schema change does to a running feed. The frontier slide is the one students have not seen elsewhere — spend the time there.</p><p>Students saw a core changefeed in Lab 3 Part H if they did the optional part; Lab 13 starts from there and goes to Kafka.</p></aside>
                 </section>
 
                 <section>
@@ -486,6 +488,7 @@ scripts/crdb sql -e "SET CLUSTER SETTING kv.rangefeed.enabled = true;"</code></p
                         <p style="font-size:0.8em; margin:0.2em 0;">A working frontier consumer plus a failure drill:
                         broker killed, feed recovered, <strong>zero events lost</strong>, lag measured.</p>
                     </div>
+                <aside class="notes"><p><strong>Setup order matters:</strong> <code>scripts/crdb up</code> <em>first</em>, then the Kafka compose file — it joins <code>crdb-labs_default</code>, which only exists once the cluster is up. Kafka takes 20–30 seconds; the <code>logs | grep -m1</code> line waits for it. <code>kv.rangefeed.enabled</code> is set in the lab's SQL setup. The class licence is applied by the wrapper, so the Kafka sink works. <strong>Core: Parts A–E, 55 min.</strong> Part F (lag, failure and recovery) is optional.</p><p><strong>Where students get stuck:</strong> the sink URI is <code>kafka://kafka:9092</code> — the container name, not localhost. The console consumer runs <em>inside</em> the Kafka container via <code>docker compose exec kafka /opt/kafka/bin/…</code>; it prints nothing until a row changes, which looks like a hang. Resolved messages arrive every 10 s by default (<code>min_checkpoint_frequency</code>); the Python consumer is run with <code>python3 -u</code> so output is not buffered. Part D: students must see the duplicate on replay before they write the dedupe — do not let them skip to the fix.</p><p><strong>Debrief:</strong> what would break downstream if the consumer ignored resolved timestamps? Cleanup: <code>docker compose down</code> for Kafka before Lab 14.</p></aside>
                 </section>
             </section>
 
@@ -496,6 +499,7 @@ scripts/crdb sql -e "SET CLUSTER SETTING kv.rangefeed.enabled = true;"</code></p
                 <section class="section-title">
                     <h2>🔌 Section 2: Application Integration Patterns</h2>
                     <p>Retries, outbox, idempotency, pooling</p>
+                <aside class="notes"><p>About 12 minutes, seven slides, then Lab 14. The chain: 40001 is a protocol, so write the retry loop once and correctly; a retried transaction with a side effect needs the outbox; an outbox consumer delivers at least once, so the receiver needs an idempotency key; then choose optimistic vs pessimistic per hot spot; then size the pool.</p><p>Every slide here has a Part in Lab 14 except pooling, which is the optional Part E.</p></aside>
                 </section>
 
                 <section>
@@ -695,6 +699,7 @@ COMMIT;</code></pre>
                         drop a meaningful share of requests. The same code with jittered retries loses none —
                         and the single-statement version needs no retry at all.</p>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> default cluster, and <code>python3</code> with <code>psycopg2</code> on the WSL side (the provisioning script installed it). The scripts are heredocs in the lab; students run them locally, not in a container. <strong>Core: Parts A–D, 55 min.</strong> Part E (connection pool sizing) is optional.</p><p><strong>Where students get stuck:</strong> Part A's retry loop must catch <code>psycopg2.errors.SerializationFailure</code>, roll back, back off with jitter, and re-run the <em>whole</em> transaction including the reads — the classic bug is retrying only the failed statement. Part B: the outbox insert and the business write are one transaction; if a student's test shows an event without an order, they committed twice. Part C: the idempotency key check and the insert must be in the same transaction, or two retries race through. Part D: FOR UPDATE removes the 40001s but serialises the writers — have them measure both, not just declare a winner.</p><p><strong>Debrief:</strong> which approach would you ship for a payments table, and why does the answer change for a view counter?</p></aside>
                 </section>
             </section>
 
@@ -705,6 +710,7 @@ COMMIT;</code></pre>
                 <section class="section-title">
                     <h2>🚚 Section 3: Migrations, CI/CD &amp; Moving off PostgreSQL</h2>
                     <p>The one chance to fix your primary keys for free</p>
+                <aside class="notes"><p>About 10 minutes, six slides. Online schema changes in a pipeline (what is safe to run against live traffic, what is not), the PostgreSQL cheat sheet, and the argument that the highest-value hour of any migration is redesigning primary keys before moving data — not the data move itself. Cutover with a named rollback; regressions caught by comparing plans; and when not to migrate.</p><p>Lab 15 does exactly that order: redesign, move with MOLT, compare plans. Dialect differences and cutover are the optional parts.</p></aside>
                 </section>
 
                 <section>
@@ -869,6 +875,7 @@ Phase 6  Stop writing PG, decommission              ← rollback: restore from b
 molt fetch --source "$PG" --target "$CRDB" --direct-copy
 molt verify --source "$PG" --target "$CRDB"</code></pre>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> a PostgreSQL container <code>lab15-pg</code> on port 5432 loaded with a deliberately bad legacy schema, <code>scripts/crdb up</code>, then <code>scripts/crdb sql -e "CREATE DATABASE target;"</code> — MOLT will not create it. MOLT runs as a container via the <code>molt</code> alias in the lab, on the cluster network. <strong>Core: Parts B, C and D, 55 min.</strong> Parts A (dialect differences), E (zero-downtime cutover) and F (when not to migrate) are optional.</p><p><strong>Where students get stuck:</strong> Part B — the legacy schema has a SERIAL primary key and a wide index set; the deliverable is a redesigned DDL with a justification for each PK change, and students who skip to Part C move the hotspot along with the data. Part C: MOLT Fetch connection strings use container names (<code>lab15-pg</code>, <code>crdb1</code>); <code>localhost</code> fails from inside the container. If the alias is not defined in a new terminal, re-run the alias line. Part D compares <code>EXPLAIN</code> output between PostgreSQL and CockroachDB for the same query; a full scan on the CockroachDB side usually means an index did not migrate.</p><p><strong>Debrief:</strong> which query regressed, and would it have been caught before cutover in their organisation? Cleanup: <code>docker rm -f lab15-pg</code>, then <code>scripts/crdb down</code> before Lab 16.</p></aside>
                 </section>
             </section>
 
@@ -879,6 +886,7 @@ molt verify --source "$PG" --target "$CRDB"</code></pre>
                 <section class="section-title">
                     <h2>☸️ Section 4: Kubernetes Deployment</h2>
                     <p>Stateful, and the state matters</p>
+                <aside class="notes"><p>Two slides, about 6 minutes — the mapping from Kubernetes objects to CockroachDB concepts, and the two mistakes that cause outages: pod anti-affinity missing (three replicas on one node) and a PodDisruptionBudget that allows more than one node down at once. Operator vs Helm vs manual is in the appendix and in optional Lab 16 Part E.</p><p>Lab 16 is the last item of the course. Say that before starting it: nothing follows, so a slow kind bring-up is not a schedule problem.</p></aside>
                 </section>
 
                 <section>
@@ -945,6 +953,7 @@ kubectl apply -f .../install/crds.yaml
 kubectl apply -f .../install/operator.yaml
 kubectl apply -f crdb.yaml</code></pre>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb down</code> first — non-negotiable; kind runs a multi-node Kubernetes cluster in Docker and needs the memory. <code>kind create cluster --name lab16 --config kind-config.yaml</code> takes two to four minutes; images were pre-pulled by the provisioning script. <strong>Core: Parts A–D, 70 min.</strong> Part E (operator vs Helm vs manual) is optional.</p><p><strong>Where students get stuck:</strong> Part A — after <code>operator.yaml</code> is applied, the mutating webhook is not immediately reachable; applying a <code>CrdbCluster</code> in that gap fails with <em>connection refused</em>. The lab has them watch the webhook Service endpoints until one is ready; enforce the wait. Part B: <code>kubectl get pods -w</code> until all three are Running; that can take a couple of minutes on the class VMs. Part C's rolling upgrade proceeds one pod at a time — that is the demonstration, not a delay. Part D: deleting a pod and watching it rejoin is the whole point; a student whose pod does not return usually has a PVC left in a bad state — <code>kubectl describe pod</code>.</p><p><strong>Debrief and close:</strong> map what they just saw back to Day 1 — pods are nodes, PVCs are stores, the StatefulSet ordinal is the node's identity. Cleanup: <code>kind delete cluster --name lab16</code>.</p></aside>
                 </section>
             </section>
 
@@ -954,6 +963,7 @@ kubectl apply -f crdb.yaml</code></pre>
             <section>
                 <section class="section-title">
                     <h2>🧭 Section 5: Advanced Features, Cost &amp; Wrap-Up</h2>
+                <aside class="notes"><p>Three slides, about 8 minutes, and they come <em>before</em> Lab 16, not after — once kind is up nobody should be looking at a slide. The anti-pattern checklist is the deliverable of the course: every item on it maps to a lab where they saw the failure. “Four Days, One Idea” is the close; “Where to Go Next” is the pointers.</p><p>The advanced-features survey, deployment models and cost, and the driver/ORM landscape are in the appendix; if a student asks about serverless pricing or an ORM, that is where the answer is.</p></aside>
                 </section>
 
                 
@@ -1029,6 +1039,7 @@ kubectl apply -f crdb.yaml</code></pre>
                     <section class="section-title">
                         <h2>📎 Appendix — If Time Allows</h2>
                         <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
+                    <aside class="notes"><p>Only if ahead, and on Day 4 that means only before Lab 16, never after. Four slides: driver and ORM landscape (which PostgreSQL drivers and ORMs work unchanged), advanced features survey (row-level TTL, spatial, full-text, multi-tenancy), deployment models and cost (self-hosted vs dedicated vs serverless), and operator vs Helm vs manual (pairs with optional Lab 16 Part E). The ORM slide gets the most questions.</p></aside>
                     </section>
                     <section>
                     <h3>Driver &amp; ORM Landscape</h3>

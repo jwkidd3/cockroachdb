@@ -310,6 +310,7 @@
                 <p style="margin-top: 1em; opacity: 0.9;">
                     Observability · Capacity Planning · Benchmarking · DR · Security
                 </p>
+            <aside class="notes"><p>Day 3 is the operations day: observability, capacity, backup/DR, security. Lecture is short (about 45 minutes total) and the labs are infrastructure-heavy — Prometheus and Grafana containers, TPC-C, a second cluster, a secure cluster. Confirm at the start that everyone ran <code>scripts/crdb down</code> last night; Lab 10 in particular wants a fresh cluster.</p><p>Have the Lab 8 numbers from yesterday visible; the capacity section uses them.</p></aside>
             </section>
 
             <!-- Day 3 Schedule -->
@@ -348,6 +349,7 @@
                 </div>
                 <p class="fragment small-text">Every schema decision you made yesterday shows up today as a metric, a
                 capacity number, or a page.</p>
+            <aside class="notes"><p>Three fragments, two minutes. The purpose is the reframing in the info box: Days 1–2 asked whether the schema is correct and fast; today asks how you know it still is at 3 a.m. and what hardware keeps it that way. Every schema decision resurfaces today as a metric (write amplification per index), a capacity number (replicas × indexes × rows) or a page (contention alerts).</p><p>Ask for one number from Lab 8 — anyone's batch-size knee — and keep it on the board for the sizing formula.</p></aside>
             </section>
 
             <!-- ============================================================ -->
@@ -357,6 +359,7 @@
                 <section class="section-title">
                     <h2>📊 Section 1: The Observability Stack</h2>
                     <p>What to measure, and what to page on</p>
+                <aside class="notes"><p>About 10 minutes, five slides. The argument: CockroachDB exports over two thousand metrics; fifteen of them tell you whether the cluster is healthy, and an alert should fire on an SLO burn rate, not on a raw threshold. Log channels are the second half — separating SQL audit and security events from the operational firehose.</p><p>Lab 9 builds the whole pipeline: scrape, rules, Grafana dashboard, log channel config.</p></aside>
                 </section>
 
                 <section>
@@ -496,6 +499,7 @@ scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=
                             <li><strong>E:</strong> <code>debug zip</code>, redaction, statement bundles</li>
                         </ul>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb up</code>, then the <code>lab9-load</code> container that generates traffic. Prometheus and Grafana run as containers on <code>crdb-labs_default</code>, so scrape targets are <code>crdb1:8080</code> etc., never <code>localhost</code>. <strong>Core: Parts A–D, 60 min.</strong> Part E (<code>debug zip</code>) is optional.</p><p><strong>Where students get stuck:</strong> Part B — a Prometheus target showing DOWN is almost always the container name or the missing <code>--network</code> flag; check <code>docker ps</code> and the <code>/targets</code> page. Config files live under <code>/tmp/lab9</code> and are bind-mounted; edits need a container restart. Part C: Grafana is <code>localhost:3000</code>, admin/admin, and the Prometheus data source URL is <code>http://lab9-prom:9090</code> — the container name, reachable because both are on the cluster network. Part D: the channel-split config is <code>lab9/logs.yaml</code> and is applied by bringing <code>crdb1</code> up with the <code>docker/labs.logging.yml</code> overlay; a node reads its log config only at start, so editing the YAML alone changes nothing.</p><p><strong>Debrief:</strong> ask which of the fifteen metrics moved when the load container was running. Cleanup matters here — <code>docker rm -f lab9-load lab9-prom lab9-grafana</code> — before Lab 10.</p></aside>
                 </section>
             </section>
 
@@ -506,6 +510,7 @@ scripts/crdb run workload init kv --drop 'postgresql://root@crdb1:26257?sslmode=
                 <section class="section-title">
                     <h2>📐 Section 2: Capacity Planning &amp; Hardware Sizing</h2>
                     <p>From a throughput target to a purchase order</p>
+                <aside class="notes"><p>About 12 minutes, five slides. The per-node budget slide and the write-amplification slide are the core: capacity is (rows × indexes × replicas × version overhead) for storage and a measured per-node throughput ceiling for CPU, sized at 50% utilisation. TPC-C is the benchmark because it exercises transactions and contention, not because anyone runs a warehouse.</p><p>Lab 10's Part E — the paper sizing exercises — is the most valuable twenty minutes of the day. Protect it.</p></aside>
                 </section>
 
                 <section>
@@ -638,6 +643,7 @@ scripts/crdb run workload run tpcc --warehouses=10 --ramp=30s --duration=3m \
                         node count, instance shape, <strong>the binding constraint</strong>, and the one schema
                         decision that most changes the answer.</p>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb down</code> then <code>up</code> — TPC-C wants a clean cluster and the RAM. Import is via <code>scripts/crdb run workload fixtures import tpcc --warehouses=10</code> (falls back to <code>workload init</code> offline). <strong>Core: Parts A, B, C and E, 65 min.</strong> Part D (admission control under overload) is optional.</p><p><strong>Where students get stuck:</strong> the import takes a few minutes — start it, then teach Part A's workload-suite comparison while it runs. Efficiency is <code>tpmC / (warehouses × 12.86)</code>; ten warehouses on three Docker nodes should land well above 85%. If it does not, the machine is swapping or another lab's containers are still running. Part C extrapolates from that one measured ceiling; insist they write down the assumption (linear scaling, 50% headroom) next to the number.</p><p><strong>Debrief:</strong> take one answer from Part E — the node count for 100k QPS — from three students and compare. The spread is the lesson: the formula is simple, the inputs are judgement.</p></aside>
                 </section>
             </section>
 
@@ -648,6 +654,7 @@ scripts/crdb run workload run tpcc --warehouses=10 --ramp=30s --duration=3m \
                 <section class="section-title">
                     <h2>💾 Section 3: Backup, Restore &amp; Disaster Recovery</h2>
                     <p>An untested backup is a hypothesis</p>
+                <aside class="notes"><p>About 10 minutes, four slides. Vocabulary first (full, incremental, revision history, AS OF SYSTEM TIME, schedules), then the shapes of restore, then RTO/RPO as arithmetic you can measure. The point of “The DR Drill That Counts” is that a backup nobody has restored is a hypothesis.</p><p>Licensing comes up: incremental and revision-history backups need a licence; the class licence is applied by <code>scripts/crdb up</code>, so students see nothing. If anyone gets a licence error, their cluster predates <code>.license.env</code> — <code>scripts/crdb reset</code>.</p></aside>
                 </section>
 
                 <section>
@@ -774,6 +781,7 @@ actual RTO     = locate + restore + verify + cut over</code></pre>
                         duration, transfer time, restore time, <strong>measured RTO</strong>, and a
                         row-count + checksum match between A and B.</p>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb up</code> and confirm the wrapper prints <em>enterprise licence applied</em>. Backups go to <code>nodelocal://1/backups/…</code>. Cluster B for the DR drill is <code>CRDB_COMPOSE=docker/labs-b.yml scripts/crdb up</code> and can read the same nodelocal store — no copying. <strong>Core: Parts A, B, D and E, 65 min.</strong> Part C (schedules and RPO math) is optional.</p><p><strong>Where students get stuck:</strong> Part A — the first backup must complete before the incremental <code>INTO LATEST IN</code>; <code>SHOW JOBS</code> confirms. The point-in-time restore in Part B needs a timestamp between two writes they made; the lab has them insert, wait, insert. Part D: two clusters means two sets of ports and two env values — the prefix <code>CRDB_COMPOSE=…</code> must be on <em>every</em> cluster-B command, or they are talking to cluster A. Part E is writing, not typing; give it the full 10 minutes.</p><p><strong>Debrief:</strong> ask for measured RTO from Part D. Then ask: what in the runbook would fail at 3 a.m. with a different operator? Cleanup: bring cluster B down before Lab 12.</p></aside>
                 </section>
             </section>
 
@@ -784,6 +792,7 @@ actual RTO     = locate + restore + verify + cut over</code></pre>
                 <section class="section-title">
                     <h2>🔐 Section 4: Security Hardening</h2>
                     <p>Certificates, roles, authentication, audit</p>
+                <aside class="notes"><p>About 10 minutes, five slides. TLS is on by default in production; what nobody plans is rotation, and “Rotating Without Downtime” is the slide to spend time on — the order (CA first, then node certs, then client certs) and the fact that a node reloads certs on SIGHUP without restarting. RBAC via roles not users, so migrations do not strip grants; HBA and SSO; and the audit pipeline shipped off the box.</p><p>Lab 12 does all of it on a separate secure compose stack.</p></aside>
                 </section>
 
                 <section>
@@ -920,6 +929,7 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                         <p style="font-size:0.65em; margin:0.2em 0;">Reissuing a cert on disk isn't rotation.
                         Rotation is what the server actually serves.</p>
                     </div>
+                <aside class="notes"><p><strong>Setup:</strong> <code>export CRDB_COMPOSE=docker/labs-secure.yml</code> in the terminal, then <code>scripts/crdb up</code>. Certificates are generated by the <code>certs</code> service in that compose file (<code>docker compose -f docker/labs-secure.yml logs certs</code> shows the <code>cockroach cert</code> commands it ran); the cluster is a separate stack and can coexist with the insecure one, but tell students to bring the insecure one down first anyway. <strong>Core: Parts A, B, C and E, 55 min.</strong> Parts D (auth methods and SSO) and F (compliance mapping) are optional.</p><p><strong>Where students get stuck:</strong> the export is per-terminal — a second terminal without it talks to the wrong stack and gets connection refused. Part B rotation: the order matters and the lab enforces it; a node that fails to come back after rotation almost always has the old CA still in its certs dir. Part C: <code>SHOW GRANTS</code> after each step; the trap is granting to a user instead of a role. Part E: audit events appear on the SENSITIVE_ACCESS channel only after <code>ALTER TABLE … EXPERIMENTAL_AUDIT SET READ WRITE</code> and a query.</p><p><strong>Debrief:</strong> who rotated without a connection error? Cleanup: <code>scripts/crdb down</code> on the secure stack, then <code>unset CRDB_COMPOSE</code> — tomorrow's labs use the default stack.</p></aside>
                 </section>
             </section>
 
@@ -941,12 +951,14 @@ SET CLUSTER SETTING server.jwt_authentication.enabled = true;</code></pre>
                     <p><strong>Tomorrow:</strong> CDC in depth, the outbox pattern, ORM and retry integration,
                     migrating off PostgreSQL, and running all of it on Kubernetes.</p>
                 </div>
+            <aside class="notes"><p>Five fragments. Two questions: “Which of the fifteen metrics would you page on first, and at what burn rate?” and “What is the RTO you measured, and does your organisation's stated RTO agree?”</p><p>Preview Day 4: CDC, outbox, migration off PostgreSQL, Kubernetes last. Remind everyone to <code>unset CRDB_COMPOSE</code> and <code>scripts/crdb down</code> — Lab 13 starts the cluster before Kafka, and Lab 16 needs the machine's memory for kind.</p></aside>
             </section>
         
                 <section>
                     <section class="section-title">
                         <h2>📎 Appendix — If Time Allows</h2>
                         <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
+                    <aside class="notes"><p>Only if ahead. Four slides: admission control (pairs with optional Lab 10 Part D), rotating the CA in the right order (the detailed version of the Section 4 slide), what on-call should capture before escalating (pairs with optional Lab 9 Part E, <code>debug zip</code>), and compliance mapping (pairs with optional Lab 12 Part F). Pick the one whose lab part the class actually did.</p></aside>
                     </section>
                     <section>
                     <h3>Admission Control — Graceful Degradation</h3>
