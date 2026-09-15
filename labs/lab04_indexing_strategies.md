@@ -324,6 +324,7 @@ You frequently search by lowercased email. Don't add a `lower_email` column — 
 ## Cleanup
 
 ```sql
+USE defaultdb;   -- the shell refuses to drop the database you are still in
 DROP DATABASE shop CASCADE;
 ```
 

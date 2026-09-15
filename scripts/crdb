@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# `scripts/crdb` is how every lab writes the wrapper; this hands off to crdb.sh so the
+# commands paste verbatim on macOS, Linux and WSL. Native Windows shells use crdb.bat.
+exec bash "$(dirname "$0")/crdb.sh" "$@"

@@ -57,6 +57,12 @@ SELECT 'user' || g || '@example.com', 1000 FROM generate_series(1, 100) g;
 SQL
 ```
 
+The SQL blocks below assume a shell open **in the `shop` database**:
+
+```bash
+scripts/crdb sql -d shop
+```
+
 ## Tasks
 
 ### Part A: The Retry Loop, Written Correctly (12 min)
@@ -466,6 +472,7 @@ Two ways to stop two users from overwriting each other. Measure both.
 
 1. **Optimistic (version column) — no locks, retry on conflict:**
    ```sql
+   -- shape only; the script in step 3 is the runnable version
    UPDATE accounts
    SET balance = $new_balance, version = version + 1
    WHERE id = $id AND version = $expected_version;
@@ -474,6 +481,7 @@ Two ways to stop two users from overwriting each other. Measure both.
 
 2. **Pessimistic (`SELECT FOR UPDATE`) — lock first, then write:**
    ```sql
+   -- shape only; the script in step 3 is the runnable version
    BEGIN;
    SELECT balance FROM accounts WHERE id = $id FOR UPDATE;
    UPDATE accounts SET balance = $new WHERE id = $id;

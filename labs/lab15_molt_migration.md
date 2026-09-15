@@ -17,32 +17,41 @@ By the end of this lab you will be able to:
 - `psql` client
 - Nothing else to install: PostgreSQL and the MOLT tools both run as containers.
 
-> **MOLT in a container, like everything else.** Set this once and the `molt` commands below
-> work verbatim:
-> ```bash
-> alias molt='docker run --rm --network crdb-labs_default -v /tmp/lab15:/tmp/lab15 cockroachdb/molt'
-> ```
-> It joins the cluster network, so `$CRDB` must use the in-network name `crdb1:26257` — and
-> `$PG` must name the PostgreSQL container, not `localhost`. The `-v` mount is what lets
-> `--bucket-path /tmp/lab15/fetch` write where you can see it. A pure-SQL fallback is given
+> **MOLT in a container, like everything else.** Setup step 1 defines a `molt` alias that
+> runs the `cockroachdb/molt` image on the cluster network. Because it runs *inside* that
+> network, the `molt` commands use `$PG_NET` and `$CRDB_NET` (container names) rather than
+> the `localhost` URLs your own `psql` uses. A pure-SQL fallback is given
 > below if you would rather skip MOLT entirely.
 
 ## Setup
 
-### 1. Source PostgreSQL
+Stay in the repository root for the whole lab — every command is written to run from there.
+
+### 1. Cluster, working directory, MOLT
 
 ```bash
-mkdir -p /tmp/lab15 && cd /tmp/lab15
+scripts/crdb up
+mkdir -p /tmp/lab15
+alias molt='docker run --rm --network crdb-labs_default -v /tmp/lab15:/tmp/lab15 cockroachdb/molt'
+```
 
-docker run -d --name lab15-pg -p 5432:5432 \
+(Re-run the `alias` line in any new terminal you open.)
+
+### 2. Source PostgreSQL
+
+It joins the cluster's network so MOLT — and CockroachDB itself — can reach it by name:
+
+```bash
+docker run -d --name lab15-pg --network crdb-labs_default -p 5432:5432 \
   -e POSTGRES_PASSWORD=pg -e POSTGRES_DB=legacy \
   postgres:16 -c wal_level=logical
 
 sleep 8
-export PG='postgresql://postgres:pg@localhost:5432/legacy'
+export PG='postgresql://postgres:pg@localhost:5432/legacy'          # from your machine
+export PG_NET='postgresql://postgres:pg@lab15-pg:5432/legacy'       # from inside a container
 ```
 
-### 2. A realistically bad legacy schema
+### 3. A realistically bad legacy schema
 
 ```bash
 psql "$PG" <<'SQL'
@@ -101,12 +110,18 @@ SQL
 psql "$PG" -c "SELECT count(*) FROM customers; SELECT count(*) FROM orders; SELECT count(*) FROM order_events;"
 ```
 
-### 3. Target CockroachDB
+### 4. Target CockroachDB
 
 ```bash
-scripts/crdb up
 scripts/crdb sql -e "CREATE DATABASE target;"
-export CRDB='postgresql://root@localhost:26257/target?sslmode=disable'
+export CRDB='postgresql://root@localhost:26257/target?sslmode=disable'        # from your machine
+export CRDB_NET='postgresql://root@crdb1:26257/target?sslmode=disable'        # from inside a container
+```
+
+The SQL blocks below assume a shell open **in the `target` database**:
+
+```bash
+scripts/crdb sql -d target
 ```
 
 > The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
@@ -200,19 +215,18 @@ cutover means another migration; changing it now costs nothing.
 1. **With MOLT Fetch:**
    ```bash
    molt fetch \
-     --source "$PG" \
-     --target "$CRDB" \
+     --source "$PG_NET" \
+     --target "$CRDB_NET" \
      --table-filter 'customers|orders|order_events' \
-     --bucket-path '/tmp/lab15/fetch' \
-     --cleanup \
+     --allow-tls-mode-disable \
      --direct-copy
    ```
 
    | Flag | Purpose |
    | --- | --- |
    | `--direct-copy` | Stream via `COPY`, no intermediate object store |
-   | `--bucket-path` / `--s3-bucket` | Stage as CSV for `IMPORT INTO` (faster for large data) |
-   | `--mode data-load-and-replication` | Bulk load, then stay in sync via logical replication |
+   | `--bucket-path s3://…` | Stage as CSV in object storage for `IMPORT INTO` (faster for large data) |
+   | `--allow-tls-mode-disable` | Required because the lab cluster is `--insecure` |
    | `--table-filter` | Regex of tables to move |
    | `--cleanup` | Remove intermediate files when done |
 
@@ -224,7 +238,7 @@ cutover means another migration; changing it now costs nothing.
    psql "$PG" -c "\copy (SELECT id, order_id, event_type, occurred_at FROM order_events) TO '/tmp/lab15/order_events.csv' CSV"
    ```
    ```bash
-   scripts/crdb sql <<'SQL'
+   scripts/crdb sql -d target <<'SQL'
    CREATE TABLE stage_customers (legacy_id INT PRIMARY KEY, tenant_id INT, email STRING, name STRING, created_at TIMESTAMPTZ);
    CREATE TABLE stage_orders (legacy_id INT PRIMARY KEY, customer_legacy INT, tenant_id INT, total DECIMAL(12,2), status STRING, metadata JSONB, created_at TIMESTAMPTZ);
    CREATE TABLE stage_events (legacy_id INT PRIMARY KEY, order_legacy INT, event_type STRING, occurred_at TIMESTAMPTZ);
@@ -237,7 +251,7 @@ cutover means another migration; changing it now costs nothing.
      scripts/crdb run userfile upload /tmp/$t.csv /lab15/$t.csv --insecure
    done
 
-   scripts/crdb sql <<'SQL'
+   scripts/crdb sql -d target <<'SQL'
    IMPORT INTO stage_customers CSV DATA ('userfile:///lab15/customers.csv');
    IMPORT INTO stage_orders    CSV DATA ('userfile:///lab15/orders.csv');
    IMPORT INTO stage_events    CSV DATA ('userfile:///lab15/events.csv');
@@ -260,18 +274,18 @@ cutover means another migration; changing it now costs nothing.
 
 4. **Verify with MOLT Verify** — row counts *and* column-by-column comparison:
    ```bash
-   molt verify --source "$PG" --target "$CRDB" --table-filter 'customers|orders|order_events'
+   molt verify --source "$PG_NET" --target "$CRDB_NET" --allow-tls-mode-disable --table-filter 'customers|orders|order_events'
    ```
    Portable fallback:
    ```bash
    for t in customers orders order_events; do
      echo -n "$t  pg="; psql "$PG" -tAc "SELECT count(*) FROM $t"
-     echo -n "    crdb="; cockroach sql --insecure --url "$CRDB" --format=tsv -e "SELECT count(*) FROM $t" | tail -1
+     echo -n "    crdb="; scripts/crdb sql -d target --format=tsv -e "SELECT count(*) FROM $t" | tail -1
    done
 
    # Business checksum, not just a row count
    psql "$PG" -tAc "SELECT sum(total)::numeric(20,2) FROM orders"
-   scripts/crdb sql --format=tsv -e "SELECT sum(total)::DECIMAL(20,2) FROM orders" | tail -1
+   scripts/crdb sql -d target --format=tsv -e "SELECT sum(total)::DECIMAL(20,2) FROM orders" | tail -1
    ```
 
 5. **Add constraints after the load, not before:**
@@ -294,7 +308,7 @@ Migrations regress queries. Find out which ones before your users do.
 1. **Same query, both engines:**
    ```bash
    psql "$PG" -c "EXPLAIN ANALYZE SELECT * FROM orders WHERE tenant_id = 7 ORDER BY created_at DESC LIMIT 50;"
-   scripts/crdb sql -e "EXPLAIN ANALYZE SELECT * FROM orders WHERE tenant_id = 7 ORDER BY created_at DESC LIMIT 50;"
+   scripts/crdb sql -d target -e "EXPLAIN ANALYZE SELECT * FROM orders WHERE tenant_id = 7 ORDER BY created_at DESC LIMIT 50;"
    ```
 
 2. **Run the comparison across a query set:**
@@ -338,7 +352,8 @@ These parts are not required to complete the lab; they extend it by about 35 min
 1. **Dump the source schema and try it verbatim:**
    ```bash
    pg_dump "$PG" --schema-only --no-owner --no-privileges > /tmp/lab15/schema.sql
-   scripts/crdb sql -f /tmp/lab15/schema.sql 2>&1 | tee /tmp/lab15/errors.log
+   scripts/crdb sql -e "CREATE DATABASE dialect;"        # scratch database, so nothing collides with target
+   scripts/crdb sql -d dialect < /tmp/lab15/schema.sql 2>&1 | tee /tmp/lab15/errors.log
    grep -i error /tmp/lab15/errors.log | head -20
    ```
 
@@ -383,12 +398,11 @@ Phase 5  Flip: CRDB authoritative, PG still written           ← rollback: flip
 Phase 6  Stop writing PG, decommission                        ← rollback: restore from backup
 ```
 
-1. **Continuous replication (MOLT):**
-   ```bash
-   molt fetch --source "$PG" --target "$CRDB" \
-     --mode data-load-and-replication \
-     --table-filter 'customers|orders|order_events'
-   ```
+1. **Continuous replication.** MOLT Fetch does the bulk load (Part C); keeping the two in
+   sync afterwards is the separate MOLT *Replicator* tool, which tails PostgreSQL's logical
+   replication slot (that is why the source was started with `wal_level=logical`). It is not
+   part of this lab — the point of the phase is that a rollback is "stop replication", nothing
+   more. Read the phase table above and move on to step 2.
 
 2. **Dual write, in application code:**
    ```python
@@ -427,6 +441,7 @@ Phase 6  Stop writing PG, decommission                        ← rollback: rest
 
 5. **After cutover:**
    ```sql
+   SET sql_safe_updates = false;   -- the shell refuses DROP COLUMN otherwise
    ALTER TABLE customers    DROP COLUMN legacy_id;
    ALTER TABLE orders       DROP COLUMN legacy_id;
    ALTER TABLE order_events DROP COLUMN legacy_id;
@@ -488,7 +503,7 @@ scripts/crdb down
 
 | Command | Purpose |
 | --- | --- |
-| `molt fetch --mode data-load-and-replication` | Bulk load, then stay in sync |
+| `molt fetch --direct-copy --allow-tls-mode-disable` | Bulk load source → target |
 | `molt verify` | Row-by-row source/target comparison |
 | `pg_dump --schema-only` | Extract the source schema |
 | `IMPORT INTO ... CSV DATA (...)` | Fast bulk load into CockroachDB |

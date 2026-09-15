@@ -16,6 +16,10 @@ tests/scratch/
 *.log
 *.toc
 
+# Lab 9 Part E debug bundles
+/debug.zip
+/debug-redacted.zip
+
 # Lab working directories (mounted into containers; contents are generated)
 /lab9/
 /lab12/

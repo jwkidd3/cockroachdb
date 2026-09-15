@@ -258,9 +258,10 @@ the cluster moves every replica off the node before letting it leave.
    `decommissioned` it is permanently out; bringing that capacity back means starting a new
    node, which joins with a new node ID.
 
-6. **Reset for the next part:**
+6. **Reset for the next part** — this wipes the data, so recreate the table too:
    ```bash
    scripts/crdb reset
+   scripts/crdb sql -e "CREATE DATABASE lab1; CREATE TABLE lab1.notes (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), body STRING NOT NULL, made TIMESTAMPTZ DEFAULT now()); INSERT INTO lab1.notes (body) SELECT 'note ' || generate_series(1, 1000)::STRING;"
    ```
 
 ### Part F: Three Ways to Connect (10 min)

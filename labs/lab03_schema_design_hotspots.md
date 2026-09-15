@@ -427,14 +427,18 @@ The classic dual-write problem: your app writes to the database AND publishes a 
 
 3. **Hand off via CDC** — in production, a changefeed ships the outbox to Kafka:
    ```sql
-   -- (demo mode includes an enterprise license; otherwise use a Core changefeed)
+   -- Reference only — this is Lab 13, where a Kafka broker exists. Do not run it here.
    CREATE CHANGEFEED FOR TABLE events_outbox
-     INTO 'kafka://broker:9092'
+     INTO 'kafka://kafka:9092'
      WITH updated, resolved = '10s';
    ```
-   For this lab, exercise the Core variant — it emits to the SQL session, no broker needed:
+   For this lab, exercise the Core variant — it emits to the SQL session, no broker needed.
+   Changefeeds of either kind need rangefeeds switched on (once per cluster):
    ```sql
-   -- In a second SQL session:
+   SET CLUSTER SETTING kv.rangefeed.enabled = true;
+   ```
+   Then, in a second terminal, `scripts/crdb sql -d hotspots` and:
+   ```sql
    EXPERIMENTAL CHANGEFEED FOR events_outbox;
    ```
    Then, in your main session, insert another order with its outbox event and watch the JSON appear in the second session.
@@ -452,6 +456,7 @@ The classic dual-write problem: your app writes to the database AND publishes a 
 ## Cleanup
 
 ```sql
+USE defaultdb;   -- the shell refuses to drop the database you are still in
 DROP DATABASE hotspots CASCADE;
 ```
 

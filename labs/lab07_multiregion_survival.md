@@ -48,12 +48,9 @@ That drops you straight into a SQL shell inside the container. The DB Console is
 > without one you get
 > `use of multi-region features requires an enterprise license`.
 > **`cockroach demo` includes a temporary licence**, which is why this lab uses it. If you run
-> these steps against your own `cockroach start` cluster instead, set a trial licence first:
-> ```sql
-> SET CLUSTER SETTING enterprise.license = 'crl-0-...';
-> ```
-> (No `cluster.organization` — the class key is bound to an empty organization name, and
-> setting one invalidates it.)
+> these steps against the compose cluster instead, it already carries the class licence from
+> `.license.env` (applied by `scripts/crdb up`) — but it has no region localities, so the
+> `demo --global` cluster is the one to use here.
 > Node **localities** (`--locality=region=...`) and zone configurations are core features and
 > work on any cluster.
 
@@ -420,6 +417,7 @@ For each row, pick the locality and survival goal.
 ## Cleanup
 
 ```sql
+USE defaultdb;   -- the shell refuses to drop the database you are still in
 DROP DATABASE shop CASCADE;
 ```
 

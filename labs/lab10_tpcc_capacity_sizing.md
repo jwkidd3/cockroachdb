@@ -24,6 +24,7 @@ By the end of this lab you will be able to:
 
 ```bash
 scripts/crdb up
+mkdir -p /tmp/lab10          # the run logs you will read back go here
 ```
 
 Two connection strings, and it matters which you use:
@@ -94,7 +95,7 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
 3. **Warm up, then measure:**
    ```bash
    scripts/crdb run workload run tpcc --warehouses=10 --ramp=30s --duration=3m \
-     --display-every=15s "$CRDB" | tee /tmp/lab10/tpcc-10.log
+     --display-every=15s 'postgresql://root@crdb1:26257?sslmode=disable' | tee /tmp/lab10/tpcc-10.log
    ```
 
 4. **Read the output.** The final block reports `tpmC`, efficiency, and per-transaction-type
@@ -113,6 +114,7 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
 5. **Push until it breaks.** Increase warehouses until efficiency drops below 85%:
    ```bash
    for W in 20 40; do
+     scripts/crdb sql -e "DROP DATABASE IF EXISTS tpcc CASCADE;"     # a fixture only imports into an empty schema
      scripts/crdb run workload fixtures import tpcc --warehouses=$W 'postgresql://root@crdb1:26257?sslmode=disable'
      scripts/crdb run workload run tpcc --warehouses=$W --ramp=30s --duration=2m 'postgresql://root@crdb1:26257?sslmode=disable' \
        | tail -3 | tee -a /tmp/lab10/tpcc-sweep.log

@@ -34,9 +34,9 @@ kind version && kubectl version --client && docker info | grep -i "total memory"
 ## Setup — a Multi-Node kind Cluster
 
 ```bash
-mkdir -p /tmp/lab16 && cd /tmp/lab16
+mkdir -p /tmp/lab16
 
-cat > kind-config.yaml <<'YML'
+cat > /tmp/lab16/kind-config.yaml <<'YML'
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -49,7 +49,7 @@ nodes:
     labels: {topology.kubernetes.io/zone: zone-c}
 YML
 
-kind create cluster --name lab16 --config kind-config.yaml
+kind create cluster --name lab16 --config /tmp/lab16/kind-config.yaml
 kubectl get nodes --show-labels | cut -c1-120
 ```
 
@@ -74,9 +74,11 @@ rather than decorative.
    kubectl -n cockroach-operator-system get pods
    ```
    ```bash
-   # The webhook Service must have at least one ready endpoint before you apply anything.
-   kubectl -n cockroach-operator-system get endpoints cockroach-operator-webhook-service -w
+   kubectl -n cockroach-operator-system get endpoints cockroach-operator-webhook-service
    ```
+   An address listed here is necessary but not sufficient — the operator pod has no readiness
+   probe, so its IP appears before the webhook server is listening. The only reliable test is
+   to ask the webhook something, which is why Part B applies the cluster in a retry loop.
 
    > This is a general Kubernetes lesson, not an operator quirk: **any** operator with a
    > mutating or validating webhook rejects resources until its Service has endpoints. If your
@@ -140,13 +142,48 @@ rather than decorative.
 
 2. **Apply and watch it come up:**
    ```bash
-   kubectl apply -f /tmp/lab16/crdb.yaml
-   kubectl get pods -w        # Ctrl+C once all 3 are Running
+   # "failed calling webhook … connection refused" means the operator is still warming up;
+   # apply is idempotent, so keep trying until it is accepted.
+   until kubectl apply -f /tmp/lab16/crdb.yaml; do echo "webhook not ready yet — retrying"; sleep 5; done
+   until kubectl get statefulset crdb >/dev/null 2>&1; do sleep 2; done   # the operator creates it
+   kubectl rollout status statefulset/crdb --timeout=600s                  # returns when all 3 pods are Running
    ```
 
-3. **Initialize and connect:**
+3. **A client pod, then connect.** The operator generated the CA, node and root-client
+   certificates as Secrets named after the cluster (`crdb-node`, `crdb-root`); a client pod
+   mounts them. (The upstream example manifest hard-codes a cluster called `cockroachdb` and
+   the latest image, so we write our own.)
    ```bash
-   kubectl apply -f https://raw.githubusercontent.com/cockroachdb/cockroach-operator/master/examples/client-secure-operator.yaml
+   cat > /tmp/lab16/client.yaml <<'YAML'
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: cockroachdb-client-secure
+   spec:
+     serviceAccountName: crdb-sa
+     nodeName: lab16-worker            # keep it off lab16-worker2, which Part D stops
+     terminationGracePeriodSeconds: 0
+     containers:
+     - name: client
+       image: cockroachdb/cockroach:v23.2.5
+       command: ["sleep", "2147483648"]
+       volumeMounts:
+       - name: client-certs
+         mountPath: /cockroach/cockroach-certs/
+     volumes:
+     - name: client-certs
+       projected:
+         defaultMode: 256
+         sources:
+         - secret:
+             name: crdb-node
+             items: [{key: ca.crt, path: ca.crt}]
+         - secret:
+             name: crdb-root
+             items: [{key: tls.crt, path: client.root.crt}, {key: tls.key, path: client.root.key}]
+   YAML
+   kubectl apply -f /tmp/lab16/client.yaml
+   kubectl wait --for=condition=Ready pod/cockroachdb-client-secure --timeout=300s
    kubectl exec -it cockroachdb-client-secure -- ./cockroach sql \
      --certs-dir=/cockroach/cockroach-certs --host=crdb-public
    ```
@@ -179,11 +216,11 @@ rather than decorative.
 1. **Generate load so you can prove "zero downtime" instead of asserting it:**
    ```bash
    kubectl exec -it cockroachdb-client-secure -- ./cockroach workload init kv \
-     --drop 'postgresql://root@crdb-public:26257/defaultdb?sslmode=verify-full&sslrootcert=/cockroach/cockroach-certs/ca.crt&sslcert=/cockroach/cockroach-certs/client.root.crt&sslkey=/cockroach/cockroach-certs/client.root.key'
+     --drop 'postgresql://root@crdb-public:26257/kv?sslmode=verify-full&sslrootcert=/cockroach/cockroach-certs/ca.crt&sslcert=/cockroach/cockroach-certs/client.root.crt&sslkey=/cockroach/cockroach-certs/client.root.key'
 
    kubectl exec -it cockroachdb-client-secure -- ./cockroach workload run kv \
      --duration=10m --concurrency=8 --tolerate-errors \
-     'postgresql://root@crdb-public:26257/defaultdb?sslmode=verify-full&sslrootcert=/cockroach/cockroach-certs/ca.crt&sslcert=/cockroach/cockroach-certs/client.root.crt&sslkey=/cockroach/cockroach-certs/client.root.key' &
+     'postgresql://root@crdb-public:26257/kv?sslmode=verify-full&sslrootcert=/cockroach/cockroach-certs/ca.crt&sslcert=/cockroach/cockroach-certs/client.root.crt&sslkey=/cockroach/cockroach-certs/client.root.key' &
    ```
 
 2. **Scale out — one field:**

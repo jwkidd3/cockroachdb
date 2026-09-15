@@ -20,12 +20,46 @@ By the end of this lab you will be able to:
 
 ## Setup
 
-### 1. Kafka
+### 1. Cluster
 
 ```bash
-mkdir -p /tmp/lab13 && cd /tmp/lab13
+scripts/crdb up
+export C='postgresql://root@localhost:26257?sslmode=disable'
+```
 
-cat > docker-compose.yml <<'YML'
+> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
+> From your machine it is `localhost:26257`; from inside another container it is
+> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
+
+> **Enterprise changefeeds need a licence — the class has one.** It ships with the repo in
+> `.license.env`: `scripts/crdb up` prints `enterprise licence applied` when it starts, and
+> nothing further is needed. If your cluster predates that file, `scripts/crdb reset`.
+> Without a licence, `CREATE CHANGEFEED ... INTO` is refused and you run Part A only — core
+> changefeeds, which need no licence and teach the same envelope format.
+
+```bash
+scripts/crdb sql <<'SQL'
+SET CLUSTER SETTING kv.rangefeed.enabled = true;
+
+CREATE DATABASE shop;
+USE shop;
+
+CREATE TABLE orders (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer  STRING NOT NULL,
+  total     DECIMAL(12,2) NOT NULL,
+  status    STRING NOT NULL DEFAULT 'new',
+  updated   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+SQL
+```
+
+### 2. Kafka
+
+```bash
+mkdir -p /tmp/lab13
+
+cat > /tmp/lab13/docker-compose.yml <<'YML'
 services:
   kafka:
     image: apache/kafka:3.9.0
@@ -55,8 +89,8 @@ networks:
     name: crdb-labs_default
 YML
 
-docker compose up -d
-docker compose logs -f kafka | grep -m1 "Kafka Server started"
+docker compose -f /tmp/lab13/docker-compose.yml up -d
+until docker compose -f /tmp/lab13/docker-compose.yml logs kafka 2>/dev/null | grep -q "Kafka Server started"; do sleep 2; done; echo "Kafka is up"
 ```
 
 > **The official `apache/kafka` image, not `bitnami/kafka`.** Bitnami withdrew its versioned
@@ -64,52 +98,18 @@ docker compose logs -f kafka | grep -m1 "Kafka Server started"
 > `_CFG` infix from every environment variable and keeps its CLI tools in `/opt/kafka/bin`
 > rather than on `PATH` — which is why the commands below spell out the full path.
 
-> ⚠️ **Start the lab cluster first** (`scripts/crdb up`) — this compose file joins the network
-> that stack creates, and will refuse to start if it does not exist yet.
+> ⚠️ **The cluster must already be up** (step 1) — this compose file joins the network that
+> stack creates, and refuses to start if it does not exist yet. Stay in the repository root:
+> every command in this lab, including `docker compose -f /tmp/lab13/docker-compose.yml …`,
+> is written to run from there.
 >
 > **Why `kafka:9092` and not `localhost:9092`?** The changefeed is opened *by the database
 > node*, inside its own container. `localhost` there is the node itself, not your machine, so
 > a sink of `kafka://localhost:9092` fails with a connection refused that looks baffling until
 > you remember whose `localhost` it is. Advertising `kafka:9092` on the shared network is what
 > makes the sink reachable from where it is actually dialled. Every `kafka-console-consumer`
-> command below runs *inside* the Kafka container (`docker compose exec kafka …`), which is
+> command below runs *inside* the Kafka container (`docker compose -f /tmp/lab13/docker-compose.yml exec kafka …`), which is
 > why those still say `localhost:9092`.
-
-### 2. Cluster
-
-```bash
-scripts/crdb up
-export C='postgresql://root@localhost:26257?sslmode=disable'
-```
-
-> The cluster runs in Docker (see [Lab 1](lab01_cluster_bootstrap.md)).
-> From your machine it is `localhost:26257`; from inside another container it is
-> `crdb1:26257`. `scripts/crdb run ...` executes inside node 1.
-
-> **Enterprise changefeeds need a licence — and it is free for training.** Cockroach Labs
-> issues licences at no cost for training and evaluation, so ask your instructor whether the
-> class has one. Export it before starting the cluster and the wrapper applies it:
-> It ships with the repo (`.license.env`): `scripts/crdb up` prints
-> `enterprise licence applied` when it starts, and nothing further is needed.
-> Without one, `CREATE CHANGEFEED ... INTO` is refused and you run Part A only — core
-> changefeeds, which need no licence and teach the same envelope format.
-
-```bash
-scripts/crdb sql <<'SQL'
-SET CLUSTER SETTING kv.rangefeed.enabled = true;
-
-CREATE DATABASE shop;
-USE shop;
-
-CREATE TABLE orders (
-  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer  STRING NOT NULL,
-  total     DECIMAL(12,2) NOT NULL,
-  status    STRING NOT NULL DEFAULT 'new',
-  updated   TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-SQL
-```
 
 ## Tasks
 
@@ -174,7 +174,7 @@ guarantees beyond "this session is connected".
 
 2. **Confirm the topic exists:**
    ```bash
-   docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+   docker compose -f /tmp/lab13/docker-compose.yml exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
    ```
    The topic is named after the table: `orders`.
 
@@ -191,7 +191,7 @@ guarantees beyond "this session is connected".
 
 4. **Consume raw:**
    ```bash
-   docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+   docker compose -f /tmp/lab13/docker-compose.yml exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
      --bootstrap-server localhost:9092 --topic orders --from-beginning
    ```
    **Ctrl+C when you have seen enough.** A changefeed with `resolved` emits a watermark every
@@ -233,7 +233,7 @@ timestamp below this value*. Only then is a time window complete.
 
 1. **Watch the resolved messages arrive:**
    ```bash
-   docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+   docker compose -f /tmp/lab13/docker-compose.yml exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
      --bootstrap-server localhost:9092 --topic orders \
      | grep --line-buffered resolved          # Ctrl+C to stop
    ```
@@ -288,7 +288,7 @@ timestamp below this value*. Only then is a time window complete.
 
 3. **Run it against the live topic:**
    ```bash
-   docker compose exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
+   docker compose -f /tmp/lab13/docker-compose.yml exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
      --bootstrap-server localhost:9092 --topic orders --from-beginning \
      | python3 -u /tmp/lab13/consumer.py
    ```
@@ -403,7 +403,7 @@ These parts are not required to complete the lab; they extend it by about 10 min
 
 2. **Kill the sink and watch the job react:**
    ```bash
-   docker compose stop kafka
+   docker compose -f /tmp/lab13/docker-compose.yml stop kafka
    ```
    ```sql
    SELECT job_id, status, running_status FROM [SHOW CHANGEFEED JOBS];
@@ -413,7 +413,7 @@ These parts are not required to complete the lab; they extend it by about 10 min
 
 3. **Bring the sink back:**
    ```bash
-   docker compose start kafka
+   docker compose -f /tmp/lab13/docker-compose.yml start kafka
    ```
    ```sql
    SELECT job_id, status, high_water_timestamp FROM [SHOW CHANGEFEED JOBS];
@@ -433,7 +433,7 @@ These parts are not required to complete the lab; they extend it by about 10 min
 ## Cleanup
 
 ```bash
-cd lab13 && docker compose down -v && cd ..
+docker compose -f /tmp/lab13/docker-compose.yml down -v
 scripts/crdb down
 ```
 

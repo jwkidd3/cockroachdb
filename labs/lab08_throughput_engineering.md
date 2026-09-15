@@ -563,6 +563,7 @@ throughput still climbs meaningfully. Past it you are buying latency with no thr
 ## Cleanup
 
 ```sql
+USE defaultdb;   -- the shell refuses to drop the database you are still in
 DROP DATABASE throughput CASCADE;
 DROP DATABASE IF EXISTS kv CASCADE;
 ```

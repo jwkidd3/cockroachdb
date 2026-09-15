@@ -300,7 +300,7 @@ on a schedule is how they don't.
    ```
    ```bash
    scripts/crdb sql --user=migrate_user -d ledger -e "CREATE TABLE audit_notes_v2 (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), note STRING);"
-   scripts/crdb sql --user=report_user -e "SELECT count(*) FROM ledger.public.audit_notes_v2;"   -- ✅ 0
+   scripts/crdb sql --user=report_user -e "SELECT count(*) FROM ledger.public.audit_notes_v2;"   # ✅ 0
    ```
 
    Three ways to configure this, all verified:
@@ -368,7 +368,7 @@ on a schedule is how they don't.
    ```bash
    ls lab12/logs/
    grep -o '"EventType":"[^"]*"' lab12/logs/cockroach-security*.log | sort | uniq -c
-   grep 'sensitive_table_access' lab12/logs/cockroach-security*.log | tail -1 | python3 -m json.tool
+   grep 'sensitive_table_access' lab12/logs/cockroach-security*.log | tail -1 | sed 's/^[^{]*//' | python3 -m json.tool
    ```
 
    The fields that matter downstream:

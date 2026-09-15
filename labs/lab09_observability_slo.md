@@ -55,13 +55,12 @@ docker run -d --name lab9-load --network crdb-labs_default \
 
 2. **Pull out the metrics that matter.** These are the ones you will put on a wall:
    ```bash
-   curl -s http://localhost:8080/_status/vars | grep -E \
-     '^(sql_service_latency_bucket|sql_conns|sql_query_count|sql_txn_abort_count|
-        liveness_livenodes|ranges_underreplicated|ranges_unavailable|
-        replicas_leaders_not_leaseholders|capacity_available|capacity_used|
-        sys_cpu_combined_percent_normalized|rocksdb_read_amplification|
-        queue_replicate_pending|txn_restarts_serializable|admission_wait_durations_kv)' \
-     | grep -v '^#'
+   WALL='sql_service_latency_bucket|sql_conns|sql_query_count|sql_txn_abort_count'
+   WALL="$WALL|liveness_livenodes|ranges_underreplicated|ranges_unavailable"
+   WALL="$WALL|replicas_leaders_not_leaseholders|capacity_available|capacity_used"
+   WALL="$WALL|sys_cpu_combined_percent_normalized|rocksdb_read_amplification"
+   WALL="$WALL|queue_replicate_pending|txn_restarts_serializable|admission_wait_durations_kv"
+   curl -s http://localhost:8080/_status/vars | grep -E "^($WALL)" | grep -v '^#'
    ```
 
 3. **The short list, and what each one tells you:**
@@ -316,8 +315,8 @@ audit trail.
    docker compose -f docker/labs.yml -f docker/labs.logging.yml up -d crdb1
    ```
    ```bash
-   scripts/crdb sql -e "SELECT 1;"          # back up?
-   scripts/crdb logs 1                       # ...and reading its new config
+   until scripts/crdb sql -e "SELECT 1;" >/dev/null 2>&1; do sleep 2; done; echo "node 1 is back"
+   scripts/crdb logs 1                       # ...and reading its new config (Ctrl+C to stop following)
    ```
 
    > Look at [`docker/labs.logging.yml`](../docker/labs.logging.yml): it
@@ -340,7 +339,7 @@ audit trail.
 
 5. **Read one structured event in full:**
    ```bash
-   grep 'sensitive_table_access' lab9/logs/cockroach-security*.log | tail -1 | python3 -m json.tool
+   grep 'sensitive_table_access' lab9/logs/cockroach-security*.log | tail -1 | sed 's/^[^{]*//' | python3 -m json.tool
    ```
    Note the fields a SIEM cares about: `Timestamp`, `EventType`, `User`, `TableName`,
    `Statement`, `ApplicationName`.

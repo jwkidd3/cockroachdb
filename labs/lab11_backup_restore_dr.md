@@ -58,16 +58,15 @@ The error is explicit, e.g.:
    `docker run --rm -it cockroachdb/cockroach:v23.2.5 demo --nodes 3 --no-example-database --empty`
    ships with a temporary licence, so every step
    works. Use it for Parts A–C; Part D needs two clusters, so start a second demo on other ports.
-3. **A licence — free for training.** Cockroach Labs issues them at no cost for training and
-   evaluation, so ask your instructor whether the class has one. Export it before starting the
-   cluster and `scripts/crdb up` applies it for you:
-   It ships with the repo (`.license.env`): `scripts/crdb up` prints
-   `enterprise licence applied` when it starts, and nothing further is needed.
-   Already have a cluster running? Apply it in place instead:
+3. **A licence — free for training, and the class has one.** It ships with the repo in
+   `.license.env`; `scripts/crdb up` prints `enterprise licence applied` when it starts, and
+   nothing further is needed. If your cluster was started before the file existed, run
+   `scripts/crdb reset` — or apply the key from that file in place:
    ```sql
-   SET CLUSTER SETTING enterprise.license = 'crl-0-...';
+   -- paste the value of COCKROACH_LICENSE from .license.env
+   SET CLUSTER SETTING enterprise.license = '<key>';
    ```
-   (No `cluster.organization` — trial keys are bound to an empty organization name, and
+   (No `cluster.organization` — training keys are bound to an empty organization name, and
    setting one invalidates them.)
 
 Everything Parts D and E teach — the cross-cluster drill, the verification, the measured RTO,
@@ -99,6 +98,12 @@ INSERT INTO accounts (name, balance, region)
 SELECT 'user-' || g, 1000.00, (ARRAY['us-east','us-west','eu-west'])[1 + g % 3]
 FROM generate_series(1, 5000) g;
 SQL
+```
+
+Then open the SQL shell **in the `bank` database** — the SQL blocks below assume it:
+
+```bash
+scripts/crdb sql -d bank
 ```
 
 ## Tasks

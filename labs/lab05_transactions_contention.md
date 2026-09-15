@@ -188,7 +188,7 @@ Reports that aggregate a big table will often contend with write traffic. The fi
 1. **Start a hot write loop in one terminal:**
    ```bash
    while true; do
-     scripts/crdb sql \
+     scripts/crdb sql -d bank \
        --execute "UPDATE accounts SET balance = balance + 1 WHERE name = 'Alice';"
    done
    ```
@@ -386,6 +386,7 @@ For each scenario, predict whether you'll get 40001s, deadlocks, or smooth saili
 ## Cleanup
 
 ```sql
+USE defaultdb;   -- the shell refuses to drop the database you are still in
 DROP DATABASE bank CASCADE;
 ```
 

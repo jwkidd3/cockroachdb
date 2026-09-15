@@ -266,6 +266,7 @@ CockroachDB ships two executors: **vectorized** (default, batch-oriented) and **
 ## Cleanup
 
 ```sql
+USE defaultdb;   -- the shell refuses to drop the database you are still in
 DROP DATABASE catalog CASCADE;
 ```
 
