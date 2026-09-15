@@ -162,9 +162,9 @@ condition — it is the concurrency-control protocol.
    python3 /tmp/lab14/with_retry.py
    ```
 
-   > **Expect some `gave_up` at this concurrency.** 24 transactions all doing a read-modify-write
+   > **Expect some `gave_up` at this concurrency.** 40 transactions all doing a read-modify-write
    > against *one row* with a 5-attempt budget is deliberately brutal: a measured run gave
-   > `{'ok': 15, 'retried': 13, 'gave_up': 9}`. That is not a broken retry loop — it is the
+   > `{'ok': 28, 'retried': 26, 'gave_up': 12}`. That is not a broken retry loop — it is the
    > correct signal that **a retry budget is finite and contention can exhaust it**.
    >
    > Try it three ways and record what each one buys:

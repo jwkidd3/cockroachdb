@@ -69,7 +69,7 @@ docker run -d --name lab9-load --network crdb-labs_default \
    | `liveness_livenodes` | Nodes the cluster believes are up | `< expected` |
    | `ranges_unavailable` | Ranges with no quorum — data is unreadable | `> 0` for 1 min |
    | `ranges_underreplicated` | Ranges below the target replica count | `> 0` for 15 min |
-   | `sql_service_latency_bucket` | Histogram for p50/p99 SQL latency | p99 over SLO |
+   | `sql_service_latency_bucket` | Histogram for p50/p99 SQL latency (bucket bounds in **nanoseconds**) | p99 over SLO |
    | `sql_conns` | Open SQL connections | near your pool ceiling |
    | `sql_query_count` | QPS (rate of) | for capacity trending |
    | `sql_txn_abort_count` | Aborted transactions | rate spike |
@@ -129,12 +129,13 @@ docker run -d --name lab9-load --network crdb-labs_default \
      - name: crdb-slo
        interval: 10s
        rules:
-         # p99 SQL service latency, in seconds
+         # p99 SQL service latency, in seconds. CockroachDB's histogram buckets are in
+         # NANOSECONDS, so divide — a p99 of 2.3e8 is 230 ms, not 7 years.
          - record: crdb:sql_latency:p99
-           expr: histogram_quantile(0.99, sum(rate(sql_service_latency_bucket[1m])) by (le))
+           expr: histogram_quantile(0.99, sum(rate(sql_service_latency_bucket[1m])) by (le)) / 1e9
 
          - record: crdb:sql_latency:p50
-           expr: histogram_quantile(0.50, sum(rate(sql_service_latency_bucket[1m])) by (le))
+           expr: histogram_quantile(0.50, sum(rate(sql_service_latency_bucket[1m])) by (le)) / 1e9
 
          # Fraction of statements that succeeded (our SLI)
          - record: crdb:sql_success_ratio
@@ -168,12 +169,17 @@ docker run -d --name lab9-load --network crdb-labs_default \
            annotations:
              summary: "{{ $value }} ranges are under-replicated"
 
-         # SLO: 99.9% of statements complete under 100 ms.
+         # SLO: 99.9% of statements complete under ~100 ms.
          # Fast burn: 14.4× budget burn over 1h means the 30-day budget is gone in ~2 days.
+         # The buckets are nanoseconds on a log scale; the one nearest 100 ms is
+         # 9.249147e+07 (92 ms) — list them with the query
+         #   sql_service_latency_bucket{instance="crdb1:8080"}
+         # A bucket that does not exist matches nothing, and an alert built on it never
+         # fires — silently.
          - alert: CRDBLatencySLOFastBurn
            expr: |
              (1 - (
-                sum(rate(sql_service_latency_bucket{le="0.1"}[1h]))
+                sum(rate(sql_service_latency_bucket{le=~"9\\.249.*e\\+07"}[1h]))
                 / clamp_min(sum(rate(sql_service_latency_count[1h])), 1)
              )) > (14.4 * 0.001)
            for: 5m
@@ -229,12 +235,25 @@ docker run -d --name lab9-load --network crdb-labs_default \
    Docker network, so the container name resolves — on WSL, Linux and macOS alike.
 
 3. **Import the official dashboards.** Cockroach Labs publishes dashboard JSON at
-   <https://github.com/cockroachdb/cockroach/tree/master/monitoring/grafana-dashboards>.
-   Import at least:
-   - `overview.json` — cluster health at a glance
-   - `sql.json` — statement throughput and latency
-   - `replication.json` — range and replica health
-   - `runtime.json` — CPU, memory, GC
+   <https://github.com/cockroachdb/cockroach/tree/master/monitoring/grafana-dashboards/by-cluster>.
+   Fetch four of them and load them through Grafana's API (Dashboards → New → Import →
+   Upload does the same thing by hand):
+   ```bash
+   for d in overview sql replication runtime; do
+     curl -s "https://raw.githubusercontent.com/cockroachdb/cockroach/master/monitoring/grafana-dashboards/by-cluster/$d.json" \
+       -o /tmp/lab9/$d.json
+     python3 -c "import json; d=json.load(open('/tmp/lab9/$d.json')); d['id']=None; print(json.dumps({'dashboard': d, 'overwrite': True}))" \
+       | curl -s -u admin:admin -H 'Content-Type: application/json' -X POST http://localhost:3000/api/dashboards/db -d @- ; echo
+   done
+   ```
+   - `overview` — cluster health at a glance
+   - `sql` — statement throughput and latency
+   - `replication` — range and replica health
+   - `runtime` — CPU, memory, GC
+
+   Open Dashboards → *CRDB Console: Overview*. Each dashboard has a **datasource** picker at
+   the top (choose *Prometheus*) and a **Cluster** picker fed by the `cluster: lab9` label from
+   your scrape config.
 
 4. **Build a custom SLO dashboard.** Four panels, one screen, the thing you actually put on
    the wall:

@@ -11,7 +11,7 @@ services:
       start --insecure --advertise-addr=crdb1
       --join=crdb1,crdb2,crdb3
       --http-addr=0.0.0.0:8080
-      --cache=.25 --max-sql-memory=.25
+      --cache=.10 --max-sql-memory=.10
       --external-io-dir=/backups
       --log-config-file=/lab9/logs.yaml
     volumes:

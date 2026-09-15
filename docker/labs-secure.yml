@@ -56,7 +56,7 @@ services:
       start-single-node --certs-dir=/certs
       --advertise-addr=crdbs1
       --http-addr=0.0.0.0:8080
-      --cache=.25 --max-sql-memory=.25
+      --cache=.10 --max-sql-memory=.10
     ports:
       - "26457:26257"
       - "8280:8080"

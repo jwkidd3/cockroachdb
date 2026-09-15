@@ -110,21 +110,21 @@ scripts/crdb sql -d bank
 
 ### Part A: Full, Incremental & Revision-History Backups (15 min)
 
-1. **Full backup** (free):
+1. **Full backup** (free). Production backups are normally taken `AS OF SYSTEM TIME '-10s'` — a
+   slightly stale snapshot that never contends with live traffic — and you will use that form
+   later in the lab. The first one is taken *now*:
    ```sql
-   BACKUP DATABASE bank INTO 'nodelocal://1/backups/bank' AS OF SYSTEM TIME '-10s';
+   BACKUP DATABASE bank INTO 'nodelocal://1/backups/bank';
    ```
-   > `AS OF SYSTEM TIME '-10s'` makes the backup read from a slightly stale snapshot, which
-   > avoids contending with live traffic. Use it on every production backup.
-   >
-   > ⚠️ **If you run this within 10 seconds of creating the database**, it fails with
-   > `database "bank" does not exist, or invalid RESTORE time` — the snapshot is from before the
-   > database existed. Wait a few seconds, or drop the `AS OF SYSTEM TIME` clause for this first
-   > backup. Harmless in the lab; worth knowing when you script a backup right after a migration
-   > creates a table.
+   > ⚠️ **Why not `AS OF SYSTEM TIME` here too?** You created `bank` moments ago. A backup as of
+   > ten seconds ago would be of a cluster in which the database did not exist yet, and fails
+   > with `database "bank" does not exist, or invalid RESTORE timestamp`. Harmless in the lab;
+   > worth knowing when you script a backup right after a migration creates a table.
 
-   🔒 **Enterprise:** add revision history so any timestamp inside the window is restorable:
+   🔒 **Enterprise:** add revision history so any timestamp inside the window is restorable
+   (this one *is* a historical read, so give the database a moment to be ten seconds old):
    ```sql
+   SELECT pg_sleep(10);
    BACKUP DATABASE bank INTO 'nodelocal://1/backups/bank'
      AS OF SYSTEM TIME '-10s'
      WITH revision_history;
@@ -141,8 +141,8 @@ scripts/crdb sql -d bank
    ```
    Note the `start_time` / `end_time` columns — that window is your RPO for this backup.
 
-3. **Change data, then take an incremental** — 🔒 **Enterprise**. On the free path, take another
-   *full* backup into the same collection instead; the rest of the lab works either way.
+3. **Change data, then take an incremental** — 🔒 **Enterprise** (`INTO LATEST IN` appends to
+   the most recent full backup in the collection):
    ```sql
    INSERT INTO transfers (from_id, to_id, amount)
    SELECT a.id, b.id, 10.00
@@ -151,12 +151,14 @@ scripts/crdb sql -d bank
 
    UPDATE accounts SET balance = balance - 10 WHERE region = 'us-east';
 
-   -- Enterprise:
    BACKUP DATABASE bank INTO LATEST IN 'nodelocal://1/backups/bank' WITH revision_history;
-
-   -- Free alternative — a second full backup in the same collection:
-   BACKUP DATABASE bank INTO 'nodelocal://1/backups/bank' AS OF SYSTEM TIME '-10s';
    ```
+   > No `AS OF SYSTEM TIME` on this one on purpose: you changed the data seconds ago, and a
+   > backup as of ten seconds back would capture none of it — the incremental would show
+   > 0 rows and look broken. In production, where the backup runs long after the writes, use
+   > it. Without a licence, take a second *full* backup into the same collection instead
+   > (`BACKUP DATABASE bank INTO 'nodelocal://1/backups/bank';`) and read "one full plus one
+   > incremental" below as "two fulls".
 
 4. **Read the chain:**
    ```sql
@@ -184,19 +186,32 @@ scripts/crdb sql -d bank
    > enough: the tables that reference it have to come back consistently, which is the argument
    > for database- or cluster-level restores over table-level ones.
 
+6. **Take the backup that runs *after* the accident** — 🔒 **Enterprise**. A point-in-time
+   restore can only target an instant that some revision-history backup *covers*; the marker
+   you saved is later than every backup taken so far, so it is not restorable yet. The next
+   scheduled incremental is what makes it so — and in the lab you are the scheduler:
+   ```sql
+   BACKUP DATABASE bank INTO LATEST IN 'nodelocal://1/backups/bank' WITH revision_history;
+   SHOW BACKUP FROM LATEST IN 'nodelocal://1/backups/bank';
+   ```
+   The chain now has two incrementals; the second records the deletes as history rather than
+   forgetting the rows. (Free path: nothing to do — Part B step 3 is enterprise-only anyway.)
+
 ### Part B: Restore — Database, Table, and Point in Time (15 min)
 
-> **Before you start Part B**, note that any backup you took `AS OF SYSTEM TIME '-10s'` reflects
-> the cluster as of ten seconds *before* you ran it. Take a fresh backup now and wait out that
-> window, or the restore below will hand you back the rows you just deleted and you'll think the
-> restore misbehaved. That gap is your RPO — Part C makes you put a number on it.
+> **Before you start Part B:** a restore gives you back exactly what the backup chain holds.
+> `FROM LATEST` means the state at the *newest* backup — after Part A step 6 that is the
+> post-delete state (3,334 accounts), and only the point-in-time restore in step 3 brings the
+> deleted rows back. On the free path (no step 6) the newest backup predates the delete, so
+> `FROM LATEST` returns all 5,000 — the free-tier version of the same lesson: you can only
+> restore to instants your backups cover. That gap is your RPO; Part C puts a number on it.
 
 1. **Restore the whole database side by side** (never straight over the live one during a drill):
    ```sql
    RESTORE DATABASE bank FROM LATEST IN 'nodelocal://1/backups/bank'
      WITH new_db_name = 'bank_restored';
 
-   SELECT count(*) FROM bank_restored.public.accounts;
+   SELECT count(*) FROM bank_restored.public.accounts;   -- 3334: the newest backup is post-delete
    ```
 
 2. **Restore a single table:**
@@ -212,17 +227,18 @@ scripts/crdb sql -d bank
    > restore both tables together or add `WITH skip_missing_foreign_keys`.
 
 3. **Point-in-time restore using the marker from Part A** — 🔒 **Enterprise** (it reads the
-   revision history). Without it you get:
-   `invalid RESTORE timestamp: restoring to arbitrary time requires that BACKUP was created with revision_history`. On the free path, skip to step 4; the deleted rows are recoverable from the
-   full backup you took *before* the delete, which is the free-tier version of the same lesson:
-   your RPO is your backup interval.
+   revision history, and it needs the post-delete incremental from Part A step 6; without that
+   backup the error is `invalid RESTORE timestamp: supplied backups do not cover requested time`).
+   On the free path, skip to step 4; the deleted rows are recoverable from the full backup you
+   took *before* the delete, which is the free-tier version of the same lesson: your RPO is
+   your backup interval. Paste your marker in place of `<marker value>`:
    ```sql
    RESTORE DATABASE bank
      FROM LATEST IN 'nodelocal://1/backups/bank'
      AS OF SYSTEM TIME '<marker value>'
      WITH new_db_name = 'bank_pit';
 
-   SELECT count(*) FROM bank_pit.public.accounts WHERE region = 'us-east';
+   SELECT count(*) FROM bank_pit.public.accounts WHERE region = 'us-east';   -- 1666: back
    ```
    The deleted rows are back. `revision_history` is what makes any timestamp within the
    backup window restorable, not just the backup instants.

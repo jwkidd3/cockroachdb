@@ -125,11 +125,14 @@ guarantees beyond "this session is connected".
 
 2. **Terminal B:**
    ```bash
-   scripts/crdb sql -e "
-     INSERT INTO shop.orders (customer, total) VALUES ('alice', 42.00);
-     UPDATE shop.orders SET status = 'paid' WHERE customer = 'alice';
-     DELETE FROM shop.orders WHERE customer = 'alice';"
+   scripts/crdb sql -e "INSERT INTO shop.orders (customer, total) VALUES ('alice', 42.00);"
+   scripts/crdb sql -e "UPDATE shop.orders SET status = 'paid' WHERE customer = 'alice';"
+   scripts/crdb sql -e "DELETE FROM shop.orders WHERE customer = 'alice';"
    ```
+   Three commands, not one `-e` string: statements passed together run as one implicit
+   transaction, and a changefeed emits one event per key per transaction — insert-then-delete
+   in a single transaction emits a lone tombstone whose `before` and `after` are both `null`,
+   and the insert and update are never seen (verified).
 
 3. **Read the envelopes in terminal A.** Note that a delete emits `after: null` — a tombstone.
 
@@ -296,11 +299,12 @@ timestamp below this value*. Only then is a time window complete.
 
 4. **In another terminal, make changes and watch the frontier advance:**
    ```bash
-   scripts/crdb sql -e "
-     USE shop;
-     INSERT INTO orders (customer, total) VALUES ('frontier-test', 99.99);
-     UPDATE orders SET status='shipped' WHERE customer='frontier-test';"
+   scripts/crdb sql -d shop -e "INSERT INTO orders (customer, total) VALUES ('frontier-test', 99.99);"
+   scripts/crdb sql -d shop -e "UPDATE orders SET status = 'shipped' WHERE customer = 'frontier-test';"
    ```
+   Two separate commands on purpose: statements passed together in one `-e` string run as a
+   single implicit transaction, and a changefeed emits one event per key per transaction — you
+   would see a single `UPSERT` with `status: shipped` instead of an insert followed by an update.
    The rows sit in `pending` until the next `resolved` message, then apply in timestamp order.
 
 5. **The three questions the frontier answers:**

@@ -36,9 +36,12 @@ from inside the cluster  postgresql://root@crdb1:26257?sslmode=disable
 
 `scripts/crdb run ...` executes inside node 1's container, so it uses the second form.
 
-> `--cache=.25 --max-sql-memory=.25` is the production-recommended split. The defaults
-> (128 MiB / 25%) are deliberately conservative for laptops; a real node should be told it
-> owns the machine.
+> `--cache=.25 --max-sql-memory=.25` is the production-recommended split for a node that owns
+> its machine. The lab nodes run with `.10 / .10` instead (see `docker/labs.yml`): three of
+> them share one 8 GB Docker host, and each one sizes those percentages from the *host's*
+> memory, not from a per-container limit — at `.25` the three nodes together could commit
+> 11 GB and TPC-C at 30 warehouses OOM-kills one of them. Under-sizing a shared host is the
+> same lesson as Lab 16's cgroup warning, one layer down.
 
 ## Tasks
 
@@ -111,9 +114,10 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
    | `efc` | Efficiency vs the 12.86/warehouse theoretical max |
    | `p99` | Tail latency — the number your users feel |
 
-5. **Push until it breaks.** Increase warehouses until efficiency drops below 85%:
+5. **Push until it breaks.** In principle you raise warehouses until efficiency drops below
+   85%; on this host something else breaks first (see the note after the table):
    ```bash
-   for W in 20 40; do
+   for W in 15 20; do      # see the note below before going higher
      scripts/crdb sql -e "DROP DATABASE IF EXISTS tpcc CASCADE;"     # a fixture only imports into an empty schema
      scripts/crdb run workload fixtures import tpcc --warehouses=$W 'postgresql://root@crdb1:26257?sslmode=disable'
      scripts/crdb run workload run tpcc --warehouses=$W --ramp=30s --duration=2m 'postgresql://root@crdb1:26257?sslmode=disable' \
@@ -124,8 +128,17 @@ max of **12.86 tpmC**, so efficiency = `actual_tpmC / (warehouses × 12.86)`. An
    | Warehouses | tpmC | Efficiency | p99 (ms) | Bottleneck (CPU / disk / contention?) |
    | --- | --- | --- | --- | --- |
    | 10 | | | | |
+   | 15 | | | | |
    | 20 | | | | |
-   | 40 | | | | |
+
+   > **Why the sweep stops at 20 on this host.** Measured on an 8 GB Docker host: 20
+   > warehouses imports and runs at ~100% efficiency with each node at ~1.5 GB; the **30**
+   > warehouse import OOM-kills a node partway through (`docker events --filter event=oom`
+   > shows it) — the ingest path needs memory beyond `--cache` and `--max-sql-memory`, and
+   > three nodes share the machine. You will not see efficiency fall below 85% here; you hit
+   > the *other* ceiling first. That is a real capacity result: on this hardware the binding
+   > constraint is memory during bulk ingest, not CPU during steady state — write it in the
+   > bottleneck column.
 
 6. **Identify the bottleneck at the failing point** while a run is in flight:
    ```sql
