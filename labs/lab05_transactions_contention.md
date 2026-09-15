@@ -109,7 +109,8 @@ We'll write a contended UPDATE on the same row from two sessions and force a ser
 
 1. **Reset balances** (any terminal):
    ```sql
-   UPDATE accounts SET balance = CASE name WHEN 'Alice' THEN 1000 WHEN 'Bob' THEN 500 ELSE 2000 END;
+   UPDATE accounts SET balance = CASE name WHEN 'Alice' THEN 1000 WHEN 'Bob' THEN 500 ELSE 2000 END
+   WHERE name IN ('Alice', 'Bob', 'Charlie');
    ```
 
 2. **Save `transfer.py`** in your working dir:
