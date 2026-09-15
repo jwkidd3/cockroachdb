@@ -35,8 +35,9 @@ That drops you straight into a SQL shell inside the container. The DB Console is
 > for the password and a mistyped one breaks the shell's connection (recover with the full
 > URL). `SELECT gateway_region();` tells you which region you are on.
 >
-> **`\demo shutdown N` / `\demo restart N` (Part E) only work in this interactive shell** —
-> they are client-side commands, not SQL. Keep this shell open and type them here.
+> **`\demo shutdown N` / `\demo restart N` are refused on a `--global` cluster.** Part F,
+> which needs them, therefore runs on a second demo cluster started without `--global`; the lab
+> tells you when to switch. They are client-side commands of the interactive shell, not SQL.
 
 > **Why `demo` here, and not the compose cluster?** This is the one lab that needs *simulated
 > inter-region latency* — `--global` inserts realistic round-trip delays between its nine
@@ -302,58 +303,7 @@ Sometimes you want a small reference table to live entirely in one region (think
    SELECT * FROM eu_pricing_rules;            -- remote (slow)
    ```
 
-### Part E: Take a Region Offline (10 min)
-
-Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving when a region disappears?
-
-1. **Set the database to `SURVIVE REGION FAILURE`** so it can actually:
-   ```text
-   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
-   ```
-   ```sql
-   ALTER DATABASE shop SURVIVE REGION FAILURE;
-   ```
-   Wait ~30 s for re-replication.
-
-2. **List europe nodes:**
-   ```sql
-   SELECT node_id FROM crdb_internal.gossip_nodes
-   WHERE locality LIKE '%europe-west1%';
-   ```
-
-3. **Take all three EU nodes offline:**
-   ```text
-   \demo shutdown 7
-   \demo shutdown 8
-   \demo shutdown 9
-   ```
-
-4. **Verify the cluster is still serving** (reconnect to a survivor if needed):
-   ```text
-   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
-   ```
-   ```sql
-   SELECT count(*) FROM customers;
-   INSERT INTO customers (email, name, region)
-     VALUES ('eve@us.example.com', 'Eve', 'us-east1');
-   SELECT email, region FROM customers ORDER BY email;
-   ```
-
-5. **What about querying a European customer's row?**
-   ```sql
-   SELECT email, region FROM customers WHERE email = 'charlie@eu.example.com';
-   ```
-   With `SURVIVE REGION FAILURE`, the leaseholder has been promoted to a surviving region; reads succeed. Give it ~10s after the outage to fully transition.
-
-6. **Bring Europe back:**
-   ```text
-   \demo restart 7
-   \demo restart 8
-   \demo restart 9
-   ```
-   In the DB Console's **Replication** dashboard, watch under-replicated ranges drop back to 0.
-
-### Part F: Audit Replica Placement (5 min)
+### Part E: Audit Replica Placement (5 min)
 
 1. **For each REGIONAL BY ROW row, where do its replicas live?**
    ```sql
@@ -395,6 +345,101 @@ Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving 
    ```
 
 
+
+### Part F: Take a Region Offline (10 min)
+
+Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving when a region
+disappears?
+
+> **This part runs on a second, separate demo cluster.** `\demo shutdown` is refused on a
+> `--global` cluster ("shutting down nodes is not supported in --global configurations"), so
+> the latency simulation you used in Parts A–E and the node-shutdown demo cannot share one
+> cluster. The cluster below has the same three regions and no simulated latency; a `\i` file
+> rebuilds the schema in one command.
+
+1. **Leave the global cluster** (its data disappears with it — Parts A–E are done):
+   ```text
+   \q
+   ```
+
+2. **Write the setup file and start the second cluster.** The file is mounted into the
+   container; the localities give each region three nodes, exactly as before:
+   ```bash
+   mkdir -p /tmp/lab7
+   cat > /tmp/lab7/part_f.sql <<'SQL'
+   CREATE DATABASE shop;
+   USE shop;
+   ALTER DATABASE shop SET PRIMARY REGION "us-east1";
+   ALTER DATABASE shop ADD REGION "us-west1";
+   ALTER DATABASE shop ADD REGION "europe-west1";
+   ALTER DATABASE shop SURVIVE REGION FAILURE;
+   CREATE TABLE customers (
+     id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     email  STRING UNIQUE NOT NULL,
+     name   STRING NOT NULL,
+     region crdb_internal_region NOT NULL
+   ) LOCALITY REGIONAL BY ROW AS region;
+   INSERT INTO customers (email, name, region) VALUES
+     ('alice@us.example.com',   'Alice',   'us-east1'),
+     ('bob@west.example.com',   'Bob',     'us-west1'),
+     ('charlie@eu.example.com', 'Charlie', 'europe-west1');
+   SELECT email, region FROM customers ORDER BY email;
+   SQL
+
+   docker run --rm -it -p 8090:8080 -v /tmp/lab7:/lab7 \
+     cockroachdb/cockroach:v23.2.5 \
+     demo --nodes 9 --no-example-database --empty --http-port=8080 \
+     --demo-locality='region=us-east1,zone=a:region=us-east1,zone=b:region=us-east1,zone=c:region=us-west1,zone=a:region=us-west1,zone=b:region=us-west1,zone=c:region=europe-west1,zone=a:region=europe-west1,zone=b:region=europe-west1,zone=c'
+   ```
+
+3. **Rebuild the schema with one command**, then give the allocator ~30 s to place five
+   replicas per range across three regions:
+   ```text
+   \i /lab7/part_f.sql
+   ```
+   ```sql
+   SELECT node_id, locality FROM crdb_internal.gossip_nodes WHERE locality LIKE '%europe%';
+   SELECT pg_sleep(30);
+   ```
+   Nodes 7, 8 and 9 are Europe.
+
+4. **Take all three EU nodes offline** — these are client-side commands of this shell:
+   ```text
+   \demo shutdown 7
+   \demo shutdown 8
+   \demo shutdown 9
+   ```
+   Each one drains and reports `node N has been shutdown`.
+
+5. **Verify the cluster is still serving:**
+   ```sql
+   SELECT node_id, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;
+   SELECT count(*) FROM customers;
+   INSERT INTO customers (email, name, region)
+     VALUES ('eve@us.example.com', 'Eve', 'us-east1');
+   SELECT email, region FROM customers ORDER BY email;
+   ```
+   Nodes 7–9 show `is_live = f`; reads and writes succeed.
+
+6. **What about querying a European customer's row?**
+   ```sql
+   SELECT email, region FROM customers WHERE email = 'charlie@eu.example.com';
+   ```
+   With `SURVIVE REGION FAILURE` every range has five voters across three regions, so losing
+   Europe leaves a quorum; the leaseholder for Charlie's row has moved to a surviving region and
+   the read answers. Give it ~10 s after the outage if the first attempt waits.
+
+7. **Bring Europe back:**
+   ```text
+   \demo restart 7
+   \demo restart 8
+   \demo restart 9
+   ```
+   ```sql
+   SELECT node_id, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;
+   ```
+   In the DB Console (`localhost:8090`) → **Replication**, under-replicated ranges drop back
+   to 0.
 
 ## Optional — If Time Allows
 
