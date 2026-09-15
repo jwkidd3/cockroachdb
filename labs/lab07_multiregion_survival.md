@@ -28,11 +28,15 @@ docker run --rm -it -p 8090:8080 \
 That drops you straight into a SQL shell inside the container. The DB Console is at
 <http://localhost:8090>.
 
-> **The `\demo …` commands below only work in this interactive shell.** They are client-side
-> commands, not SQL: pipe them into a non-interactive session and you get
-> `ERROR: invalid syntax: \demo connect 2`. Keep this shell open and type them here. To reach a
-> specific node from a *script* instead, connect to that node's own port — `demo` assigns them
-> sequentially from 26257, so node 4 is 26260.
+> **Switching nodes.** The demo shell has no "connect to node N" command; you switch gateway
+> nodes with the shell's `\c <url>`. Node *N* listens on port `26256 + N` (node 1 = 26257,
+> node 4 = 26260, node 7 = 26263), user `demo`, password `demo1`. The lab spells out the full
+> URL each time — use it verbatim; the short form `\connect shop demo 127.0.0.1 26263` prompts
+> for the password and a mistyped one breaks the shell's connection (recover with the full
+> URL). `SELECT gateway_region();` tells you which region you are on.
+>
+> **`\demo shutdown N` / `\demo restart N` (Part E) only work in this interactive shell** —
+> they are client-side commands, not SQL. Keep this shell open and type them here.
 
 > **Why `demo` here, and not the compose cluster?** This is the one lab that needs *simulated
 > inter-region latency* — `--global` inserts realistic round-trip delays between its nine
@@ -163,7 +167,7 @@ The `--global` flag also injects simulated inter-region latency (~80–100ms RTT
 
 4. **Connect to a `us-east1` node and time a regional read:**
    ```text
-   \demo connect 1
+   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    \set show_times
@@ -173,7 +177,7 @@ The `--global` flag also injects simulated inter-region latency (~80–100ms RTT
 
 5. **Connect to a European node and watch the pattern flip:**
    ```text
-   \demo connect 7
+   \c postgresql://demo:demo1@127.0.0.1:26263/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    SELECT name FROM customers WHERE email = 'alice@us.example.com';   -- now remote
@@ -221,7 +225,7 @@ For lookup tables read everywhere but rarely written.
 
 1. **Reconnect to node 1:**
    ```text
-   \demo connect 1
+   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
 
 2. **Create a GLOBAL table:**
@@ -241,20 +245,20 @@ For lookup tables read everywhere but rarely written.
 
 3. **Time the same read from three regions:**
    ```text
-   \demo connect 1
+   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    \set show_times
    SELECT name FROM country_codes WHERE code = 'US';
    ```
    ```text
-   \demo connect 4
+   \c postgresql://demo:demo1@127.0.0.1:26260/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    SELECT name FROM country_codes WHERE code = 'US';
    ```
    ```text
-   \demo connect 7
+   \c postgresql://demo:demo1@127.0.0.1:26263/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    SELECT name FROM country_codes WHERE code = 'US';
@@ -285,14 +289,14 @@ Sometimes you want a small reference table to live entirely in one region (think
 
 2. **Compare access from regions:**
    ```text
-   \demo connect 7
+   \c postgresql://demo:demo1@127.0.0.1:26263/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    \set show_times
    SELECT * FROM eu_pricing_rules;            -- local in EU (fast)
    ```
    ```text
-   \demo connect 1
+   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    SELECT * FROM eu_pricing_rules;            -- remote (slow)
@@ -304,7 +308,7 @@ Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving 
 
 1. **Set the database to `SURVIVE REGION FAILURE`** so it can actually:
    ```text
-   \demo connect 1
+   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    ALTER DATABASE shop SURVIVE REGION FAILURE;
@@ -326,7 +330,7 @@ Now the proof. With `SURVIVE REGION FAILURE` set, does the cluster keep serving 
 
 4. **Verify the cluster is still serving** (reconnect to a survivor if needed):
    ```text
-   \demo connect 1
+   \c postgresql://demo:demo1@127.0.0.1:26257/shop?sslmode=require&sslrootcert=/root/.cockroach-demo/ca.crt
    ```
    ```sql
    SELECT count(*) FROM customers;
