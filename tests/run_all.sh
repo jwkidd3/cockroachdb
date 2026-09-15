@@ -25,6 +25,8 @@ ALL_LABS=(
     "lab09_test.sh" "lab10_test.sh" "lab11_test.sh" "lab12_test.sh"
     "lab13_test.sh" "lab14_test.sh" "lab15_test.sh" "lab16_test.sh"
 )
+# The Kubernetes exercise is optional and needs kind/kubectl; opt in explicitly.
+[ "${INCLUDE_OPTIONAL:-0}" = "1" ] && ALL_LABS+=("optional_k8s_test.sh")
 
 case "${DAY:-all}" in
     1) LABS=("${ALL_LABS[@]:0:4}") ;;

@@ -1,216 +1,137 @@
 #!/usr/bin/env bash
-# Lab 16 — Kubernetes with cockroach-operator on kind.
-# Requires docker + kind + kubectl and ~10 GB RAM. Skips cleanly otherwise,
-# but still validates the manifests the lab ships.
+# Lab 16 — the on-call drill. Drives scripts/incident exactly as the lab does:
+# start each incident, prove the symptom the lab says to look for is really there,
+# apply the fix the lab prescribes (DDL, a deploy to loop.sh, a runbook edit, a job
+# command), and prove the recovery signal the lab says to verify.
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-# Free the compose cluster before starting kind and the operator: on a 12 GB student VM the two
-# do not fit at once, and the failure looks like a product bug rather than an
-# out-of-memory kill.
-( cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" && bash scripts/crdb.sh down >/dev/null 2>&1 ) || true
+CLUSTER_TAG="lab16"
+source "$SCRIPT_DIR/lib/cluster.sh"
 
-KIND_CLUSTER="lab16-test"
-WORK="/tmp/crdb-lab16-$$"
-OPERATOR_BASE="https://raw.githubusercontent.com/cockroachdb/cockroach-operator/master"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+INCIDENT="$REPO/scripts/incident"
+export ONCALL_DIR="${ONCALL_DIR:-/tmp/oncall}"
 
-cleanup_all() {
-    kind delete cluster --name "$KIND_CLUSTER" >/dev/null 2>&1 || true
-    [ "${KEEP_ON_FAIL:-0}" != "1" ] && rm -rf "$WORK"
-}
-trap cleanup_all EXIT INT TERM
+cleanup() { bash "$INCIDENT" stop all >/dev/null 2>&1 || true; stop_cluster; }
+trap cleanup EXIT INT TERM
 
-mkdir -p "$WORK"
+section "Setup"
+start_cluster 3
+bash "$INCIDENT" status >/dev/null && pass "scripts/incident status runs"
 
-section "Manifest validation (always runs)"
+# ---------------------------------------------------------------- incident 1
+section "Incident 1 — hot range on a SERIAL key"
+bash "$INCIDENT" start 1 >/dev/null
+sleep 30
+RANGES=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE oncall.events];")
+LEASES=$(sql_value "SELECT count(DISTINCT lease_holder) FROM [SHOW RANGES FROM TABLE oncall.events WITH DETAILS];")
+assert_eq "symptom: one leaseholder carries the table" "$LEASES" "1"
+HOT=$(curl -s -X POST "http://localhost:${BASE_HTTP_PORT:-8080}/_status/v2/hotranges" -H 'Content-Type: application/json' -d '{}' \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(int(max((r['writesPerSecond'] for r in d.get('ranges',[]) if r.get('tableName')=='events'), default=0)))")
+assert_ge "symptom: the events range is hot on the Hot Ranges API (writes/s)" "${HOT:-0}" "1000"
+sql_quiet "ALTER TABLE oncall.events ALTER PRIMARY KEY USING COLUMNS (id) USING HASH WITH (bucket_count = 16);" \
+  || fail "online primary-key change failed"
+pass "fix: primary key changed to hash-sharded under load"
+wait_for "writes spread across leaseholders" 120 \
+  "[ \"\$(sql_value \"SELECT count(DISTINCT lease_holder) FROM [SHOW RANGES FROM TABLE oncall.events WITH DETAILS];\")\" = '3' ]"
+RANGES2=$(sql_value "SELECT count(*) FROM [SHOW RANGES FROM TABLE oncall.events];")
+assert_ge "recovery: the table is now many ranges" "$RANGES2" "8"
+bash "$INCIDENT" stop 1 >/dev/null && pass "incident 1 torn down"
 
-cat > "$WORK/kind-config.yaml" <<'YML'
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-  - role: worker
-    labels: {topology.kubernetes.io/zone: zone-a}
-  - role: worker
-    labels: {topology.kubernetes.io/zone: zone-b}
-  - role: worker
-    labels: {topology.kubernetes.io/zone: zone-c}
-YML
-
-cat > "$WORK/crdb.yaml" <<'YML'
-apiVersion: crdb.cockroachlabs.com/v1alpha1
-kind: CrdbCluster
-metadata:
-  name: crdb
-  namespace: default
-spec:
-  dataStore:
-    pvc:
-      spec:
-        accessModes: [ReadWriteOnce]
-        resources:
-          requests:
-            storage: 2Gi
-        volumeMode: Filesystem
-  resources:
-    requests: {cpu: "500m", memory: 1Gi}
-    limits:   {cpu: "1",    memory: 2Gi}
-  tlsEnabled: true
-  cockroachDBVersion: v23.2.5
-  nodes: 3
-  additionalLabels:
-    app: crdb
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: DoNotSchedule
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/instance: crdb
-YML
-
-python3 - "$WORK/kind-config.yaml" "$WORK/crdb.yaml" <<'PY'
-import sys
-try:
-    import yaml
-except ImportError:
-    print("PyYAML not installed; falling back to a structural check")
-    for p in sys.argv[1:]:
-        text = open(p).read()
-        assert "apiVersion" in text and "kind" in text, f"{p} missing apiVersion/kind"
-    print("structural check passed")
-    sys.exit(0)
-
-kind_cfg = yaml.safe_load(open(sys.argv[1]))
-assert kind_cfg["kind"] == "Cluster"
-workers = [n for n in kind_cfg["nodes"] if n["role"] == "worker"]
-assert len(workers) == 3, "expected 3 workers"
-zones = {w["labels"]["topology.kubernetes.io/zone"] for w in workers}
-assert len(zones) == 3, f"workers must span 3 distinct zones, got {zones}"
-
-crdb = yaml.safe_load(open(sys.argv[2]))
-assert crdb["kind"] == "CrdbCluster"
-spec = crdb["spec"]
-assert spec["nodes"] == 3
-assert spec["tlsEnabled"] is True
-assert spec["resources"]["limits"]["memory"], "memory limit required (OOM protection)"
-tsc = spec["topologySpreadConstraints"][0]
-assert tsc["topologyKey"] == "topology.kubernetes.io/zone"
-assert tsc["whenUnsatisfiable"] == "DoNotSchedule"
-print("manifests valid: 3 zones, TLS on, memory limits set, topology spread enforced")
+# ---------------------------------------------------------------- incident 2
+section "Incident 2 — sixteen writers on one row"
+bash "$INCIDENT" start 2 >/dev/null
+sleep 30
+EVENTS=$(sql_value "SELECT count(*) FROM crdb_internal.transaction_contention_events WHERE collection_ts > now() - INTERVAL '1 minute';")
+assert_ge "symptom: contention events on the hit counter" "${EVENTS:-0}" "50"
+MEAN_OLD=$(sql_value "SELECT round((statistics->'statistics'->'svcLat'->>'mean')::FLOAT * 1000, 1) FROM crdb_internal.statement_statistics WHERE metadata->>'query' LIKE 'UPDATE oncall.page_hits SET%' ORDER BY (statistics->'statistics'->>'cnt')::INT DESC LIMIT 1;")
+info "single-row UPDATE mean latency: ${MEAN_OLD} ms"
+sql_quiet "CREATE TABLE oncall.page_hit_shards (page STRING, shard INT2, hits INT NOT NULL DEFAULT 0, PRIMARY KEY (page, shard)); INSERT INTO oncall.page_hit_shards (page, shard) SELECT '/home', g FROM generate_series(0, 15) g;" \
+  || fail "could not create the sharded table"
+# the deploy: change the statement the application runs
+python3 - "$ONCALL_DIR/2/loop.sh" <<'PY'
+import sys; p=sys.argv[1]; s=open(p).read()
+old="UPDATE oncall.page_hits SET hits = hits + 1 WHERE page = '/home';"
+new="UPDATE oncall.page_hit_shards SET hits = hits + 1 WHERE page = '/home' AND shard = $((RANDOM % 16));"
+assert old in s; open(p,'w').write(s.replace(old,new))
 PY
-[ $? -eq 0 ] && pass "kind and CrdbCluster manifests are valid" || fail "manifest validation failed"
+pass "fix: application deployed with a client-chosen shard"
+wait_for "the new statement is executing" 60 \
+  "[ \"\$(sql_value \"SELECT sum(hits) FROM oncall.page_hit_shards;\")\" -gt 100 ]"
+sleep 30
+EVENTS2=$(sql_value "SELECT count(*) FROM crdb_internal.transaction_contention_events WHERE collection_ts > now() - INTERVAL '20 seconds';")
+assert_ge "recovery: contention events in the last 20 s are few" "$((50 - ${EVENTS2:-0}))" "1"
+MEAN_NEW=$(sql_value "SELECT round((statistics->'statistics'->'svcLat'->>'mean')::FLOAT * 1000, 1) FROM crdb_internal.statement_statistics WHERE metadata->>'query' LIKE 'UPDATE oncall.page_hit_shards%' ORDER BY (statistics->'statistics'->>'cnt')::INT DESC LIMIT 1;")
+info "sharded UPDATE mean latency: ${MEAN_NEW} ms (was ${MEAN_OLD} ms)"
+FASTER=$(python3 -c "print(1 if float('${MEAN_NEW:-99}') < float('${MEAN_OLD:-0}') else 0)")
+assert_eq "recovery: sharded statement is faster than the contended one" "$FASTER" "1"
+bash "$INCIDENT" stop 2 >/dev/null && pass "incident 2 torn down"
 
-section "Live cluster (needs docker + kind + kubectl)"
+# ---------------------------------------------------------------- incident 3
+section "Incident 3 — node rebuilt with a locality typo"
+bash "$INCIDENT" start 3 >/dev/null
+wait_for "node 4 advertises the typo" 90 \
+  "sql_value \"SELECT count(*) FROM crdb_internal.gossip_nodes WHERE locality LIKE '%us-esat1%' AND is_live;\" | grep -q '^1$'"
+pass "symptom: a live node advertises region=us-esat1"
+wait_for "the replication report flags the pinned table" 150 \
+  "[ \"\$(sql_value \"SELECT count(*) FROM system.replication_constraint_stats WHERE violating_ranges > 0;\")\" -ge 1 ]"
+pass "symptom: system.replication_constraint_stats shows a violation"
+grep -q 'us-esat1' "$ONCALL_DIR/3/start-node4.sh" && pass "the runbook contains the typo"
+sed -i.bak 's/us-esat1/us-east1/' "$ONCALL_DIR/3/start-node4.sh" && bash "$ONCALL_DIR/3/start-node4.sh" >/dev/null
+pass "fix: runbook corrected and node 4 restarted"
+wait_for "node 4 advertises us-east1" 90 \
+  "sql_value \"SELECT count(*) FROM crdb_internal.gossip_nodes WHERE locality = 'region=us-east1,zone=d' AND is_live;\" | grep -q '^1$'"
+N4=$(sql_value "SELECT node_id FROM crdb_internal.gossip_nodes WHERE locality = 'region=us-east1,zone=d' AND is_live;")
+wait_for "lease moves to the us-east1 node" 180 \
+  "[ \"\$(sql_value \"SELECT lease_holder FROM [SHOW RANGES FROM TABLE oncall.pins WITH DETAILS];\")\" = '$N4' ]"
+pass "recovery: pins is led from node $N4"
+wait_for "replication report clears" 180 \
+  "[ \"\$(sql_value \"SELECT count(*) FROM system.replication_constraint_stats WHERE violating_ranges > 0;\")\" = '0' ]"
+pass "recovery: no violating ranges"
+bash "$INCIDENT" stop 3 >/dev/null && pass "incident 3 torn down"
 
-# What matters is the memory Docker itself has, not the host's — on macOS and
-# Windows the daemon runs in a VM with its own (usually smaller) allocation, and
-# /proc/meminfo does not exist at all.
-MEM_GB=0
-if docker info >/dev/null 2>&1; then
-    MEM_GB=$(( $(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
-elif [ -r /proc/meminfo ]; then
-    MEM_GB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
-fi
-
-if ! command -v kind >/dev/null 2>&1 || ! command -v kubectl >/dev/null 2>&1; then
-    warn "kind or kubectl not installed; skipping the live-cluster test"
-    echo "Lab 16: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed (live portion skipped)."
-    [ "$FAIL_COUNT" -eq 0 ]; exit $?
-fi
-if ! docker info >/dev/null 2>&1; then
-    warn "Docker unavailable; skipping the live-cluster test"
-    echo "Lab 16: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed (live portion skipped)."
-    [ "$FAIL_COUNT" -eq 0 ]; exit $?
-fi
-# 8 GB, not the 10 previously guessed: a full run — kind, the operator, three
-# pods, scale-out to five — was measured completing with Docker at 7.6 GB.
-if [ "$MEM_GB" -gt 0 ] && [ "$MEM_GB" -lt 8 ] && [ "${FORCE_LAB16:-0}" != "1" ]; then
-    warn "only ${MEM_GB} GB RAM detected; skipping (set FORCE_LAB16=1 to run anyway)"
-    echo "Lab 16: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed (live portion skipped)."
-    [ "$FAIL_COUNT" -eq 0 ]; exit $?
-fi
-
-info "creating kind cluster (this takes a few minutes)"
-kind delete cluster --name "$KIND_CLUSTER" >/dev/null 2>&1 || true
-kind create cluster --name "$KIND_CLUSTER" --config "$WORK/kind-config.yaml" --wait 300s \
-    || fail "kind cluster creation failed"
-pass "4-node kind cluster created"
-
-NODES=$(kubectl get nodes --no-headers | wc -l | tr -d ' ')
-assert_eq "kind cluster has 4 nodes" "$NODES" "4"
-
-ZONES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.labels.topology\.kubernetes\.io/zone}' | tr ' ' '\n' | sort -u | grep -c zone)
-assert_eq "workers carry 3 distinct zone labels" "$ZONES" "3"
-
-info "installing the operator"
-kubectl apply -f "${OPERATOR_BASE}/install/crds.yaml" >/dev/null 2>&1 || fail "CRD install failed"
-kubectl apply -f "${OPERATOR_BASE}/install/operator.yaml" >/dev/null 2>&1 || fail "operator install failed"
-kubectl -n cockroach-operator-system rollout status deploy/cockroach-operator-manager --timeout=300s \
-    >/dev/null 2>&1 || fail "operator did not become ready"
-pass "cockroach-operator is running"
-
-CRD=$(kubectl get crd crdbclusters.crdb.cockroachlabs.com -o name 2>/dev/null)
-assert_contains "CrdbCluster CRD registered" "$CRD" "crdbclusters"
-
-# `rollout status` says the operator's Pod is ready; it does NOT say the
-# admission webhook is reachable. Applying in that gap fails with
-# `failed calling webhook "mcrdbcluster.kb.io" ... connection refused`.
-wait_for "operator webhook has ready endpoints" 180 \
-    "[ -n \"\$(kubectl -n cockroach-operator-system get endpoints cockroach-operator-webhook-service -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)\" ]"
-pass "admission webhook is reachable"
-
-info "deploying the CockroachDB cluster"
-APPLY_OUT=""
-for attempt in $(seq 1 12); do
-    if APPLY_OUT=$(kubectl apply -f "$WORK/crdb.yaml" 2>&1); then
-        APPLIED=1; break
-    fi
-    APPLIED=0
-    grep -q "failed calling webhook" <<<"$APPLY_OUT" || break
-    info "webhook not serving yet (attempt $attempt); retrying"
-    sleep 5
+# ---------------------------------------------------------------- incident 4
+section "Incident 4 — paused changefeed holding GC back"
+bash "$INCIDENT" start 4 >/dev/null
+SIZE0=$(sql_value "SELECT round(range_size_mb) FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS];")
+sleep 60
+SIZE1=$(sql_value "SELECT round(range_size_mb) FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS];")
+assert_gt "symptom: the range grows while the row count does not (${SIZE0} -> ${SIZE1} MB)" "${SIZE1%.*}" "${SIZE0%.*}"
+PAUSED=$(sql_value "SELECT count(*) FROM [SHOW CHANGEFEED JOBS] WHERE status = 'paused';")
+assert_eq "symptom: a paused changefeed" "$PAUSED" "1"
+PTS=$(sql_value "SELECT count(*) FROM crdb_internal.kv_protected_ts_records;")
+assert_ge "symptom: a protected timestamp record pins history" "$PTS" "1"
+JOB=$(sql_value "SELECT job_id FROM [SHOW CHANGEFEED JOBS] WHERE status = 'paused';")
+sql_quiet "CANCEL JOB $JOB;" || fail "CANCEL JOB failed"
+pass "fix: job cancelled"
+wait_for "protected record released" 30 \
+  "[ \"\$(sql_value \"SELECT count(*) FROM crdb_internal.kv_protected_ts_records;\")\" = '0' ]"
+PEAK=${SIZE1%.*}
+RECOVERED=0
+for i in $(seq 1 16); do
+  sql_quiet "SELECT crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true) FROM [SHOW RANGES FROM TABLE oncall.sessions];"
+  sleep 20
+  S=$(sql_value "SELECT round(range_size_mb) FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS];"); S=${S%.*}
+  [ "$S" -gt "$PEAK" ] && PEAK=$S
+  if [ "$S" -lt $(( PEAK * 6 / 10 )) ]; then RECOVERED=1; info "range shrank to ${S} MB (peak ${PEAK} MB) after $((i*20)) s"; break; fi
 done
-[ "${APPLIED:-0}" = "1" ] || fail "CrdbCluster apply failed: $APPLY_OUT"
+assert_eq "recovery: GC reclaims the pinned history once the job is gone" "$RECOVERED" "1"
+bash "$INCIDENT" stop 4 >/dev/null && pass "incident 4 torn down"
 
-wait_for "3 crdb pods running" 600 \
-    "[ \$(kubectl get pods -l app.kubernetes.io/instance=crdb --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l) -ge 3 ]"
-pass "3 CockroachDB pods are running"
-
-# Running is not Ready: the readiness probe only passes once the node has joined
-# and is serving SQL, which is a little after the Pod reaches Running.
-wait_for "statefulset reports 3 ready replicas" 600 \
-    "[ \"\$(kubectl get statefulset crdb -o jsonpath='{.status.readyReplicas}' 2>/dev/null)\" = '3' ]"
-pass "statefulset has 3 ready replicas"
-
-PVCS=$(kubectl get pvc --no-headers 2>/dev/null | wc -l | tr -d ' ')
-assert_ge "one PVC per pod" "$PVCS" "3"
-
-# Replicas must not share a zone.
-PLACEMENT=$(kubectl get pods -l app.kubernetes.io/instance=crdb \
-    -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort -u | wc -l | tr -d ' ')
-assert_eq "pods spread across 3 distinct kubernetes nodes" "$PLACEMENT" "3"
-
-info "scaling 3 -> 5"
-kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"nodes":5}}' >/dev/null 2>&1 \
-    || warn "scale patch failed"
-wait_for "5 crdb pods running" 600 \
-    "[ \$(kubectl get pods -l app.kubernetes.io/instance=crdb --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l) -ge 5 ]" \
-    || warn "scale-out did not reach 5 pods in time"
-SCALED=$(kubectl get pods -l app.kubernetes.io/instance=crdb --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' ')
-assert_ge "cluster scaled out" "$SCALED" "4"
-
-info "killing a pod to test recovery"
-kubectl delete pod crdb-2 --wait=false >/dev/null 2>&1 || true
-wait_for "pod crdb-2 recreated and running" 300 \
-    "kubectl get pod crdb-2 --no-headers 2>/dev/null | grep -q Running"
-pass "StatefulSet recreated the pod with its original identity"
-
-# The recreated pod must reattach its original PVC, not get a new one.
-PVC_NAME=$(kubectl get pod crdb-2 -o jsonpath='{.spec.volumes[?(@.persistentVolumeClaim)].persistentVolumeClaim.claimName}' 2>/dev/null)
-assert_contains "recreated pod reattached its original PVC" "$PVC_NAME" "crdb-2"
+# ---------------------------------------------------------------- incident 5
+section "Incident 5 — rolling restart under load (optional part)"
+bash "$INCIDENT" start 5 >/dev/null
+wait_for "the order service is reporting" 60 "docker logs oncall-app-5 2>&1 | grep -qE '^[0-9:]+ +[0-9.]+s'"
+crdb upgrade 2 "${CRDB_VERSION:-v23.2.5}" >/dev/null 2>&1 || fail "scripts/crdb upgrade 2 failed"
+wait_live 3 120 || fail "node 2 did not rejoin"
+pass "node 2 restarted on its image via scripts/crdb upgrade; cluster back to 3 live"
+sleep 25
+LINES=$(docker logs oncall-app-5 2>&1 | grep -cE '^[0-9:]+ +[0-9.]+s')
+assert_ge "the application kept reporting through the restart" "$LINES" "2"
+bash "$INCIDENT" stop 5 >/dev/null && pass "incident 5 torn down"
 
 section "Done"
 echo "Lab 16: ${PASS_COUNT} assertions passed, ${FAIL_COUNT} failed."

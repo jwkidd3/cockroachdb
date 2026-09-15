@@ -15,7 +15,7 @@ By the end of the course, attendees will be able to:
 - **Apply** security hardening, observability, capacity planning, and disaster recovery practices for production-ready deployments.
 - **Integrate** CockroachDB with application stacks: ORMs with retry handling, outbox patterns, connection pooling at scale.
 - **Migrate** from PostgreSQL using MOLT and zero-downtime cutover techniques.
-- **Operate** CockroachDB on Kubernetes with the official `cockroach-operator`.
+- **Work** an incident in a fixed order — cluster health, statement, range, waits, storage — and recognise the four failure signatures behind most pages.
 
 **Course Length:** 4 Days
 
@@ -201,11 +201,12 @@ By the end of the course, attendees will be able to:
 - Data movement: `IMPORT INTO`, AWS DMS, custom pipelines
 - When NOT to migrate: workloads PostgreSQL still does better
 
-### Kubernetes Deployment
-- `cockroach-operator` and CockroachDB CRDs
-- Helm charts and cert-manager integration
-- Pod sizing, anti-affinity, and region-aware StatefulSets
-- Logical multi-tenancy on a shared Kubernetes cluster
+### On Call — Working an Incident
+- The order of operations: cluster health → statement → range → waits → storage
+- The four signatures: hot range, contended row, unmet placement constraint, pinned garbage collection
+- Where the fix lives: DDL, a deploy, a runbook, a job command — and how to verify each
+- Rolling restarts under load; why the connection string decides whether the application notices
+- *(Kubernetes with `cockroach-operator` remains available as an optional exercise outside the schedule)*
 
 ### Advanced Features Survey
 - TTL (time-to-live) tables for automatic data expiry
@@ -226,7 +227,7 @@ By the end of the course, attendees will be able to:
 | 13 | CDC → Kafka → Downstream Consumer with Resolved-Timestamp Frontier | 55 min |
 | 14 | Outbox Pattern + Idempotent Retry Loop in Python/Go | 55 min |
 | 15 | Migrate a PostgreSQL Schema and Live Data with MOLT | 55 min |
-| 16 | Deploy CockroachDB on Kubernetes with cockroach-operator and kind | 70 min |
+| 16 | On Call — Four Incidents, One Cluster | 70 min |
 
 ---
 
@@ -253,7 +254,7 @@ figures above plus an *Optional — If Time Allows* section; each deck ends with
 - **Labs 1–12 and 14** run against `cockroach demo` or local `cockroach start` clusters — same prerequisites as the 2-day course.
 - **Lab 13** (CDC → Kafka) needs a Kafka broker. A small `docker-compose.yml` ships a single-broker Kafka alongside the lab.
 - **Lab 15** (MOLT migration) needs a PostgreSQL instance as the source. A `docker-compose.yml` snippet provisions one.
-- **Lab 16** (Kubernetes) needs `kind` or `minikube` on the learner's machine. The containerized test runner uses `kind` inside the existing image with `--privileged`, or a sibling-DinD setup.
+- **Lab 16** (on-call drill) runs entirely on the Docker lab cluster via `scripts/incident`; the optional Kubernetes exercise needs `kind` and `kubectl`.
 
 ---
 

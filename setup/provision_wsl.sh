@@ -12,7 +12,7 @@
 # The course runs in Docker. Nothing here installs CockroachDB, and the list
 # below is deliberately short — if a tool can run in a container, it does:
 #
-#   INSTALLED   kind, kubectl   Lab 16. kind drives the Docker daemon to build
+#   INSTALLED   kind, kubectl   optional Kubernetes exercise. kind drives the Docker daemon to build
 #                               Kubernetes nodes, so it cannot itself be in a
 #                               container. kubectl follows it.
 #   INSTALLED   psql            Labs 8 and 15 use client-side \copy against
@@ -22,7 +22,7 @@
 #
 #   CONTAINER   cockroach       docker/labs*.yml, via scripts/crdb
 #   CONTAINER   molt            Lab 15   — cockroachdb/molt
-#   CONTAINER   helm            Lab 16   — alpine/helm
+#   CONTAINER   helm            optional Kubernetes exercise — alpine/helm
 #   CONTAINER   prometheus,     Labs 9, 13, 15
 #               grafana, kafka,
 #               postgres
@@ -85,7 +85,7 @@ fi
 DOCKER_GB=$(( $(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
 log "docker reachable; WSL has ${DOCKER_GB} GB"
 if [ "$DOCKER_GB" -lt 8 ]; then
-    warn "WSL has only ${DOCKER_GB} GB. Lab 16 (kind) needs ~8 GB, Lab 7 needs ~6 GB."
+    warn "WSL has only ${DOCKER_GB} GB. the optional Kubernetes exercise (kind) needs ~8 GB, Lab 7 needs ~6 GB."
     warn "On Windows create %UserProfile%\\.wslconfig containing:"
     warn "    [wsl2]"
     warn "    memory=9GB"
@@ -159,6 +159,7 @@ printf '[Manager]\nDefaultLimitNOFILE=65536\n' > /etc/systemd/system.conf.d/99-n
 log "pre-pulling container images"
 for img in \
     "cockroachdb/cockroach:${CRDB_VERSION}" \
+    "cockroachdb/cockroach:v23.2.6" \
     "$KIND_NODE_IMAGE" \
     "prom/prometheus:latest" \
     "grafana/grafana:latest" \

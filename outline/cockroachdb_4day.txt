@@ -2,7 +2,7 @@ Course Objectives
 
 By the end of the course, attendees will be able to:
 
-- Explain CockroachDB’s distributed SQL architecture and how it achieves
+- Explain CockroachDB's distributed SQL architecture and how it achieves
   survivability, consistency, and scale.
 - Master the deployment, configuration, and day-2 operations of
   CockroachDB clusters from a single node to multi-region.
@@ -16,8 +16,9 @@ By the end of the course, attendees will be able to:
   handling, outbox patterns, connection pooling at scale.
 - Migrate from PostgreSQL using MOLT and zero-downtime cutover
   techniques.
-- Operate CockroachDB on Kubernetes with the official
-  cockroach-operator.
+- Work an incident in a fixed order — cluster health, statement, range,
+  waits, storage — and recognise the four failure signatures behind most
+  pages.
 
 Course Length: 4 Days
 
@@ -29,7 +30,7 @@ Introduction to CockroachDB
 
 - What CockroachDB is: a distributed SQL database built for
   survivability
-- Comparison landscape: CockroachDB vs. PostgreSQL, Spanner, YugabyteDB,
+- Comparison landscape: CockroachDB vs. PostgreSQL, Spanner, YugabyteDB,
   TiDB
 - Use cases and when CockroachDB is the right fit
 
@@ -38,19 +39,19 @@ Core Architecture
 - Ranges, Raft consensus, leaseholders, and the distributed storage
   layer
 - The KV layer and how SQL maps onto it
-- Multi-active availability vs. traditional primary/replica models
+- Multi-active availability vs. traditional primary/replica models
 - Node communication, gossip protocol, and cluster membership
 
 Installation, Configuration & Tooling
 
 - Deploying a local multi-node cluster (cockroach start, cockroach demo)
 - DB Console walkthrough: metrics, jobs, statements, sessions
-- CockroachDB’s PostgreSQL wire-protocol compatibility — what works,
-  what doesn’t
+- CockroachDB's PostgreSQL wire-protocol compatibility — what works,
+  what doesn't
 
 SQL Dialect & Schema Design (emphasis: patterns for high-volume workloads)
 
-- SQL dialect specifics: SERIAL vs. UUID, sequences, hash-sharded
+- SQL dialect specifics: SERIAL vs. UUID, sequences, hash-sharded
   indexes
 - Primary key choice as a distribution decision, not a uniqueness
   decision
@@ -99,7 +100,7 @@ Multi-Region Topologies & Resilience
 
 - Replication zones and zone configurations
 - Geo-partitioned tables: REGIONAL BY ROW, REGIONAL BY TABLE, GLOBAL
-- Multi-region cluster topologies: survival goals (zone vs. region)
+- Multi-region cluster topologies: survival goals (zone vs. region)
 - Failure-domain math: replicas, quorum, and what survives what
 
 Replication, Rebalancing & Repair
@@ -116,19 +117,19 @@ High-Volume Schema Patterns
 - Time-Bucketed Composite PK — (tenant_id, hour_bucket, id) for fast
   time-range queries
 - Sharded Counter — replaces single-row UPDATE counter SET n = n + 1
-- Hot/Cold Split — small partial index on “recent” rows plus full table
+- Hot/Cold Split — small partial index on "recent" rows plus full table
   for archives
 - Outbox Pattern — events table written in the same transaction as
   business data, shipped downstream via CDC
 - Anti-patterns to avoid: SERIAL on hot paths, low-cardinality lead
-  columns, single-row queues, “index everything”
+  columns, single-row queues, "index everything"
 
 Throughput Engineering
 
 - Bulk loading: IMPORT INTO vs COPY vs multi-row INSERT vs single-row
   inserts
 - Pre-splits at scale: ALTER TABLE ... SPLIT AT before bulk imports
-- Online schema changes: what runs as a background job and what doesn’t
+- Online schema changes: what runs as a background job and what doesn't
 - Range size tuning for very-large tables
 - Connection pooling for high-write workloads (PgBouncer transaction
   mode, HikariCP sizing)
@@ -136,24 +137,12 @@ Throughput Engineering
 
 Day 2 Labs
 
-  -----------------------------------------------------------------------
-  #                       Lab                     Duration
-  ----------------------- ----------------------- -----------------------
-  5                       Transactions,           65 min
-                          Contention & Retry      
-                          Loops                   
-
-  6                       EXPLAIN ANALYZE & Query 60 min
-                          Tuning                  
-
-  7                       Multi-Region Topologies 65 min
-                          & Survival Goals        
-
-  8                       Throughput Engineering  60 min
-                          — Bulk Import, Batching 
-                          & Schema Pattern        
-                          Playbook                
-  -----------------------------------------------------------------------
+  #   Lab                                                                        Duration
+  --- -------------------------------------------------------------------------- ----------
+  5   Transactions, Contention & Retry Loops                                     65 min
+  6   EXPLAIN ANALYZE & Query Tuning                                             60 min
+  7   Multi-Region Topologies & Survival Goals                                   65 min
+  8   Throughput Engineering — Bulk Import, Batching & Schema Pattern Playbook   60 min
 
 ------------------------------------------------------------------------
 
@@ -169,8 +158,8 @@ Observability Stack
 Capacity Planning & Hardware Sizing (throughput-target driven)
 
 - CPU, RAM, disk, and network budgets per node
-- NVMe vs. network-attached storage trade-offs
-- When to add nodes vs. upgrade existing ones
+- NVMe vs. network-attached storage trade-offs
+- When to add nodes vs. upgrade existing ones
 - Quotas, admission control, and protecting against noisy neighbors
 - Sizing exercises by target throughput: 1k QPS, 10k QPS, 100k QPS, 1M
   QPS
@@ -180,7 +169,7 @@ Workload Simulation & Benchmarking
 
 - The cockroach workload suite: KV, MovR, TPC-C, YCSB, TPC-H, bank
 - Generating realistic load for sizing and regression tests
-- Reading workload output: throughput vs. p99 latency vs. tail behavior
+- Reading workload output: throughput vs. p99 latency vs. tail behavior
 
 Backup, Restore & Disaster Recovery
 
@@ -206,27 +195,12 @@ On-Call Practices
 
 Day 3 Labs
 
-  -----------------------------------------------------------------------
-  #                       Lab                     Duration
-  ----------------------- ----------------------- -----------------------
-  9                       Build a Prometheus +    60 min
-                          Grafana Observability   
-                          Stack with SLO          
-                          Dashboards              
-
-  10                      TPC-C Benchmark &       65 min
-                          Capacity Sizing         
-                          Exercise                
-
-  11                      BACKUP / RESTORE /      65 min
-                          Schedules &             
-                          Cross-Cluster DR Drill  
-
-  12                      Security Hardening      55 min
-                          End-to-End — TLS        
-                          Rotation, SSO, Audit    
-                          Pipeline                
-  -----------------------------------------------------------------------
+  #    Lab                                                                    Duration
+  ---- ---------------------------------------------------------------------- ----------
+  9    Build a Prometheus + Grafana Observability Stack with SLO Dashboards   60 min
+  10   TPC-C Benchmark & Capacity Sizing Exercise                             65 min
+  11   BACKUP / RESTORE / Schedules & Cross-Cluster DR Drill                  65 min
+  12   Security Hardening End-to-End — TLS Rotation, SSO, Audit Pipeline      55 min
 
 ------------------------------------------------------------------------
 
@@ -244,7 +218,7 @@ Application Integration Patterns
 
 - Outbox pattern using CockroachDB + CDC
 - Idempotency keys and request-replay safety
-- Optimistic concurrency control vs. SELECT FOR UPDATE
+- Optimistic concurrency control vs. SELECT FOR UPDATE
 - Connection pooling at scale: PgBouncer modes, HikariCP, sqlx pools
 
 ORM & Driver Integration
@@ -268,12 +242,18 @@ Migrating from PostgreSQL
 - Data movement: IMPORT INTO, AWS DMS, custom pipelines
 - When NOT to migrate: workloads PostgreSQL still does better
 
-Kubernetes Deployment
+On Call — Working an Incident
 
-- cockroach-operator and CockroachDB CRDs
-- Helm charts and cert-manager integration
-- Pod sizing, anti-affinity, and region-aware StatefulSets
-- Logical multi-tenancy on a shared Kubernetes cluster
+- The order of operations: cluster health → statement → range → waits →
+  storage
+- The four signatures: hot range, contended row, unmet placement
+  constraint, pinned garbage collection
+- Where the fix lives: DDL, a deploy, a runbook, a job command — and how
+  to verify each
+- Rolling restarts under load; why the connection string decides whether
+  the application notices
+- (Kubernetes with cockroach-operator remains available as an optional
+  exercise outside the schedule)
 
 Advanced Features Survey
 
@@ -285,34 +265,19 @@ Advanced Features Survey
 
 Cost & Deployment Models
 
-- CockroachDB Serverless vs. Dedicated vs. Self-Hosted — when to use
+- CockroachDB Serverless vs. Dedicated vs. Self-Hosted — when to use
   what
-- Enterprise vs. Core licensing — what changes
+- Enterprise vs. Core licensing — what changes
 - Predicting costs at the workload and team scale
 
 Day 4 Labs
 
-  -----------------------------------------------------------------------
-  #                       Lab                     Duration
-  ----------------------- ----------------------- -----------------------
-  13                      CDC → Kafka →           55 min
-                          Downstream Consumer     
-                          with Resolved-Timestamp 
-                          Frontier                
-
-  14                      Outbox Pattern +        55 min
-                          Idempotent Retry Loop   
-                          in Python/Go            
-
-  15                      Migrate a PostgreSQL    55 min
-                          Schema and Live Data    
-                          with MOLT               
-
-  16                      Deploy CockroachDB on   70 min
-                          Kubernetes with         
-                          cockroach-operator and  
-                          kind                    
-  -----------------------------------------------------------------------
+  #    Lab                                                                  Duration
+  ---- -------------------------------------------------------------------- ----------
+  13   CDC → Kafka → Downstream Consumer with Resolved-Timestamp Frontier   55 min
+  14   Outbox Pattern + Idempotent Retry Loop in Python/Go                  55 min
+  15   Migrate a PostgreSQL Schema and Live Data with MOLT                  55 min
+  16   On Call — Four Incidents, One Cluster                                70 min
 
 ------------------------------------------------------------------------
 
@@ -343,9 +308,9 @@ Infrastructure Notes
   ships a single-broker Kafka alongside the lab.
 - Lab 15 (MOLT migration) needs a PostgreSQL instance as the source. A
   docker-compose.yml snippet provisions one.
-- Lab 16 (Kubernetes) needs kind or minikube on the learner’s machine.
-  The containerized test runner uses kind inside the existing image with
-  --privileged, or a sibling-DinD setup.
+- Lab 16 (on-call drill) runs entirely on the Docker lab cluster via
+  scripts/incident; the optional Kubernetes exercise needs kind and
+  kubectl.
 
 ------------------------------------------------------------------------
 
@@ -491,9 +456,9 @@ Anti-Patterns to Spot in Code Review
 - id SERIAL PRIMARY KEY on a high-volume table → use UUID or
   hash-sharded
 - UPDATE counters SET n = n + 1 WHERE id = '...' → use Sharded Counter
-- Low-cardinality lead column in PK (region, status, …) → reorder or
+- Low-cardinality lead column in PK (region, status, ...) → reorder or
   rethink
-- Indexes on every column “just in case” → write amplification
+- Indexes on every column "just in case" → write amplification
   multiplies inserts
 - DELETE FROM logs WHERE created < ... as a recurring job → use TTL
   Table

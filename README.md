@@ -33,13 +33,13 @@ Per learner:
 
 | | Days 1–2 | Days 3–4 |
 | --- | --- | --- |
-| RAM | 8 GB | **12 GB** (stop the lab cluster before Labs 7, 10, 16) |
+| RAM | 8 GB | **12 GB** (stop the lab cluster before Labs 7 and 10) |
 | Disk | 60 GB | **100 GB** |
-| Tools | Docker | plus `kind` + `kubectl` (Lab 16 only) — `molt` and `helm` run as containers |
+| Tools | Docker | `molt` runs as a container; `kind` + `kubectl` only for the optional Kubernetes exercise |
 
 **On Windows, work inside WSL2** — it is Linux, so every command in the course runs verbatim.
-Setup is in **[`setup/SETUP_WSL.md`](setup/SETUP_WSL.md)**, including the one step that decides
-whether Lab 16 works (`.wslconfig` memory).
+Setup is in **[`setup/SETUP_WSL.md`](setup/SETUP_WSL.md)**, including the `.wslconfig` memory
+setting that decides how much of the machine Docker may use.
 
 Instructors provisioning machines: see **[`setup/INSTRUCTOR_SETUP.md`](setup/INSTRUCTOR_SETUP.md)** —
 it ships provisioning scripts for WSL and for plain Ubuntu, a verification script, and a
@@ -91,7 +91,7 @@ Some labs bring up their own stacks alongside it:
 | `docker/labs.logging.yml` | Lab 9 (log channels) | overlay on the main cluster |
 
 Give Docker at least **4 GB** for Days 1–2, and **8 GB** for Days 3–4 (Lab 7's 9-node
-simulation and Lab 16's Kubernetes cluster are the heavy ones).
+simulation and Lab 10's TPC-C import are the heavy ones).
 
 ## Course Structure
 
@@ -121,7 +121,8 @@ simulation and Lab 16's Kubernetes cluster are the heavy ones).
 | 4 | 13 | [CDC → Kafka → Frontier Consumer](labs/lab13_cdc_kafka.md) | 75 min |
 | 4 | 14 | [Outbox Pattern + Idempotent Retry Loop](labs/lab14_outbox_idempotency.md) | 75 min |
 | 4 | 15 | [Migrate a PostgreSQL Schema with MOLT](labs/lab15_molt_migration.md) | 90 min |
-| 4 | 16 | [CockroachDB on Kubernetes with kind](labs/lab16_kubernetes_operator.md) | 90 min |
+| 4 | 16 | [On Call — Four Incidents, One Cluster](labs/lab16_oncall_incidents.md) | 70 min |
+| — | opt. | [CockroachDB on Kubernetes with kind](labs/optional_kubernetes_operator.md) (optional exercise, outside the schedule) | 70 min |
 
 ### The through-line: schema design and performance
 
@@ -133,7 +134,7 @@ distribution decision** — and then keeps cashing it out:
 | 1 | Range layout, and where the hotspot is (Lab 3) |
 | 2 | Contention, plan shape, and **measured rows/sec across four PK designs** (Lab 8) |
 | 3 | Write amplification → node count → hardware bill (Lab 10) |
-| 4 | Outbox design (Lab 14), migration redesign (Lab 15), Kubernetes topology (Lab 16) |
+| 4 | Outbox design (Lab 14), migration redesign (Lab 15), and the on-call drill where each incident is a schema or placement decision gone wrong (Lab 16) |
 
 The [**Schema Patterns Playbook**](labs/SCHEMA_PATTERNS_PLAYBOOK.md) is the take-home artifact:
 ten named patterns, each with its canonical schema, the trap it avoids, the cost it charges, and
@@ -185,7 +186,7 @@ KEEP_ON_FAIL=1 ./tests/lab11_test.sh
 ```
 
 The tests need what a student needs and nothing more: Docker running, plus `psql`, `python3 +
-psycopg2`, and `kind`/`kubectl` for the labs that use them —
+psycopg2` (and `kind`/`kubectl` only for the optional Kubernetes exercise) —
 [`setup/provision_student_vm.sh`](setup/provision_student_vm.sh) installs all of it. There is no
 `cockroach` binary to install, for the labs or for the tests. Tests whose extra dependency is
 missing skip cleanly with a warning. See [`tests/README.md`](tests/README.md).

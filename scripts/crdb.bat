@@ -13,6 +13,7 @@ rem    scripts\crdb.bat status         node status
 rem    scripts\crdb.bat stop 2         stop node 2 (simulate a failure)
 rem    scripts\crdb.bat start 2        bring node 2 back
 rem    scripts\crdb.bat add-node       start a 4th node
+rem    scripts\crdb.bat upgrade 2 v23.2.6   restart node 2 on another version
 rem    scripts\crdb.bat run <cmd...>   any cockroach subcommand on node 1
 rem    scripts\crdb.bat console        print the DB Console URL
 rem    scripts\crdb.bat logs [n]       tail a node's logs
@@ -70,6 +71,7 @@ if errorlevel 1 (
 rem ARG1 is the first argument after the command - the node number for
 rem stop/start/sql-on/logs. Capture it before :collect shifts everything away.
 set "ARG1=%~1"
+set "ARG2=%~2"
 
 rem Rebuild the remaining arguments into ARGS, and everything after the first
 rem one into REST (which is what sql-on needs once the node number is consumed).
@@ -92,6 +94,7 @@ if /i "%CMD%"=="status"   %COMPOSE% exec %NODE%1 ./cockroach node status %AUTH% 
 if /i "%CMD%"=="stop"     goto :stopnode
 if /i "%CMD%"=="start"    goto :startnode
 if /i "%CMD%"=="add-node" goto :addnode
+if /i "%CMD%"=="upgrade"  goto :upgrade
 if /i "%CMD%"=="console"  goto :console
 if /i "%CMD%"=="logs"     goto :logs
 if /i "%CMD%"=="ps"       %COMPOSE% ps & goto :done
@@ -199,6 +202,14 @@ goto :done
 echo http://localhost:%HTTP0%  ^(SQL on localhost:%SQL0%^)
 goto :done
 
+:upgrade
+if "%ARG2%"=="" (echo usage: crdb.bat upgrade ^<node-number^> ^<version^> & set "RC=1" & goto :done)
+rem Recreate ONE node's container on the new image; the others keep serving.
+set "CRDB_VERSION=%ARG2%"
+%COMPOSE% up -d --no-deps %NODE%%ARG1%
+echo node %ARG1% restarted on %ARG2%
+goto :done
+
 :logs
 set "N=%ARG1%"
 if "%N%"=="" set "N=1"
@@ -222,6 +233,7 @@ echo   scripts\crdb.bat status         node status
 echo   scripts\crdb.bat stop 2         stop node 2 (simulate a failure)
 echo   scripts\crdb.bat start 2        bring node 2 back
 echo   scripts\crdb.bat add-node       start a 4th node
+echo   scripts\crdb.bat upgrade 2 v23.2.6   restart node 2 on another version
 echo   scripts\crdb.bat run ^<cmd...^>   any cockroach subcommand on node 1
 echo   scripts\crdb.bat console        print the DB Console URL
 echo   scripts\crdb.bat logs [n]       tail a node's logs

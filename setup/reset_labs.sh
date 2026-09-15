@@ -23,13 +23,13 @@ pkill -f "cockroach start" 2>/dev/null || true
 pkill -f "cockroach demo"  2>/dev/null || true
 
 echo "==> removing lab data directories"
-rm -rf "$REPO"/lab9 "$REPO"/lab12/logs /tmp/lab13 /tmp/lab15 /tmp/lab16
+rm -rf "$REPO"/lab9 "$REPO"/lab12/logs /tmp/lab13 /tmp/lab15 /tmp/lab16 /tmp/oncall
 rm -rf /tmp/crdb-* /tmp/verify-crdb-* /tmp/load_test.csv
 rm -rf ./lab8-certs ./lab8-keys ./lab8-data ./cockroach-data 2>/dev/null || true
 
 if [ "$ALL" = "--all" ]; then
     echo "==> removing lab containers"
-    docker rm -f lab9-prom lab9-grafana lab15-pg 2>/dev/null || true
+    docker rm -f lab9-prom lab9-grafana lab9-load lab15-pg crdb4 oncall-app-1 oncall-app-2 oncall-app-3 oncall-app-4 oncall-app-5 2>/dev/null || true; docker volume rm oncall-crdb4 2>/dev/null || true
     for d in /tmp/lab13 /tmp/lab15; do
         [ -f "$d/docker-compose.yml" ] && (cd "$d" && docker compose down -v 2>/dev/null) || true
     done

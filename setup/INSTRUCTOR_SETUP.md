@@ -26,7 +26,8 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 | 13 CDC | 3-node + Kafka container | ~7 GB | 10 GB | Docker |
 | 14 Outbox | 3-node + Python | ~5 GB | 5 GB | psycopg2 |
 | 15 MOLT | 3-node + PostgreSQL container | ~7 GB | 15 GB | Docker |
-| 16 Kubernetes | kind (4 nodes) + 5 CRDB pods | ~8 GB (measured) | 25 GB | Docker-in-Docker; heaviest RAM user |
+| 16 On-call drill | 3-node + one app container per incident (+ node 4 in incident 3) | ~4 GB | 5 GB | Docker |
+| opt. Kubernetes | kind (4 nodes) + 5 CRDB pods | ~8 GB (measured) | 25 GB | optional exercise, outside the schedule; Docker-in-Docker; heaviest RAM user |
 
 ### Student VM
 
@@ -35,7 +36,7 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 > [`provision_student_vm.sh`](provision_student_vm.sh) is for plain Ubuntu VMs instead; the two
 > are siblings, and `verify_student_vm.sh` covers either.
 >
-> The one WSL step that decides whether Lab 16 works is `%UserProfile%\.wslconfig`:
+> The one WSL step that decides how much memory the heavy labs get is `%UserProfile%\.wslconfig`:
 > WSL2 defaults to about half the host's RAM, so a 12 GB VM gives Linux ~6 GB unless you
 > set `memory=9GB`.
 
@@ -52,7 +53,7 @@ Read this before sizing. The demanding labs are 7, 10, 13, and 16.
 > ```bash
 > scripts/crdb down
 > ```
-> That single habit is the difference between a smooth Lab 16 and a room full of raised hands.
+> That single habit is the difference between a smooth Lab 10 and a room full of raised hands.
 > `setup/verify_student_vm.sh` prints this reminder when it sees a 12 GB machine.
 
 > **Lab 11 is the exception that still fits:** two 3-node clusters at ~8 GB combined, which is
@@ -105,7 +106,7 @@ It installs and pre-warms:
 
 - Docker CE + Compose plugin, with the `student` user in the `docker` group
   (**this is what runs CockroachDB** — no database binary is installed on the host)
-- `kind` + `kubectl` (Lab 16)
+- `kind` + `kubectl` (optional Kubernetes exercise only)
 - `psql` client, `python3`, `psycopg2`, `sqlalchemy-cockroachdb` (Labs 1, 14, 15)
 - `molt` fetch/verify binaries (Lab 15)
 - Go toolchain (optional — Lab 14 Go variants)
@@ -113,7 +114,7 @@ It installs and pre-warms:
 - **Pre-pulled container images** — `prom/prometheus`, `grafana/grafana`, `apache/kafka`,
   `postgres:16`, `kindest/node`, `cockroachdb/cockroach` — so no lab waits on a download
 - The course repo cloned to `/home/student/cockroachdb-course`
-- Kernel/ulimit tuning (`nofile=65536`, `vm.max_map_count`) that CockroachDB and kind need
+- Kernel/ulimit tuning (`nofile=65536`, `vm.max_map_count`) that CockroachDB (and kind, if used) need
 
 ### 2.3 Verify before you snapshot
 
@@ -269,7 +270,7 @@ rotation.
 - [ ] Quota confirmed for the class size in the target region — request an increase early
 - [ ] Course repo pushed and the image's clone points at the right branch
 - [ ] Test one student VM end to end: run **Lab 7**, **Lab 10**, and **Lab 16** in full
-- [ ] Confirm the "`scripts/crdb down` before Labs 7, 10 and 16" habit on a 12 GB VM
+- [ ] Confirm the "`scripts/crdb down` before Labs 7 and 10" habit on a 12 GB VM
 
 **Day before**
 - [ ] Student VMs launched from the image
@@ -298,9 +299,9 @@ setup/run_on_all.sh 'cd /home/student && cockroach start-single-node --insecure 
   cockroach quit --insecure'
 ```
 
-**Before Day 4** (Lab 16 pulls several container images):
+**Before Day 4** (Lab 16 Part E restarts nodes on the v23.2.6 patch image):
 ```bash
-setup/run_on_all.sh 'docker pull kindest/node:v1.29.2; \
+setup/run_on_all.sh 'docker pull cockroachdb/cockroach:v23.2.6; \
   docker pull cockroachdb/cockroach:v23.2.5; \
   docker pull apache/kafka:3.9.0; docker pull postgres:16'
 ```
@@ -337,11 +338,11 @@ az vm list --resource-group "$RG" --query "[?tags.course=='crdb-4day'].name" -o 
 | --- | --- | --- |
 | **Student laptops** | Days 1–2 | Free; but Windows/corporate-IT variance eats teaching time. Requires 16 GB RAM and admin rights |
 | **One shared big VM, one Linux user per student** | Days 1–2 | Cheap; but port collisions and one student's runaway workload affects everyone. Needs per-student port ranges |
-| **GitHub Codespaces / Gitpod** | Days 1–2 | Zero setup; but Lab 16 (kind) and Lab 7 (9 nodes) usually exceed the container's resources |
+| **GitHub Codespaces / Gitpod** | Days 1–2 | Zero setup; but Lab 7 (9 nodes) and Lab 10 (TPC-C) usually exceed the container's resources |
 | **Per-student VM** (this guide) | **All 4 days** | Costs money; everything works |
 
 If you must run Days 1–2 on laptops, the README's install section is the student-facing
-instructions. Days 3–4 need Docker and kind, and 12 GB with the one-stack-at-a-time rule — plan for VMs.
+instructions. Days 3–4 need Docker and 12 GB with the one-stack-at-a-time rule — plan for VMs.
 
 ---
 
@@ -351,7 +352,7 @@ instructions. Days 3–4 need Docker and kind, and 12 GB with the one-stack-at-a
 | --- | --- | --- |
 | `cockroach demo --nodes 9` OOM-kills | Under 16 GB RAM free | Resize, or have them use `--nodes 3` and pair up for Lab 7 |
 | `too many open files` | ulimit not applied | `ulimit -n 65536`; confirm `/etc/security/limits.d/99-cockroach.conf` exists and they logged out/in |
-| kind cluster never becomes ready | Docker memory under 6 GB, or `vm.max_map_count` too low | `sysctl -w vm.max_map_count=262144`; check Docker resources |
+| kind cluster never becomes ready (optional exercise) | Docker memory under 6 GB, or `vm.max_map_count` too low | `sysctl -w vm.max_map_count=262144`; check Docker resources |
 | `IMPORT INTO` fails with a permission error | `userfile` not writable by the SQL user | Run as `root` SQL user, or `GRANT` on the userfile table |
 | DB Console unreachable | Port not forwarded | Use the SSH tunnel one-liner in §4 |
 | Docker image pulls time out mid-lab | Images not pre-warmed | Run the §6 warm-up; consider a local registry mirror |

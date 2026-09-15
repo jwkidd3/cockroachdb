@@ -52,7 +52,7 @@ DISK_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
 
 # WSL2 does not hand the whole machine to Linux. Recent builds default to half
 # of host RAM, so a 12 GB laptop gives WSL ~6 GB — enough for Labs 1-6 and
-# nothing heavier. This is the single most likely reason Lab 16 fails on Windows.
+# nothing heavier. This is the single most likely reason the heavy labs fail on Windows.
 if [ "$IS_WSL" = "1" ] && [ "$MEM_GB" -lt 10 ]; then
     warn "WSL2 has only ${MEM_GB} GB of the host's RAM. Raise it on the Windows side:"
     warn "    create %UserProfile%\\.wslconfig containing:"
@@ -70,15 +70,17 @@ if docker info >/dev/null 2>&1; then
     if   [ "$DOCKER_GB" -ge 11 ]; then ok "Docker memory: ${DOCKER_GB} GB"
     elif [ "$DOCKER_GB" -ge 8 ];  then warn "Docker memory: ${DOCKER_GB} GB — every lab fits one stack at a time; Lab 16 (7.6 GB measured) has little margin"
     elif [ "$DOCKER_GB" -ge 6 ];  then warn "Docker memory: ${DOCKER_GB} GB — Labs 1-15 fit one stack at a time; Lab 16 (kind, 7.6 GB) will not"
-    else bad "Docker memory: ${DOCKER_GB} GB — too little for Lab 7 (6 GB) or Lab 16 (7.6 GB)"; fi
+    else bad "Docker memory: ${DOCKER_GB} GB — too little for Lab 7 (6 GB) or Lab 10 (TPC-C)"; fi
 fi
 
 sec "Binaries"
 # The only binaries the course needs locally. cockroach, molt and helm are all
-# containers; kind must be local because it drives the Docker daemon itself.
-for b in docker kind kubectl psql python3 git jq nc bc openssl curl unzip; do
+# containers. kind/kubectl are only for the optional Kubernetes exercise (checked below as warnings).
+for b in docker psql python3 git jq nc bc openssl curl unzip; do
     have "$b" && ok "$b: $(command -v $b)" || bad "$b missing"
 done
+for b in kind kubectl; do command -v $b >/dev/null 2>&1 && ok "$b present (optional Kubernetes exercise)" || warn "$b not installed — only the optional Kubernetes exercise needs it"; done
+
 # molt and helm are containers, not local binaries — checked with the images below.
 
 sec "Limits and kernel settings"
@@ -96,7 +98,7 @@ NOFILE=$(ulimit -n)
 [ "$NOFILE" -ge 65536 ] && ok "host shell ulimit -n = $NOFILE" \
     || warn "host shell ulimit -n = $NOFILE — fine; only the container limit above affects the database"
 MMC=$(sysctl -n vm.max_map_count)
-[ "$MMC" -ge 262144 ] && ok "vm.max_map_count = $MMC" || bad "vm.max_map_count = $MMC (kind needs 262144)"
+[ "$MMC" -ge 262144 ] && ok "vm.max_map_count = $MMC" || warn "vm.max_map_count = $MMC (the optional Kubernetes exercise needs 262144)"
 
 sec "Docker"
 if docker info >/dev/null 2>&1; then
@@ -160,7 +162,7 @@ else
 fi
 
 sec "Memory for the heavy labs (7, 10, 16)"
-# Measured, not estimated: Lab 7's 9-node demo ~6 GB; Lab 16's kind cluster
+# Measured, not estimated: Lab 7's 9-node demo ~6 GB; the optional kind cluster
 # completed at 7.6 GB, scale-out included. Both assume the compose cluster
 # (~4 GB) is down first.
 L7_GB="${DOCKER_GB:-$MEM_GB}"
@@ -168,13 +170,13 @@ if [ "$L7_GB" -ge 11 ]; then
     ok "Docker has ${L7_GB} GB — Labs 7, 10 and 16 all fit with room to spare"
     warn "Still run 'scripts/crdb down' before Labs 7, 10 and 16: the compose cluster holds ~4 GB"
 elif [ "$L7_GB" -ge 8 ]; then
-    ok "Docker has ${L7_GB} GB — Lab 7 (6 GB) fits comfortably; Lab 16 (7.6 GB) fits with ~$((L7_GB*1000-7600)) MB to spare"
+    ok "Docker has ${L7_GB} GB — Lab 7 (6 GB) fits comfortably; the optional Kubernetes exercise (7.6 GB) fits with ~$((L7_GB*1000-7600)) MB to spare"
     warn "'scripts/crdb down' before Labs 7, 10 and 16 is mandatory at this size, not advice"
     if [ "$IS_WSL" = "1" ]; then
         warn "On a 12 GB machine WSL can safely have 9 GB. In %UserProfile%\\.wslconfig set:  [wsl2]  memory=9GB  — then 'wsl --shutdown'"
     fi
 elif [ "$L7_GB" -ge 6 ]; then
-    warn "Docker has ${L7_GB} GB — Lab 7 fits with the cluster down; Lab 16 (7.6 GB) will not run"
+    warn "Docker has ${L7_GB} GB — Lab 7 fits with the cluster down; the optional Kubernetes exercise (7.6 GB) will not run"
 else
     warn "Docker has ${L7_GB} GB — too little for Lab 7 (6 GB); have students pair up or use --nodes 3"
 fi

@@ -26,9 +26,9 @@ wsl --status          # confirm "Default Version: 2"
 
 ### 1.2 Give WSL enough memory — do this before anything else
 
-**This is the step that decides whether Lab 16 works.** WSL2 does not hand Linux the whole
+**This is the step that decides how much memory the heavy labs get.** WSL2 does not hand Linux the whole
 machine: recent builds default to about **half** of host RAM, so a 12 GB VM gives WSL ~6 GB.
-Lab 16's kind cluster needs ~8 GB and Lab 7's nine-node demo needs ~6 GB.
+Lab 7's nine-node demo needs ~6 GB and Lab 10's TPC-C import wants the same; the optional Kubernetes exercise needs ~8 GB.
 
 Create `%UserProfile%\.wslconfig`:
 
@@ -39,8 +39,8 @@ processors=4
 swap=2GB
 ```
 
-9 GB leaves 3 GB for Windows itself, and is enough for every lab in the course — Lab 16 was
-measured completing in 7.6 GB, including its scale-out to five pods.
+9 GB leaves 3 GB for Windows itself, and is enough for every lab in the course (the optional
+Kubernetes exercise was measured completing in 7.6 GB, including its scale-out to five pods).
 
 Apply it:
 
@@ -127,8 +127,8 @@ ports to the host automatically.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| kind cluster never starts; pods `Pending` | `vm.max_map_count` = 65530 | systemd enabled by the provisioning script, then `wsl --shutdown` |
-| Lab 16 OOM-kills mid-rollout | WSL got ~6 GB of the 12 | `.wslconfig` → `memory=9GB`, `wsl --shutdown` |
+| kind cluster never starts; pods `Pending` (optional Kubernetes exercise) | `vm.max_map_count` = 65530 | systemd enabled by the provisioning script, then `wsl --shutdown` |
+| A heavy lab OOM-kills a node | WSL got ~6 GB of the 12 | `.wslconfig` → `memory=9GB`, `wsl --shutdown` |
 | Labs feel sluggish; git is slow | repo lives on `/mnt/c` | re-clone into `~` |
 | `docker: command not found` | WSL integration off | Docker Desktop → Resources → WSL integration |
 | `ulimit -n` is 1024 | systemd off, so `limits.d` ignored | same as row 1 |
@@ -166,7 +166,7 @@ Useful knobs:
 | `DAY=3 ./tests/run_all.sh` | just that day's four labs |
 | `LABS_OVERRIDE="lab08_test.sh lab10_test.sh" ./tests/run_all.sh` | an explicit subset |
 | `KEEP_ON_FAIL=1 ./tests/lab11_test.sh` | leave the cluster up to inspect a failure |
-| `FORCE_LAB16=1 ./tests/lab16_test.sh` | run Lab 16 even if the memory check objects |
+| `INCLUDE_OPTIONAL=1 ./tests/run_all.sh` | also run the optional Kubernetes exercise's test |
 
 Expect skips rather than failures where a dependency is genuinely absent — the summary names
 each one. A run is healthy when the final line reads `Fail: 0`.
@@ -176,7 +176,7 @@ each one. A run is healthy when the final line reads `Fail: 0`.
 
 ## 6. Freeing memory for the heavy labs
 
-12 GB fits every lab, one heavy stack at a time. Before **Lab 7**, **Lab 10** and **Lab 16**:
+12 GB fits every lab, one heavy stack at a time. Before **Lab 7** and **Lab 10**:
 
 ```bash
 scripts/crdb down

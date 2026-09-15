@@ -232,8 +232,9 @@ deployments.</li>
 with retry handling, outbox patterns, connection pooling at scale.</li>
 <li><strong>Migrate</strong> from PostgreSQL using MOLT and
 zero-downtime cutover techniques.</li>
-<li><strong>Operate</strong> CockroachDB on Kubernetes with the official
-<code>cockroach-operator</code>.</li>
+<li><strong>Work</strong> an incident in a fixed order — cluster health,
+statement, range, waits, storage — and recognise the four failure
+signatures behind most pages.</li>
 </ul>
 <p><strong>Course Length:</strong> 4 Days</p>
 <hr />
@@ -561,12 +562,18 @@ shadow reads</li>
 pipelines</li>
 <li>When NOT to migrate: workloads PostgreSQL still does better</li>
 </ul>
-<h3 id="kubernetes-deployment">Kubernetes Deployment</h3>
+<h3 id="on-call--working-an-incident">On Call — Working an Incident</h3>
 <ul>
-<li><code>cockroach-operator</code> and CockroachDB CRDs</li>
-<li>Helm charts and cert-manager integration</li>
-<li>Pod sizing, anti-affinity, and region-aware StatefulSets</li>
-<li>Logical multi-tenancy on a shared Kubernetes cluster</li>
+<li>The order of operations: cluster health → statement → range → waits
+→ storage</li>
+<li>The four signatures: hot range, contended row, unmet placement
+constraint, pinned garbage collection</li>
+<li>Where the fix lives: DDL, a deploy, a runbook, a job command — and
+how to verify each</li>
+<li>Rolling restarts under load; why the connection string decides
+whether the application notices</li>
+<li><em>(Kubernetes with <code>cockroach-operator</code> remains
+available as an optional exercise outside the schedule)</em></li>
 </ul>
 <h3 id="advanced-features-survey">Advanced Features Survey</h3>
 <ul>
@@ -611,8 +618,7 @@ Frontier</td>
 </tr>
 <tr>
 <td>16</td>
-<td>Deploy CockroachDB on Kubernetes with cockroach-operator and
-kind</td>
+<td>On Call — Four Incidents, One Cluster</td>
 <td>70 min</td>
 </tr>
 </tbody>
@@ -680,10 +686,9 @@ the lab.</li>
 <li><strong>Lab 15</strong> (MOLT migration) needs a PostgreSQL instance
 as the source. A <code>docker-compose.yml</code> snippet provisions
 one.</li>
-<li><strong>Lab 16</strong> (Kubernetes) needs <code>kind</code> or
-<code>minikube</code> on the learner&#39;s machine. The containerized test
-runner uses <code>kind</code> inside the existing image with
-<code>--privileged</code>, or a sibling-DinD setup.</li>
+<li><strong>Lab 16</strong> (on-call drill) runs entirely on the Docker
+lab cluster via <code>scripts/incident</code>; the optional Kubernetes
+exercise needs <code>kind</code> and <code>kubectl</code>.</li>
 </ul>
 <hr />
 <h2 id="appendix-a-schema-patterns-playbook-takeaway-reference">Appendix

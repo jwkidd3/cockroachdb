@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# Lab 16 — the on-call drill. Each incident breaks the lab cluster in a specific,
+# reproducible way and leaves it broken until you fix it. The script tells you
+# nothing about what it did; the lab gives you the page, you do the diagnosis.
+#
+#   scripts/incident start N      break the cluster (N = 1..5)
+#   scripts/incident status       what is currently running
+#   scripts/incident stop N       tear incident N down (containers, data, settings)
+#   scripts/incident stop all
+#
+# Everything runs against the compose cluster from scripts/crdb (docker/labs.yml).
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CRDB="$HERE/crdb.sh"
+IMG="cockroachdb/cockroach:${CRDB_VERSION:-v23.2.5}"
+NET="crdb-labs_default"
+WORK="${ONCALL_DIR:-/tmp/oncall}"
+URL='postgresql://root@crdb1:26257/oncall?sslmode=disable'
+
+sql() { bash "$CRDB" sql -e "$1" >/dev/null; }
+need_cluster() {
+  docker ps --format '{{.Names}}' | grep -qx crdb1 || { echo "the lab cluster is not running — scripts/crdb up first" >&2; exit 1; }
+}
+ensure_db() { bash "$CRDB" sql -e "CREATE DATABASE IF NOT EXISTS oncall;" >/dev/null; }
+
+# A detached "application": a container that runs /app/loop.sh forever against the
+# cluster. The script lives on the host under $WORK/N so it can be read — and edited.
+run_app() {  # run_app NAME DIR
+  docker rm -f "$1" >/dev/null 2>&1 || true
+  docker run -d --name "$1" --network "$NET" -v "$2:/app" --entrypoint bash "$IMG" \
+    -c 'while true; do bash /app/loop.sh; sleep 1; done' >/dev/null
+}
+
+start_1() {   # hot range: a SERIAL primary key under 8 concurrent writers
+  ensure_db
+  sql "CREATE TABLE IF NOT EXISTS oncall.events (id SERIAL PRIMARY KEY, device STRING NOT NULL, reading FLOAT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now());"
+  mkdir -p "$WORK/1"
+  cat > "$WORK/1/loop.sh" <<EOF
+# telemetry ingest: 8 devices report 200 readings each, continuously
+for w in 1 2 3 4 5 6 7 8; do
+  ( for i in \$(seq 1 25); do
+      echo "INSERT INTO oncall.events (device, reading) SELECT 'dev-'||\$w, random()*100 FROM generate_series(1,200);"
+    done | ./cockroach sql --url '$URL' >/dev/null 2>&1 ) &
+done
+wait
+EOF
+  run_app oncall-app-1 "$WORK/1"
+}
+
+start_2() {   # contention: every request bumps one counter row
+  ensure_db
+  sql "CREATE TABLE IF NOT EXISTS oncall.page_hits (page STRING PRIMARY KEY, hits INT NOT NULL DEFAULT 0); UPSERT INTO oncall.page_hits VALUES ('/home', 0);"
+  mkdir -p "$WORK/2"
+  cat > "$WORK/2/loop.sh" <<EOF
+# web tier: 16 workers, each request increments the hit counter for /home
+for w in \$(seq 1 16); do
+  ( for i in \$(seq 1 40); do
+      echo "UPDATE oncall.page_hits SET hits = hits + 1 WHERE page = '/home';"
+    done | ./cockroach sql --url '$URL' >/dev/null 2>&1 ) &
+done
+wait
+EOF
+  run_app oncall-app-2 "$WORK/2"
+}
+
+start_3() {   # node 4 gets rebuilt with a typo in its locality; a table pinned to its region breaks silently
+  ensure_db
+  mkdir -p "$WORK/3"
+  write_runbook() {  # write_runbook LOCALITY
+    cat > "$WORK/3/start-node4.sh" <<EOF
+#!/usr/bin/env bash
+# Runbook: (re)start the new rack's node, node 4, and join it to the lab cluster.
+# The store is a named volume, so a restart keeps the node's identity and data.
+docker rm -f crdb4 >/dev/null 2>&1 || true
+docker run -d --name crdb4 --hostname crdb4 --network crdb-labs_default \\
+  -v oncall-crdb4:/cockroach/cockroach-data \\
+  cockroachdb/cockroach:v23.2.5 start --insecure \\
+  --advertise-addr=crdb4 --join=crdb1,crdb2,crdb3 --http-addr=0.0.0.0:8080 \\
+  --cache=.10 --max-sql-memory=.10 \\
+  --locality=$1
+EOF
+    chmod +x "$WORK/3/start-node4.sh"
+  }
+  # 1. the node as it was first commissioned — correctly
+  write_runbook "region=us-east1,zone=d"
+  bash "$WORK/3/start-node4.sh" >/dev/null
+  for i in $(seq 1 30); do
+    bash "$CRDB" sql --format=tsv -e "SELECT 1 FROM crdb_internal.gossip_nodes WHERE locality = 'region=us-east1,zone=d' AND is_live;" 2>/dev/null | grep -q '^1$' && break; sleep 2
+  done
+  # 2. a table pinned to that region: one replica and the lease must live there
+  sql "CREATE TABLE IF NOT EXISTS oncall.pins (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), payload STRING); INSERT INTO oncall.pins (payload) SELECT repeat('p', 100) FROM generate_series(1, 5000);"
+  sql "ALTER TABLE oncall.pins CONFIGURE ZONE USING num_replicas = 3, constraints = '{\"+region=us-east1\": 1}', lease_preferences = '[[+region=us-east1]]';"
+  sleep 20
+  # 3. the rack "moves": someone rebuilds node 4 from the runbook — with a typo
+  write_runbook "region=us-esat1,zone=d"
+  bash "$WORK/3/start-node4.sh" >/dev/null
+}
+
+start_4() {   # a paused changefeed pins MVCC garbage while the table churns
+  ensure_db
+  sql "SET CLUSTER SETTING kv.rangefeed.enabled = true;"
+  sql "CREATE TABLE IF NOT EXISTS oncall.sessions (id INT PRIMARY KEY, blob STRING NOT NULL); INSERT INTO oncall.sessions SELECT g, repeat('s', 500) FROM generate_series(1, 2000) g ON CONFLICT DO NOTHING;"
+  sql "ALTER TABLE oncall.sessions CONFIGURE ZONE USING gc.ttlseconds = 60;"
+  JOB=$(bash "$CRDB" sql --format=tsv -e "CREATE CHANGEFEED FOR TABLE oncall.sessions INTO 'null://' WITH resolved = '10s';" | tail -1)
+  sql "PAUSE JOB $JOB;"
+  mkdir -p "$WORK/4"
+  cat > "$WORK/4/loop.sh" <<EOF
+# session store: every active session rewrites its blob a few times a second
+for i in \$(seq 1 10); do
+  echo "UPDATE oncall.sessions SET blob = repeat(chr(97 + (\$i % 26)), 500) WHERE id % 20 = \$((i % 20));"
+done | ./cockroach sql --url '$URL' >/dev/null 2>&1
+EOF
+  run_app oncall-app-4 "$WORK/4"
+}
+
+start_5() {   # nothing is broken yet: an app pinned to one node, for the rolling-upgrade part
+  bash "$CRDB" run workload init kv --drop 'postgresql://root@crdb1:26257/kv?sslmode=disable' >/dev/null 2>&1 || true
+  mkdir -p "$WORK/5"
+  cat > "$WORK/5/loop.sh" <<'EOF'
+# order service: connects to the database at crdb1 (the address in its config)
+# every 20 s it prints one line: time, then elapsed / errors / ops / latency percentiles
+echo "$(date +%T)  $(./cockroach workload run kv --duration=20s --concurrency=8 --read-percent=50 --tolerate-errors \
+  'postgresql://root@crdb1:26257/kv?sslmode=disable' 2>&1 | grep -A1 '__result' | tail -1)"
+EOF
+  run_app oncall-app-5 "$WORK/5"
+}
+
+stop_1() { docker rm -f oncall-app-1 >/dev/null 2>&1 || true; sql "DROP TABLE IF EXISTS oncall.events CASCADE;" 2>/dev/null || true; }
+stop_2() { docker rm -f oncall-app-2 >/dev/null 2>&1 || true; sql "DROP TABLE IF EXISTS oncall.page_hits CASCADE; DROP TABLE IF EXISTS oncall.page_hit_shards CASCADE;" 2>/dev/null || true; }
+stop_3() {
+  sql "DROP TABLE IF EXISTS oncall.pins CASCADE;" 2>/dev/null || true
+  # Decommission node 4 properly before removing it — live one with its replicas moved off,
+  # any dead leftovers (from a rerun) marked without waiting.
+  LIVE=$(bash "$CRDB" sql --format=tsv -e "SELECT node_id FROM crdb_internal.gossip_nodes WHERE address LIKE 'crdb4:%' AND is_live;" 2>/dev/null | tail -n +2 | tr '\n' ' ')
+  DEAD=$(bash "$CRDB" sql --format=tsv -e "SELECT node_id FROM crdb_internal.gossip_nodes WHERE address LIKE 'crdb4:%' AND NOT is_live;" 2>/dev/null | tail -n +2 | tr '\n' ' ')
+  [ -n "${LIVE// /}" ] && bash "$CRDB" run node decommission $LIVE --insecure --wait=all >/dev/null 2>&1 || true
+  [ -n "${DEAD// /}" ] && bash "$CRDB" run node decommission $DEAD --insecure --wait=none >/dev/null 2>&1 || true
+  docker rm -f crdb4 >/dev/null 2>&1 || true
+  docker volume rm oncall-crdb4 >/dev/null 2>&1 || true
+}
+stop_4() {
+  docker rm -f oncall-app-4 >/dev/null 2>&1 || true
+  bash "$CRDB" sql -e "CANCEL JOBS (SELECT job_id FROM [SHOW CHANGEFEED JOBS] WHERE status IN ('running','paused'));" >/dev/null 2>&1 || true
+  sql "DROP TABLE IF EXISTS oncall.sessions CASCADE;" 2>/dev/null || true
+}
+stop_5() { docker rm -f oncall-app-5 >/dev/null 2>&1 || true; bash "$CRDB" sql -e "DROP DATABASE IF EXISTS kv CASCADE;" >/dev/null 2>&1 || true; }
+
+status() {
+  echo "incident containers:"; docker ps --format '  {{.Names}}  {{.Status}}' | grep -E 'oncall-app|crdb4' || echo "  (none)"
+  echo "oncall tables:"; bash "$CRDB" sql --format=tsv -e "SELECT table_name FROM oncall.information_schema.tables WHERE table_schema='public';" 2>/dev/null | tail -n +2 | sed 's/^/  /' || echo "  (no oncall database)"
+}
+
+cmd="${1:-}"; n="${2:-}"
+case "$cmd" in
+  start)
+    need_cluster
+    case "$n" in 1|2|3|4|5) "start_$n"; echo "Incident $n started. Open the lab for the page.";;
+      *) echo "usage: scripts/incident start 1|2|3|4|5" >&2; exit 2;; esac ;;
+  stop)
+    need_cluster
+    case "$n" in 1|2|3|4|5) "stop_$n"; echo "Incident $n cleaned up.";;
+      all) for i in 1 2 3 4 5; do "stop_$i"; done; bash "$CRDB" sql -e "DROP DATABASE IF EXISTS oncall CASCADE;" >/dev/null 2>&1 || true; rm -rf "$WORK"; echo "All incidents cleaned up.";;
+      *) echo "usage: scripts/incident stop 1|2|3|4|5|all" >&2; exit 2;; esac ;;
+  status) need_cluster; status ;;
+  *) sed -n '2,10p' "$0"; exit 2 ;;
+esac

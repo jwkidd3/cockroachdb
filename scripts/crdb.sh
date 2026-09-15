@@ -10,6 +10,7 @@
 #   scripts/crdb.sh stop 2         stop node 2 (simulate a failure)
 #   scripts/crdb.sh start 2        bring node 2 back
 #   scripts/crdb.sh add-node       start a 4th node
+#   scripts/crdb.sh upgrade 2 v23.2.6   restart node 2 on another version (rolling upgrade)
 #   scripts/crdb.sh run <cmd...>   any cockroach subcommand on node 1
 #   scripts/crdb.sh console        print the DB Console URL
 #   scripts/crdb.sh logs [n]       tail a node's logs
@@ -121,6 +122,10 @@ case "$CMD" in
   start)    need_docker; "${COMPOSE[@]}" start "${NODE}${1:?usage: start <node-number>}" ;;
   add-node) need_docker; "${COMPOSE[@]}" --profile scale up -d ${NODE}4
             echo "node 4 started (SQL on $((SQL0+3)), console on $((HTTP0+3)))" ;;
+  upgrade)  need_docker; n="${1:?usage: upgrade <node-number> <version>}"; v="${2:?usage: upgrade <node-number> <version>}"
+            # Recreate ONE node's container on the new image; the others keep serving.
+            CRDB_VERSION="$v" "${COMPOSE[@]}" up -d --no-deps "${NODE}${n}"
+            echo "node $n restarted on $v" ;;
   console)  echo "http://localhost:${HTTP0}  (node 2: $((HTTP0+1)), node 3: $((HTTP0+2)))" ;;
   logs)     need_docker; "${COMPOSE[@]}" logs -f "${NODE}${1:-1}" ;;
   ps)       need_docker; "${COMPOSE[@]}" ps ;;
@@ -128,6 +133,6 @@ case "$CMD" in
   reset)    need_docker; "${COMPOSE[@]}" --profile scale down -v; exec "$0" up ;;
   cp)       need_docker; "${COMPOSE[@]}" cp "$@" ;;
   help|--help|-h|*)
-    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
 esac

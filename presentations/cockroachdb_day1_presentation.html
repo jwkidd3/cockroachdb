@@ -332,7 +332,7 @@
                 </div>
                 <div class="agenda-item fragment">
                     <strong>Day 4 — Advanced Features &amp; Integration</strong><br>
-                    <span class="small-text">CDC, outbox &amp; idempotency, PostgreSQL migration, Kubernetes (Labs 13–16)</span>
+                    <span class="small-text">CDC, outbox &amp; idempotency, PostgreSQL migration, on-call drill (Labs 13–16)</span>
                 </div>
 
                 <div class="info-box fragment">
@@ -789,7 +789,7 @@ scripts/crdb up          # 3-node cluster in Docker</code></pre>
                         <tr><td>1</td><td>Range layout and where the hotspot is</td></tr>
                         <tr><td>2</td><td>Contention, plan shape, and measured rows/sec (Lab 8)</td></tr>
                         <tr><td>3</td><td>Write amplification → node count → hardware bill (Lab 10)</td></tr>
-                        <tr><td>4</td><td>Outbox design, migration redesign, Kubernetes topology</td></tr>
+                        <tr><td>4</td><td>Outbox design, migration redesign, and every incident in the on-call drill</td></tr>
                     </table>
                     <p class="fragment small-text">You will be asked to defend a primary key with a number
                     before this course is over.</p>
@@ -1325,7 +1325,7 @@ cockroach version
                         extract, and add the folder to <code>PATH</code>.</p>
                     </div>
                 
-                    <aside class="notes"><p>Students install nothing for this class — the image already has Docker, kind, kubectl, psql and psycopg2, and the database itself runs only in containers. Show the slide for what they will do after the course on their own machines.</p><p>The one thing worth saying about production installs: pin the version. The compose files pin v23.2.5 for exactly that reason; the sample in the labs is reproducible because the version is.</p></aside>
+                    <aside class="notes"><p>Students install nothing for this class — the image already has Docker, psql and psycopg2 (and kind/kubectl for the optional Kubernetes exercise), and the database itself runs only in containers. Show the slide for what they will do after the course on their own machines.</p><p>The one thing worth saying about production installs: pin the version. The compose files pin v23.2.5 for exactly that reason; the sample in the labs is reproducible because the version is.</p></aside>
                 </section>
                     <section>
                     <h3>Three Ways to Run a Cluster</h3>

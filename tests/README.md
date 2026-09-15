@@ -32,7 +32,7 @@ bare machine — but they only *prove* the lab when the dependency is present.
 | `lab13_test.sh` | Kafka on the `crdb-labs_default` network | Core changefeed still tested; Kafka sink and frontier consumer skipped |
 | `lab14_test.sh` | `python3` + `psycopg2` | Whole test skips |
 | `lab15_test.sh` | Docker (PostgreSQL) + `psql` | Schema redesign and plan comparison still tested against synthetic data |
-| `lab16_test.sh` | `kind` + `kubectl` + 8 GB of Docker memory | Manifests still validated; live cluster skipped (`FORCE_LAB16=1` overrides the RAM check) |
+| `optional_k8s_test.sh` | `kind` + `kubectl` + 8 GB of Docker memory; opt in with `INCLUDE_OPTIONAL=1` | Manifests still validated; live cluster skipped (`FORCE_LAB16=1` overrides the RAM check) |
 | `lab_cluster_test.sh` | Docker daemon | Whole test skips |
 | `crdb_wrappers_test.sh` | Docker daemon | Whole test skips |
 | Enterprise features (incremental backups, `revision_history`, Kafka-sink changefeeds) | A licence — free for training from Cockroach Labs. Export `COCKROACH_LICENSE` before `scripts/crdb up` | Detected at runtime; those assertions are skipped with a warning |
@@ -88,7 +88,7 @@ The same ones the course asks of a student:
 - `bash` 4+, plus `curl`, `awk`, `grep`, `sed` (preinstalled on macOS and Linux)
 - `python3` + `psycopg2` — Lab 14, and Lab 1 Part F (which falls back to a container)
 - `psql` — Lab 15 (Lab 1 Part F falls back to a container)
-- `kind` + `kubectl` — Lab 16's live cluster (the only tools that must be local; `molt` and `helm` are containers)
+- `kind` + `kubectl` — the optional Kubernetes exercise only (`molt` and `helm` are containers)
 - [`setup/provision_student_vm.sh`](../setup/provision_student_vm.sh) installs all of it
 
 ### Memory
@@ -143,7 +143,8 @@ tests/
 ├── lab15_test.sh                   # PostgreSQL migration
 ├── lab_cluster_test.sh             # the student path: compose files + scripts/crdb
 ├── crdb_wrappers_test.sh           # crdb.sh and crdb.bat must stay in step
-├── lab16_test.sh                   # Kubernetes operator on kind
+├── lab16_test.sh                   # on-call incident drill (scripts/incident)
+├── optional_k8s_test.sh            # Kubernetes operator on kind (optional, INCLUDE_OPTIONAL=1)
 └── scratch/                        # per-run temp data (auto-cleaned)
 ```
 
@@ -169,7 +170,7 @@ jobs:
 ```
 
 `ubuntu-latest` ships Docker, `psql`, and `python3`; add `psycopg2` and
-`kind`/`kubectl` steps if you want Labs 14 and 16 to run rather than skip. For
+`kind`/`kubectl` steps if you want Lab 14 and the optional Kubernetes exercise to run rather than skip. For
 GitLab, CircleCI, or Jenkins the shape is identical: check out, then run the
 scripts.
 

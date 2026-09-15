@@ -1,4 +1,10 @@
-# Lab 16: Deploy CockroachDB on Kubernetes with `cockroach-operator` and kind (70 min)
+# Optional Exercise: Deploy CockroachDB on Kubernetes with `cockroach-operator` and kind (70 min)
+
+> **Optional — not part of the four-day schedule.** Lab 16 is the on-call drill
+> ([lab16_oncall_incidents.md](lab16_oncall_incidents.md)). This exercise is kept for teams
+> that run Kubernetes; it needs `kind` and `kubectl` installed locally and ~7.6 GB of Docker
+> memory, and the lab cluster must be down first (`scripts/crdb down`). Its test is
+> `tests/optional_k8s_test.sh`, run on request (`INCLUDE_OPTIONAL=1 tests/run_all.sh`).
 
 ## Learning Objectives
 
@@ -374,7 +380,7 @@ These parts are not required to complete the lab; they extend it by about 10 min
 kind delete cluster --name lab16
 ```
 
-## Lab 16 Deliverables
+## Deliverables
 
 ✅ **4-node kind cluster** with zone labels, operator installed
 ✅ **3-node CockroachDB** deployed via the CRD with TLS and topology spread

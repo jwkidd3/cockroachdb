@@ -308,9 +308,9 @@
                     <span class="crdb-logo">🪳 Distributed SQL</span> — in the shape of a real system
                 </p>
                 <p style="margin-top: 1em; opacity: 0.9;">
-                    CDC · Application Patterns · Migration · Kubernetes · Cost
+                    CDC · Application Patterns · Migration · On Call · Cost
                 </p>
-            <aside class="notes"><p>Day 4 is application integration and platform: CDC, outbox and idempotency, migrating from PostgreSQL, Kubernetes. Kubernetes is deliberately last — Lab 16 replaces the Docker cluster with a kind cluster and is the only lab that should follow nothing.</p><p>Confirm nobody still has <code>CRDB_COMPOSE</code> exported from Lab 12. Lab 13 needs the default stack up <em>before</em> Kafka is started.</p></aside>
+            <aside class="notes"><p>Day 4 is application integration, then the drill: CDC, outbox and idempotency, migrating from PostgreSQL, and finally Lab 16 — four incidents on the lab cluster, worked with everything from Days 1–3. Kubernetes is not in this customer's environment; the operator material lives in the appendix and an optional exercise.</p><p>Confirm nobody still has <code>CRDB_COMPOSE</code> exported from Lab 12. Lab 13 needs the default stack up <em>before</em> Kafka is started.</p></aside>
             </section>
 
             <!-- Day 4 Schedule -->
@@ -327,8 +327,8 @@
                 <div class="agenda-item">🧪 <strong>Lab 14</strong> — Outbox pattern + idempotent retry loop <em>(75 min)</em></div>
                 <div class="agenda-item">3. Schema Migrations, CI/CD &amp; Migrating from PostgreSQL</div>
                 <div class="agenda-item">🧪 <strong>Lab 15</strong> — Migrate a PostgreSQL schema and live data with MOLT <em>(90 min)</em></div>
-                <div class="agenda-item">4. Kubernetes Deployment</div>
-                <div class="agenda-item">🧪 <strong>Lab 16</strong> — cockroach-operator on kind <em>(90 min)</em></div>
+                <div class="agenda-item">4. On Call — Working an Incident</div>
+                <div class="agenda-item">🧪 <strong>Lab 16</strong> — Four incidents, one cluster <em>(70 min)</em></div>
                 <div class="agenda-item">5. Advanced Features Survey · Cost &amp; Deployment Models · Course Wrap</div>
             
                     <aside class="notes"><p><strong>Six-hour day.</strong> About 45 minutes of lecture in total across the sections, four labs of 55–70 minutes each (the core parts only), and two 15-minute breaks. That leaves roughly 20–30 minutes of buffer. Each lab ends with an <em>Optional — If Time Allows</em> section and this deck ends with an <em>Appendix — If Time Allows</em> stack; use them only if ahead. Teaching content always precedes its lab callout, so run the lab as soon as its section is done rather than batching labs at the end.</p></aside>
@@ -880,80 +880,72 @@ molt verify --source "$PG" --target "$CRDB"</code></pre>
             </section>
 
             <!-- ============================================================ -->
-            <!-- Section 4: Kubernetes -->
+            <!-- Section 4: On call -->
             <!-- ============================================================ -->
             <section>
                 <section class="section-title">
-                    <h2>☸️ Section 4: Kubernetes Deployment</h2>
-                    <p>Stateful, and the state matters</p>
-                <aside class="notes"><p>Two slides, about 6 minutes — the mapping from Kubernetes objects to CockroachDB concepts, and the two mistakes that cause outages: pod anti-affinity missing (three replicas on one node) and a PodDisruptionBudget that allows more than one node down at once. Operator vs Helm vs manual is in the appendix and in optional Lab 16 Part E.</p><p>Lab 16 is the last item of the course. Say that before starting it: nothing follows, so a slow kind bring-up is not a schedule problem.</p></aside>
+                    <h2>🚨 Section 4: On Call — Working an Incident</h2>
+                    <p>Nothing new. Everything you learned, under a pager.</p>
+                <aside class="notes"><p>Two slides, about 8 minutes, then the last lab of the course. The section introduces no new feature: it gives students a fixed order of operations for a page and names the four failure signatures the drill will throw at them. Every incident in Lab 16 is a Day 1–3 lesson happening to someone who skipped it.</p><p>Say plainly that Lab 16 is a drill: <code>scripts/incident start N</code> breaks the cluster in a specific way and tells them nothing; the lab gives them the page; they diagnose, fix, verify. The point is recall under mild pressure, and the deliverable is their incident log with time-to-diagnose written honestly.</p></aside>
                 </section>
 
                 <section>
-                    <h3>Kubernetes Object → CockroachDB Concept</h3>
-                    <table style="font-size: 0.68em;">
-                        <tr><th>Object</th><th>Role</th></tr>
-                        <tr><td>StatefulSet</td><td>Stable identities (<code>crdb-0</code>, <code>crdb-1</code>…) — a node's identity must survive restarts</td></tr>
-                        <tr><td>Headless service</td><td>Peer discovery for <code>--join</code></td></tr>
-                        <tr><td>Public service</td><td>Client entry point</td></tr>
-                        <tr><td>PVC per pod</td><td>The store. <strong>Deleting it deletes that node's data</strong></td></tr>
-                        <tr><td>PodDisruptionBudget</td><td>Stops <code>kubectl drain</code> from taking quorum with it</td></tr>
-                        <tr><td>topologySpreadConstraints</td><td>Keeps replicas out of the same failure domain</td></tr>
+                    <h3>The Order of Operations</h3>
+                    <p class="small-text">Work every page in this order. Skipping ahead is how an hour goes to the wrong hypothesis.</p>
+                    <table style="font-size: 0.62em;">
+                        <tr><th></th><th>Question</th><th>Where to look</th></tr>
+                        <tr><td>1</td><td><strong>Is the cluster healthy?</strong></td><td>Console <em>Overview</em>: live nodes, unavailable / under-replicated ranges, CPU per node</td></tr>
+                        <tr><td>2</td><td><strong>Is it one statement?</strong></td><td><em>SQL Activity → Statements</em> by latency; <em>Insights</em></td></tr>
+                        <tr><td>3</td><td><strong>Is it one range?</strong></td><td><em>Hot Ranges</em>; <code>SHOW RANGES … WITH DETAILS</code></td></tr>
+                        <tr><td>4</td><td><strong>Is something waiting?</strong></td><td><em>Transactions</em> (contention); <code>transaction_contention_events</code>; <em>Jobs</em></td></tr>
+                        <tr><td>5</td><td><strong>Is something growing?</strong></td><td><em>Storage</em>; range size vs live data; <code>kv_protected_ts_records</code></td></tr>
                     </table>
-                    <pre class="fragment" style="font-size:0.85em;"><code class="language-bash">kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"nodes":5}}'
-kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"cockroachDBVersion":"v23.2.6"}}'</code></pre>
+                    <div class="info-box fragment">
+                        <p class="small-text"><strong>Healthy cluster + uneven CPU</strong> → the <em>work</em> is uneven (step 3).
+                        <strong>Healthy cluster + low CPU + high latency</strong> → requests are <em>waiting</em>, not working (step 4).</p>
+                    </div>
                 
-                    <aside class="notes"><p>StatefulSet gives stable pod identity, which is what a Raft member needs; a PVC per pod is a store; a headless Service is the join list; topology spread constraints are locality. The operator wraps all of it in a CrdbCluster resource.</p><p>Lab 16 builds it on kind — four Kubernetes nodes in containers, then three CockroachDB pods across them. The operator's admission webhook takes a moment after the deployment reports ready; applying the CrdbCluster in that gap fails with connection refused, and the lab now waits for endpoints.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>store</strong> — one disk on a node; capacity, storage-engine and queue metrics belong to stores (<code>kv_store_status</code>, not <code>kv_node_status</code>). <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs. <strong>PVC</strong> — persistent volume claim: a pod's durable disk, one per CockroachDB pod, equal to a store.</p></aside>
+                    <aside class="notes"><p>The order is by cost of being wrong. Step 1 rules out the outage class in thirty seconds — if a range is unavailable nothing else matters. Step 2 asks whether the pain has a name; Statements sorted by latency or execution count usually gives it one. Step 3 asks whether the pain has an address — one range on one leaseholder is the hot-range signature from Day 1 and Lab 8. Step 4 is for the case where CPU is low and latency is high: nobody is working, everybody is queued — contention, or a job. Step 5 is the slow-burn class: storage, GC, protected timestamps.</p><p>The two rules in the box are the ones that save the most time. Uneven CPU on a healthy cluster is a placement or key problem, never a hardware one. Low CPU with high latency is a wait, and the database can tell you who is waiting on whom.</p><p><strong>Terms:</strong> <strong>Hot Ranges</strong> — the Console page (and <code>/_status/v2/hotranges</code>) listing ranges by QPS, writes and CPU with their leaseholder; there is no SQL view for it. <strong>contention</strong> — transactions touching the same rows at overlapping times; surfaces as waits or retryable errors. <strong>protected timestamp</strong> — a record (owned by a backup, changefeed or import job) that stops garbage collection of MVCC versions newer than it; visible in <code>crdb_internal.kv_protected_ts_records</code>.</p></aside>
                 </section>
 
                 <section>
-                    <h3>The Two Mistakes That Cause Outages</h3>
-                    <div class="warning-box">
-                        <h4>1. No <code>--locality</code></h4>
-                        <p class="small-text">Kubernetes knows the pods are in three zones. <strong>CockroachDB does not</strong>,
-                        unless you tell it. Without <code>--locality</code>, the allocator can put all three
-                        replicas of a range in one zone — and you find out when that zone fails.</p>
-                    </div>
+                    <h3>Four Signatures You Will Meet Today</h3>
+                    <table style="font-size: 0.6em;">
+                        <tr><th>Page says</th><th>Signature</th><th>Root cause</th><th>Fix lives in</th></tr>
+                        <tr><td>Slow ingest, one node pegged</td><td>One range, one leaseholder, all the writes</td><td>Sequential key (Lab 3)</td><td>DDL — <code>ALTER PRIMARY KEY … USING HASH</code>, online</td></tr>
+                        <tr><td>Slow page, database idle</td><td>Contention events on one key; no 40001s</td><td>Single-row counter (Lab 8)</td><td>The application — a deploy</td></tr>
+                        <tr><td>Replication report red</td><td><code>replication_constraint_stats</code> violating; node healthy</td><td>Locality typo (Day 2)</td><td>The runbook the node was built from</td></tr>
+                        <tr><td>Disk filling, table tiny</td><td>Range size ≫ live data; a paused job</td><td>Protected timestamp (Day 4)</td><td>A job command — cancel or resume</td></tr>
+                    </table>
                     <div class="warning-box fragment">
-                        <h4>2. Scaling down before decommissioning</h4>
-                        <pre style="font-size:0.7em;"><code class="language-bash"># WRONG: removes the pod, replicas go offline instantly
-kubectl patch crdbcluster crdb -p '{"spec":{"nodes":3}}'
-
-# RIGHT: move replicas off while the node still serves, THEN remove it
-kubectl exec cockroachdb-client-secure -- ./cockroach node decommission 5 \
-  --wait=all --certs-dir=/cockroach/cockroach-certs --host=crdb-public
-kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
+                        <p class="small-text">Two of the four cannot be fixed from inside the database. Part of on-call is proving <em>where</em> the time goes so the right team fixes the right thing — contention that never produces an error is the hardest kind to get anyone to believe.</p>
                     </div>
-                    <p class="fragment small-text">Decommission is slower <em>because</em> it is correct.</p>
                 
-                    <aside class="notes"><p>One: no locality, so the scheduler puts all three replicas of a range on nodes in the same zone. Two: scaling the StatefulSet down before decommissioning, which deletes a pod and its replicas instantly instead of draining them.</p><p>Decommission first, then scale. In Lab 16 that is cockroach node decommission run from the client pod against crdb-public, then the patch. Slower because it is correct.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
+                    <aside class="notes"><p>Do not walk through the fixes in detail — the lab does, after they have found each one. Use the slide to set expectations: each row is a Day 1–3 lesson, and the fix column is deliberately spread across DDL, application code, an ops runbook and a job command, because deciding <em>which</em> of those it is is most of the job.</p><p>Row two is the one to dwell on for a moment. Single-statement transactions are retried server-side, so a contended counter produces queueing and latency, never an error; the web team will insist "the database is slow" and the database will show low CPU. <code>crdb_internal.transaction_contention_events</code> is the proof. Row three: the refused case (a constraint no node matches) is friendly; the accepted case (a node whose locality stops matching later) is silent, and <code>system.replication_constraint_stats</code> is the only place it shows. Row four: a paused changefeed is not free — its protected timestamp holds every MVCC version written since it paused.</p><p>Part E, optional, is the one the platform team will care about: a rolling restart under load, and the discovery that whether the application notices is decided by its connection string, not by the database.</p><p><strong>Terms:</strong> <strong>hash-sharded index</strong> — an index whose key is prefixed by a hidden <code>hash(key) mod N</code> column so sequential keys spread across N ranges; <code>USING HASH WITH (bucket_count = N)</code>, changeable online with <code>ALTER PRIMARY KEY</code>. <strong>zone configuration</strong> — per-database/table/index/partition settings for replica count, constraints and lease preferences, consumed by the allocator. <strong>protected timestamp</strong> — a job-owned record that stops GC of MVCC versions newer than it. <strong>rolling restart</strong> — restarting nodes one at a time, waiting for each to rejoin; the procedure for patch upgrades, and the first phase of a major upgrade before the cluster version is finalised.</p></aside>
                 </section>
-
-                
 
                 <!-- Lab 16 -->
                 <section class="lab-slide" data-background-color="#1A3A5C">
-                    <h3>🧪 Lab 16: CockroachDB on Kubernetes with kind<span class="lab-duration">⏱ 70 min</span></h3>
+                    <h3>🧪 Lab 16: On Call — Four Incidents, One Cluster<span class="lab-duration">⏱ 70 min</span></h3>
 
                     <div class="objectives">
                         <h4>Objectives</h4>
                         <ul>
-                            <li>Deploy via the operator with TLS and topology spread</li>
-                            <li>Scale out and roll a version upgrade under live load</li>
-                            <li>Kill a pod and a node; watch identity and PVC reattachment</li>
-                            <li>Decommission in the correct order</li>
-                            <li>Compare operator / Helm / manual with reasons</li>
+                            <li>Work four pages in the fixed order — health, statement, range, waits, storage</li>
+                            <li>Find a hot range, a contended row, an unmet placement constraint, a pinned GC</li>
+                            <li>Fix each where it belongs: DDL, a deploy, a runbook, a job command — and verify</li>
+                            <li>Optional: a rolling restart under load, with and without a multi-host connection string</li>
                         </ul>
                     </div>
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">kind create cluster --name lab16 --config kind-config.yaml  # 3 zoned workers
-kubectl apply -f .../install/crds.yaml
-kubectl apply -f .../install/operator.yaml
-kubectl apply -f crdb.yaml</code></pre>
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up
+scripts/incident start 1      # breaks the cluster; tells you nothing
+cat /tmp/oncall/1/loop.sh     # the "application" — readable, editable
+scripts/incident stop 1       # when you have fixed it</code></pre>
                     </div>
-                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb down</code> first — non-negotiable; kind runs a multi-node Kubernetes cluster in Docker and needs the memory. <code>kind create cluster --name lab16 --config kind-config.yaml</code> takes two to four minutes; images were pre-pulled by the provisioning script. <strong>Core: Parts A–D, 70 min.</strong> Part E (operator vs Helm vs manual) is optional.</p><p><strong>Where students get stuck:</strong> Part A — after <code>operator.yaml</code> is applied, the mutating webhook is not immediately reachable; applying a <code>CrdbCluster</code> in that gap fails with <em>connection refused</em>. The lab applies the CrdbCluster in an <code>until kubectl apply …</code> loop for exactly that reason — a few refusals before it is accepted are normal, not a problem. Part B: <code>kubectl get pods -w</code> until all three are Running; that can take a couple of minutes on the class VMs. Part C's rolling upgrade proceeds one pod at a time — that is the demonstration, not a delay. Part D: deleting a pod and watching it rejoin is the whole point; a student whose pod does not return usually has a PVC left in a bad state — <code>kubectl describe pod</code>.</p><p><strong>Debrief and close:</strong> map what they just saw back to Day 1 — pods are nodes, PVCs are stores, the StatefulSet ordinal is the node's identity. Cleanup: <code>kind delete cluster --name lab16</code>.</p></aside>
+                <aside class="notes"><p><strong>Setup:</strong> the normal compose cluster, nothing else — no <code>crdb down</code> beforehand, no extra memory. <code>scripts/incident start N</code> creates the incident's tables and starts a detached "application" container that runs <code>/tmp/oncall/N/loop.sh</code> forever; the students can read that file (it is the app's code) and edit it (that is a deploy — the container picks the change up on its next loop). <strong>Core: Parts A–D, about 12–14 minutes each.</strong> Part E (rolling restart, 15 min) is optional and needs the <code>v23.2.6</code> image, pre-pulled by provisioning.</p><p><strong>How to run it:</strong> read the page aloud, start the clock, and do not help for the first five minutes of each incident. Then nudge with the order-of-operations slide, not with the answer. Debrief each incident for two minutes before the next: first signal seen, root cause, why the fix lives where it lives.</p><p><strong>Where students get stuck:</strong> Incident 1 — they look for a slow query instead of a hot range; the plan is trivial, the address is the problem. Incident 2 — they look for 40001s and find none; point them at <em>Transactions</em> sorted by contention or the <code>transaction_contention_events</code> query. Incident 3 — the report refreshes about once a minute, so after the fix they must wait; the lease moves first, the report clears second. Incident 4 — the reclaim is slow by design (protected-timestamp cache polls every two minutes, then GC); the immediate verification is that the protected record is gone and the size stops climbing; the sawtooth follows within three minutes. <code>kv_enqueue_replica</code> nudges the GC queue. Incident 5 — the errors appear only when the node the app is pinned to restarts; that is the point.</p><p><strong>Close of the course:</strong> ask each pair for the incident they diagnosed fastest and the one that took longest, and what the first signal was in each. Cleanup: <code>scripts/incident stop all</code>, then <code>scripts/crdb down</code>.</p></aside>
                 </section>
             </section>
 
@@ -963,7 +955,7 @@ kubectl apply -f crdb.yaml</code></pre>
             <section>
                 <section class="section-title">
                     <h2>🧭 Section 5: Advanced Features, Cost &amp; Wrap-Up</h2>
-                <aside class="notes"><p>Three slides, about 8 minutes, and they come <em>before</em> Lab 16, not after — once kind is up nobody should be looking at a slide. The anti-pattern checklist is the deliverable of the course: every item on it maps to a lab where they saw the failure. “Four Days, One Idea” is the close; “Where to Go Next” is the pointers.</p><p>The advanced-features survey, deployment models and cost, and the driver/ORM landscape are in the appendix; if a student asks about serverless pricing or an ORM, that is where the answer is.</p></aside>
+                <aside class="notes"><p>Three slides, about 8 minutes, and they come <em>before</em> Lab 16, not after — the drill is the close of the course and nothing should follow it. The anti-pattern checklist is the deliverable of the course: every item on it maps to a lab where they saw the failure. “Four Days, One Idea” is the close; “Where to Go Next” is the pointers.</p><p>The advanced-features survey, deployment models and cost, and the driver/ORM landscape are in the appendix; if a student asks about serverless pricing or an ORM, that is where the answer is.</p></aside>
                 </section>
 
                 
@@ -999,7 +991,7 @@ kubectl apply -f crdb.yaml</code></pre>
                             <li><strong>Day 1</strong> — the primary key is a distribution decision, not a uniqueness decision</li>
                             <li><strong>Day 2</strong> — contention, plans, and throughput all trace back to that decision</li>
                             <li><strong>Day 3</strong> — so do your metrics, your node count, and your hardware bill</li>
-                            <li><strong>Day 4</strong> — and your integration patterns, your migration, and your Kubernetes topology</li>
+                            <li><strong>Day 4</strong> — and your integration patterns, your migration, and every page you will ever get</li>
                         </ul>
                     </div>
                     <p class="fragment"><strong>Take home:</strong> the
@@ -1039,7 +1031,7 @@ kubectl apply -f crdb.yaml</code></pre>
                     <section class="section-title">
                         <h2>📎 Appendix — If Time Allows</h2>
                         <p>Deep-dive slides, in teaching order. Not needed to follow the labs.</p>
-                    <aside class="notes"><p>Only if ahead, and on Day 4 that means only before Lab 16, never after. Four slides: driver and ORM landscape (which PostgreSQL drivers and ORMs work unchanged), advanced features survey (row-level TTL, spatial, full-text, multi-tenancy), deployment models and cost (self-hosted vs dedicated vs serverless), and operator vs Helm vs manual (pairs with optional Lab 16 Part E). The ORM slide gets the most questions.</p></aside>
+                    <aside class="notes"><p>Only if ahead, and on Day 4 that means only before Lab 16, never after. Six slides — the two Kubernetes slides are here now, for the optional exercise, plus: driver and ORM landscape (which PostgreSQL drivers and ORMs work unchanged), advanced features survey (row-level TTL, spatial, full-text, multi-tenancy), deployment models and cost (self-hosted vs dedicated vs serverless), and operator vs Helm vs manual (pairs with optional Lab 16 Part E). The ORM slide gets the most questions.</p></aside>
                     </section>
                     <section>
                     <h3>Driver &amp; ORM Landscape</h3>
@@ -1095,6 +1087,48 @@ kubectl apply -f crdb.yaml</code></pre>
                 
                     <aside class="notes"><p>Self-hosted (this course), dedicated cloud, serverless. The trade is control versus operations: self-hosted means you run the allocator's hardware; serverless means you pay per request and give up locality control.</p><p>The cost point that connects to Day 3: write amplification and replication mean storage is three times the data and IOPS are ten times the writes, on every model. Size from the formula, not the raw data volume.</p><p><strong>Terms:</strong> <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed).</p></aside>
                 </section>
+                <section>
+                    <h3>Kubernetes Object → CockroachDB Concept <span class="small-text" style="opacity:.7">(optional exercise)</span></h3>
+                    <table style="font-size: 0.68em;">
+                        <tr><th>Object</th><th>Role</th></tr>
+                        <tr><td>StatefulSet</td><td>Stable identities (<code>crdb-0</code>, <code>crdb-1</code>…) — a node's identity must survive restarts</td></tr>
+                        <tr><td>Headless service</td><td>Peer discovery for <code>--join</code></td></tr>
+                        <tr><td>Public service</td><td>Client entry point</td></tr>
+                        <tr><td>PVC per pod</td><td>The store. <strong>Deleting it deletes that node's data</strong></td></tr>
+                        <tr><td>PodDisruptionBudget</td><td>Stops <code>kubectl drain</code> from taking quorum with it</td></tr>
+                        <tr><td>topologySpreadConstraints</td><td>Keeps replicas out of the same failure domain</td></tr>
+                    </table>
+                    <pre class="fragment" style="font-size:0.85em;"><code class="language-bash">kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"nodes":5}}'
+kubectl patch crdbcluster crdb --type=merge -p '{"spec":{"cockroachDBVersion":"v23.2.6"}}'</code></pre>
+                
+                    <aside class="notes"><p>StatefulSet gives stable pod identity, which is what a Raft member needs; a PVC per pod is a store; a headless Service is the join list; topology spread constraints are locality. The operator wraps all of it in a CrdbCluster resource.</p><p>This is appendix material: the customer does not run Kubernetes, and Lab 16 is the on-call drill. The optional exercise <code>labs/optional_kubernetes_operator.md</code> builds it on kind for anyone who wants it — four Kubernetes nodes in containers, then three CockroachDB pods across them.</p><p><strong>Terms:</strong> <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>store</strong> — one disk on a node; capacity, storage-engine and queue metrics belong to stores (<code>kv_store_status</code>, not <code>kv_node_status</code>). <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs. <strong>PVC</strong> — persistent volume claim: a pod's durable disk, one per CockroachDB pod, equal to a store.</p></aside>
+                </section>
+
+                <section>
+                    <h3>The Two Mistakes That Cause Outages</h3>
+                    <div class="warning-box">
+                        <h4>1. No <code>--locality</code></h4>
+                        <p class="small-text">Kubernetes knows the pods are in three zones. <strong>CockroachDB does not</strong>,
+                        unless you tell it. Without <code>--locality</code>, the allocator can put all three
+                        replicas of a range in one zone — and you find out when that zone fails.</p>
+                    </div>
+                    <div class="warning-box fragment">
+                        <h4>2. Scaling down before decommissioning</h4>
+                        <pre style="font-size:0.7em;"><code class="language-bash"># WRONG: removes the pod, replicas go offline instantly
+kubectl patch crdbcluster crdb -p '{"spec":{"nodes":3}}'
+
+# RIGHT: move replicas off while the node still serves, THEN remove it
+kubectl exec cockroachdb-client-secure -- ./cockroach node decommission 5 \
+  --wait=all --certs-dir=/cockroach/cockroach-certs --host=crdb-public
+kubectl patch crdbcluster crdb -p '{"spec":{"nodes":4}}'</code></pre>
+                    </div>
+                    <p class="fragment small-text">Decommission is slower <em>because</em> it is correct.</p>
+                
+                    <aside class="notes"><p>One: no locality, so the scheduler puts all three replicas of a range on nodes in the same zone. Two: scaling the StatefulSet down before decommissioning, which deletes a pod and its replicas instantly instead of draining them.</p><p>Decommission first, then scale. The same rule appeared in Lab 1 (three nodes cannot shrink to two) and Lab 16 Part E restarts nodes one at a time for the same reason. Slower because it is correct.</p><p><strong>Terms:</strong> <strong>range</strong> — a contiguous slice of the sorted key space (~512 MiB) and the unit of replication, rebalancing, splitting and merging. <strong>replica</strong> — one copy of a range on one store; three per range by default. <strong>allocator</strong> — the loop on every node that adds, removes and moves replicas and leases to satisfy zone configs, liveness, capacity, load and diversity. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains.</p></aside>
+                </section>
+
+                
+
                     <section>
                     <h3>Operator vs Helm vs Manual</h3>
                     <table style="font-size: 0.65em;">
@@ -1116,7 +1150,7 @@ kubectl apply -f crdb.yaml</code></pre>
                         </ul>
                     </div>
                 
-                    <aside class="notes"><p>The operator handles certs, rolling upgrades, scaling, and decommission ordering. Helm gives you a chart and leaves the ordering to you. Manual manifests give you everything and protect you from nothing. Lab 16 uses the operator and compares against the Helm chart's values — helm runs as a container, alpine/helm, with its config directories mounted so repo add persists between commands.</p><p>Recommendation: operator unless there is a specific reason. The two mistakes on the previous slide are exactly what it prevents.</p><p><strong>Terms:</strong> <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>operator</strong> — the Kubernetes controller that turns a <code>CrdbCluster</code> resource into a correctly ordered StatefulSet. <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs.</p></aside>
+                    <aside class="notes"><p>The operator handles certs, rolling upgrades, scaling, and decommission ordering. Helm gives you a chart and leaves the ordering to you. Manual manifests give you everything and protect you from nothing. The optional Kubernetes exercise uses the operator and compares against the Helm chart's values — helm runs as a container, alpine/helm, with its config directories mounted so repo add persists between commands.</p><p>Recommendation: operator unless there is a specific reason. The two mistakes on the previous slide are exactly what it prevents.</p><p><strong>Terms:</strong> <strong>quorum</strong> — a majority of a range's replicas (2 of 3, 3 of 5); needed to commit a write, and to serve at all. <strong>decommission</strong> — online removal of a node: replicas are moved off while it keeps serving; refused when there is nowhere to move them. <strong>locality</strong> — the <code>--locality</code> startup flag (<code>region=…,zone=…</code>) the allocator uses to spread replicas across failure domains. <strong>backup: full / incremental / revision_history</strong> — full captures every row at one time; incremental captures changes since the last; <code>revision_history</code> keeps every version for point-in-time restore (licensed). <strong>operator</strong> — the Kubernetes controller that turns a <code>CrdbCluster</code> resource into a correctly ordered StatefulSet. <strong>StatefulSet</strong> — the Kubernetes workload with stable pod identity and one PVC per pod — what a Raft member needs.</p></aside>
                 </section>
                 </section>
         </div>

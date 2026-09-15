@@ -5,7 +5,7 @@
 #
 # Target: Ubuntu 22.04 / 24.04 LTS, 4-8 vCPU / 12 GB RAM / 100 GB SSD.
 # 12 GB is enough for every lab, but not for two heavy stacks at once:
-# stop the compose cluster before Lab 7 (9-node demo) or Lab 16 (kind).
+# stop the compose cluster before Lab 7 (9-node demo) or Lab 10 (TPC-C).
 # Idempotent — safe to re-run.
 
 set -euo pipefail
@@ -114,7 +114,7 @@ pip3 install $PIP_FLAGS --break-system-packages \
 
 # MOLT, helm and Go are NOT installed locally:
 #   molt  -> cockroachdb/molt image  (Lab 15)
-#   helm  -> alpine/helm image       (Lab 16 Part E)
+#   helm  -> alpine/helm image       (optional Kubernetes exercise)
 #   go    -> not needed; the Go in Lab 14 and Day 4 is illustrative snippets
 # Both images are pre-pulled below.
 
@@ -161,6 +161,7 @@ for img in \
     "postgres:16" \
     "$KIND_NODE_IMAGE" \
     "cockroachdb/cockroach:${CRDB_VERSION}" \
+    "cockroachdb/cockroach:v23.2.6" \
     "cockroachdb/molt:latest" \
     "alpine/helm:latest" ; do
     log "  pulling $img"
