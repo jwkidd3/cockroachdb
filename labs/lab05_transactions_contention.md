@@ -31,10 +31,10 @@ scripts/crdb sql         # open a SQL shell
 > the right one there. Only a native Windows shell (`cmd` or PowerShell) needs
 > `scripts\crdb.bat`.
 
-Capture the connection URL from the demo banner:
+Set the connection URL the scripts in Part B use — note the `/bank` database:
 
 ```bash
-export CRDB_URL='postgresql://root@localhost:26257/?sslmode=disable'
+export CRDB_URL='postgresql://root@localhost:26257/bank?sslmode=disable'
 ```
 
 Open a second terminal and connect:
@@ -150,7 +150,7 @@ We'll write a contended UPDATE on the same row from two sessions and force a ser
    MAX=5
    FROM="$1" TO="$2" AMT="$3"
    for n in $(seq 1 $MAX); do
-     if scripts/crdb sql --execute "
+     if scripts/crdb sql -d bank --execute "
        BEGIN;
        UPDATE accounts SET balance = balance - $AMT WHERE name = '$FROM';
        UPDATE accounts SET balance = balance + $AMT WHERE name = '$TO';
