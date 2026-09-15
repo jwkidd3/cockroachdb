@@ -116,6 +116,7 @@ psql "$PG" -c "SELECT count(*) FROM customers; SELECT count(*) FROM orders; SELE
 scripts/crdb sql -e "CREATE DATABASE target;"
 export CRDB='postgresql://root@localhost:26257/target?sslmode=disable'        # from your machine
 export CRDB_NET='postgresql://root@crdb1:26257/target?sslmode=disable'        # from inside a container
+export STAGE_NET='postgresql://root@crdb1:26257/stage?sslmode=disable'        # Part C's staging database
 ```
 
 The SQL blocks below assume a shell open **in the `target` database**:
@@ -212,71 +213,85 @@ cutover means another migration; changing it now costs nothing.
 
 ### Part C: Move the Data with MOLT Fetch (20 min)
 
-1. **With MOLT Fetch:**
+The primary keys changed, so this is a *transformation*, not a copy — which is why Part B kept
+`legacy_id`. The move is therefore two steps: land the legacy tables **as they are** in a
+staging database, then transform them into the new key space with SQL.
+
+1. **Land the legacy tables with MOLT Fetch.** It creates the staging tables itself
+   (`--table-handling drop-on-target-and-recreate`), with the source's column types:
    ```bash
+   scripts/crdb sql -e "CREATE DATABASE stage;"
+
    molt fetch \
      --source "$PG_NET" \
-     --target "$CRDB_NET" \
+     --target "$STAGE_NET" \
      --table-filter 'customers|orders|order_events' \
+     --table-handling drop-on-target-and-recreate \
      --allow-tls-mode-disable \
      --direct-copy
    ```
+   The warnings about "stats based sharding" are expected on a small table.
 
    | Flag | Purpose |
    | --- | --- |
    | `--direct-copy` | Stream via `COPY`, no intermediate object store |
+   | `--table-handling drop-on-target-and-recreate` | Let MOLT create the target tables from the source schema |
    | `--bucket-path s3://…` | Stage as CSV in object storage for `IMPORT INTO` (faster for large data) |
    | `--allow-tls-mode-disable` | Required because the lab cluster is `--insecure` |
    | `--table-filter` | Regex of tables to move |
-   | `--cleanup` | Remove intermediate files when done |
 
-2. **Without MOLT (the portable path).** Because the primary keys changed, this is a
-   *transformation*, not a copy — which is exactly why we kept `legacy_id`:
+   ```bash
+   scripts/crdb sql -d stage -e "SELECT count(*) FROM customers; SELECT count(*) FROM orders; SELECT count(*) FROM order_events;"
+   ```
+
+2. **Without MOLT (the portable path)** — same result via CSV, if you would rather see every
+   step. Skip this if step 1 worked.
    ```bash
    psql "$PG" -c "\copy (SELECT id, tenant_id, email, name, created_at FROM customers) TO '/tmp/lab15/customers.csv' CSV"
    psql "$PG" -c "\copy (SELECT id, customer_id, tenant_id, total, status, metadata::text, created_at FROM orders) TO '/tmp/lab15/orders.csv' CSV"
    psql "$PG" -c "\copy (SELECT id, order_id, event_type, occurred_at FROM order_events) TO '/tmp/lab15/order_events.csv' CSV"
    ```
    ```bash
-   scripts/crdb sql -d target <<'SQL'
-   CREATE TABLE stage_customers (legacy_id INT PRIMARY KEY, tenant_id INT, email STRING, name STRING, created_at TIMESTAMPTZ);
-   CREATE TABLE stage_orders (legacy_id INT PRIMARY KEY, customer_legacy INT, tenant_id INT, total DECIMAL(12,2), status STRING, metadata JSONB, created_at TIMESTAMPTZ);
-   CREATE TABLE stage_events (legacy_id INT PRIMARY KEY, order_legacy INT, event_type STRING, occurred_at TIMESTAMPTZ);
+   scripts/crdb sql -d stage <<'SQL'
+   CREATE TABLE customers (id INT PRIMARY KEY, tenant_id INT, email STRING, name STRING, created_at TIMESTAMPTZ);
+   CREATE TABLE orders (id INT PRIMARY KEY, customer_id INT, tenant_id INT, total DECIMAL(12,2), status STRING, metadata JSONB, created_at TIMESTAMPTZ);
+   CREATE TABLE order_events (id INT PRIMARY KEY, order_id INT, event_type STRING, occurred_at TIMESTAMPTZ);
    SQL
 
    # The CSVs are on your machine; the node is in a container and cannot see
    # them. Copy each one in, then stage it in the cluster's userfile store.
-   for t in customers orders events; do
-     scripts/crdb cp /tmp/lab15/${t/events/order_events}.csv crdb1:/tmp/$t.csv
+   for t in customers orders order_events; do
+     scripts/crdb cp /tmp/lab15/$t.csv crdb1:/tmp/$t.csv
      scripts/crdb run userfile upload /tmp/$t.csv /lab15/$t.csv --insecure
    done
 
-   scripts/crdb sql -d target <<'SQL'
-   IMPORT INTO stage_customers CSV DATA ('userfile:///lab15/customers.csv');
-   IMPORT INTO stage_orders    CSV DATA ('userfile:///lab15/orders.csv');
-   IMPORT INTO stage_events    CSV DATA ('userfile:///lab15/events.csv');
+   scripts/crdb sql -d stage <<'SQL'
+   IMPORT INTO customers    CSV DATA ('userfile:///lab15/customers.csv');
+   IMPORT INTO orders       CSV DATA ('userfile:///lab15/orders.csv');
+   IMPORT INTO order_events CSV DATA ('userfile:///lab15/order_events.csv');
    SQL
    ```
 
-3. **Transform staging into the new key space:**
+3. **Transform staging into the new key space** (in your `target` shell):
    ```sql
    INSERT INTO customers (tenant_id, email, name, created_at, legacy_id)
-   SELECT tenant_id, email, name, created_at, legacy_id FROM stage_customers;
+   SELECT tenant_id, email, name, created_at, id FROM stage.customers;
 
    INSERT INTO orders (tenant_id, customer_id, total, status, metadata, created_at, legacy_id)
-   SELECT c.tenant_id, c.id, s.total, s.status, s.metadata, s.created_at, s.legacy_id
-   FROM stage_orders s JOIN customers c ON c.legacy_id = s.customer_legacy;
+   SELECT c.tenant_id, c.id, s.total, s.status, s.metadata, s.created_at, s.id
+   FROM stage.orders s JOIN customers c ON c.legacy_id = s.customer_id;
 
    INSERT INTO order_events (order_id, occurred_at, event_type, legacy_id)
-   SELECT o.id, s.occurred_at, s.event_type, s.legacy_id
-   FROM stage_events s JOIN orders o ON o.legacy_id = s.order_legacy;
+   SELECT o.id, s.occurred_at, s.event_type, s.id
+   FROM stage.order_events s JOIN orders o ON o.legacy_id = s.order_id;
    ```
 
-4. **Verify with MOLT Verify** — row counts *and* column-by-column comparison:
+4. **Verify — twice.** MOLT Verify compares tables of the same shape, so point it at the
+   staging copy; the transformed `target` tables are checked with counts and a business
+   checksum:
    ```bash
-   molt verify --source "$PG_NET" --target "$CRDB_NET" --allow-tls-mode-disable --table-filter 'customers|orders|order_events'
+   molt verify --source "$PG_NET" --target "$STAGE_NET" --allow-tls-mode-disable --table-filter 'customers|orders|order_events'
    ```
-   Portable fallback:
    ```bash
    for t in customers orders order_events; do
      echo -n "$t  pg="; psql "$PG" -tAc "SELECT count(*) FROM $t"
@@ -296,7 +311,7 @@ cutover means another migration; changing it now costs nothing.
    SELECT job_id, description, status FROM [SHOW JOBS]
    WHERE job_type IN ('SCHEMA CHANGE', 'NEW SCHEMA CHANGE') ORDER BY created DESC LIMIT 3;
 
-   DROP TABLE stage_customers, stage_orders, stage_events;
+   DROP DATABASE stage CASCADE;   -- the staging copy has done its job
    ```
    Time this step. FK validation is a full scan of both tables — on a real dataset it is a
    scheduled maintenance item, not an afterthought.

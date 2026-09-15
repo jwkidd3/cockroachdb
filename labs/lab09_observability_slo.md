@@ -18,8 +18,7 @@ By the end of this lab you will be able to:
 
 ## Setup — a Cluster That Emits Metrics
 
-`cockroach demo` picks random HTTP ports, which makes a static scrape config awkward. Use a
-real local cluster with fixed ports instead:
+The lab cluster publishes fixed ports, which is what a static scrape config needs:
 
 ```bash
 scripts/crdb up
@@ -92,8 +91,10 @@ docker run -d --name lab9-load --network crdb-labs_default \
 
 ### Part B: Prometheus (15 min)
 
-1. **Scrape config** — `/tmp/lab9/prometheus.yml`:
-   ```yaml
+1. **Scrape config** — written to `/tmp/lab9/prometheus.yml`:
+   ```bash
+   mkdir -p /tmp/lab9
+   cat > /tmp/lab9/prometheus.yml <<'YML'
    global:
      scrape_interval: 10s
      evaluation_interval: 10s
@@ -111,6 +112,7 @@ docker run -d --name lab9-load --network crdb-labs_default \
              - crdb3:8080
            labels:
              cluster: lab9
+   YML
    ```
 
    > **Scrape the nodes by their container names, on the cluster's own network.** Prometheus
@@ -120,8 +122,9 @@ docker run -d --name lab9-load --network crdb-labs_default \
    > Note the port: **8080 inside the container** for every node, not the published
    > 8080/8081/8082 you use from your browser.
 
-2. **Recording and alerting rules** — `/tmp/lab9/rules.yml`:
-   ```yaml
+2. **Recording and alerting rules** — written to `/tmp/lab9/rules.yml`:
+   ```bash
+   cat > /tmp/lab9/rules.yml <<'YML'
    groups:
      - name: crdb-slo
        interval: 10s
@@ -187,6 +190,7 @@ docker run -d --name lab9-load --network crdb-labs_default \
            expr: (capacity_available / clamp_min(capacity, 1)) < 0.2
            for: 10m
            labels: {severity: warning}
+   YML
    ```
 
 3. **Run Prometheus:**
@@ -276,10 +280,13 @@ audit trail.
    scripts/crdb run debug check-log-config
    ```
 
-2. **Write a channel-split config** — `lab9/logs.yaml` in the repo root
-   (`mkdir -p lab9` first, so the directory belongs to you rather than to Docker). The path is inside the container; the overlay mounts
-   `./lab9` there, so the logs land on your machine where you can read them:
-   ```yaml
+2. **Write a channel-split config** — `lab9/logs.yaml` in the repo root (the directory is
+   created by you, so it belongs to you rather than to Docker). The `dir:` path is inside the
+   container; the overlay mounts `./lab9` there, so the logs land on your machine where you can
+   read them:
+   ```bash
+   mkdir -p lab9
+   cat > lab9/logs.yaml <<'YML'
    file-defaults:
      dir: /lab9/logs
      max-file-size: 10MiB
@@ -307,6 +314,7 @@ audit trail.
    capture-stray-errors:
      enable: true
      dir: /lab9/logs/stray
+   YML
    ```
 
 3. **Restart node 1 with the config.** A compose *overlay* adds the

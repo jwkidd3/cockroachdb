@@ -61,7 +61,7 @@ Click through these tabs in order, noting what's empty vs populated when the clu
 6. **SQL Activity → Statements** — only the queries you have run since startup
 7. **SQL Activity → Sessions** — your active session
 8. **Jobs** — system internal only (auto-stats, etc.)
-9. **Hot Ranges** (Advanced Debug) — sorted by QPS, currently sleepy
+9. **Hot Ranges** (its own item in the left nav) — sorted by QPS, currently sleepy
 
 Write down the **node IDs**, **localities**, and the **default replication factor** before moving on. You'll reference them in Part D.
 

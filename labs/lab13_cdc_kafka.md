@@ -398,7 +398,7 @@ These parts are not required to complete the lab; they extend it by about 10 min
    FROM [SHOW CHANGEFEED JOBS] WHERE status = 'running';
    ```
    ```bash
-   curl -s http://localhost:8080/_status/vars | grep changefeed_max_behind_nanos
+   curl -s http://localhost:8080/_status/vars | grep -E 'changefeed_(max_behind_nanos|checkpoint_progress)' | grep -v '^#'
    ```
 
 2. **Kill the sink and watch the job react:**

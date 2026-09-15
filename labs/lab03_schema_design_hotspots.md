@@ -34,7 +34,7 @@ scripts/crdb sql         # open a SQL shell
 > the right one there. Only a native Windows shell (`cmd` or PowerShell) needs
 > `scripts\crdb.bat`.
 
-Note the Web UI URL. We'll watch the **Hot Ranges** page (under Advanced Debug → Hot Ranges) live during inserts.
+Note the Web UI URL. We'll watch the **Hot Ranges** page (its own item in the left nav) live during inserts.
 
 ```sql
 CREATE DATABASE hotspots;

@@ -24,7 +24,7 @@ By the end of this lab you will be able to:
 
 ## Setup
 
-Start a 3-node demo cluster. Three nodes is the minimum that makes distribution visible.
+The 3-node lab cluster — three nodes is the minimum that makes distribution visible.
 
 ```bash
 scripts/crdb up          # start the 3-node cluster (skip if it is already running)
@@ -43,16 +43,14 @@ SET sql_safe_updates = off;
 \set show_times
 ```
 
-Several parts of this lab drive the cluster from a **second terminal**. Copy the connection URL
-from the demo banner (the line starting `postgresql://demo@127.0.0.1:...`) and export it there:
+Several parts of this lab drive the cluster from a **second terminal**. Export the connection
+URL there (the shell's `-e` commands below run in the `throughput` database explicitly, so
+the shell you opened above can stay in it):
 
 ```bash
-export CRDB_URL='postgresql://root@localhost:26257/?sslmode=disable'
+export CRDB_URL='postgresql://root@localhost:26257/throughput?sslmode=disable'
 scripts/crdb sql -e "SELECT 1;"    # confirm before continuing
 ```
-
-> Inside the demo shell, `\demo ls` reprints the connection parameters for every node if you
-> lose the banner.
 
 > **Keep a results table open.** Every part of this lab produces a number. Record it —
 > the final deliverable is the filled-in table at the end, not the individual commands.
@@ -78,7 +76,7 @@ CREATE TABLE load_test (
 Because a per-row round trip is the point, run this from the shell, not from SQL:
 
 ```bash
-# In a second terminal. --url comes from the demo banner (postgresql://...).
+# In a second terminal.
 time (for i in $(seq 1 2000); do
   echo "INSERT INTO throughput.load_test (tenant, amount, note) VALUES (1, 9.99, 'row');"
 done | scripts/crdb sql)
@@ -99,7 +97,7 @@ SELECT 2000 / <seconds_from_time> AS rows_per_sec;
 ```sql
 TRUNCATE load_test;
 
--- 100,000 rows as 100 statements of 1,000 rows, generated server-side
+-- 100,000 rows in ONE statement, generated server-side
 INSERT INTO load_test (tenant, amount, note)
 SELECT (g % 50), (g % 1000)::DECIMAL / 100, 'batched row ' || g
 FROM generate_series(1, 100000) g;
@@ -125,8 +123,11 @@ time psql "$CRDB_URL" -c "TRUNCATE throughput.load_test" \
   -c "\copy throughput.load_test (id, tenant, amount, note, created) FROM '/tmp/load_test.csv' CSV"
 ```
 
-> No `psql`? Use `scripts/crdb sql -e "\copy ..."` — the built-in shell
-> supports `\copy` with the same syntax.
+> No `psql`? The built-in shell does **not** implement `\copy`, but `COPY … FROM STDIN` works
+> when the data is piped in after the statement:
+> ```bash
+> time { echo "COPY throughput.load_test (id, tenant, amount, note, created) FROM STDIN CSV;"; cat /tmp/load_test.csv; echo '\.'; } | scripts/crdb sql
+> ```
 
 #### A4. `IMPORT INTO`
 
@@ -316,7 +317,7 @@ Lab 3 showed you the *shape* of a hotspot. Now put a number on it.
    WHERE database_name = 'throughput'
    GROUP BY table_name ORDER BY ranges DESC;
    ```
-   For **traffic** per range, use **DB Console → Advanced Debug → Hot Ranges** (or the
+   For **traffic** per range, use **DB Console → Hot Ranges** in the left nav (or the
    `/_status/hotranges` endpoint) — per-range QPS is not exposed through SQL.
 
 5. **Now measure the cost of the design.** Hash-sharding is not free — it makes ordered scans
@@ -538,7 +539,7 @@ for C in 1 4 16 64 256; do
   scripts/crdb run workload run kv \
     --duration=30s --concurrency=$C \
     --read-percent=50 --max-rate=0 \
-    "$CRDB_URL" 2>&1 | tail -4
+    'postgresql://root@crdb1:26257?sslmode=disable' 2>&1 | tail -4
 done
 ```
 
@@ -572,7 +573,7 @@ DROP DATABASE IF EXISTS kv CASCADE;
 rm -f /tmp/load_test.csv
 ```
 
-Then `\q` to exit the demo cluster.
+Then `\q` to leave the SQL shell.
 
 The cluster keeps running between labs — that is the point of it being persistent. To wipe
 everything and start fresh at any time:
