@@ -300,10 +300,13 @@ rather than decorative.
    Watch under-replicated ranges in the DB Console. After
    `server.time_until_store_dead` (default 5 min) the cluster starts re-replicating.
 
-5. **Bring it back:**
+5. **Bring it back**, and wait for the pods that lived on that worker to be serving again
+   before you talk to the cluster — a pod that is `Running` but not yet `Ready` resets
+   connections:
    ```bash
    docker start lab16-worker2
-   kubectl get nodes -w
+   kubectl wait --for=condition=Ready node/lab16-worker2 --timeout=300s
+   kubectl rollout status statefulset/crdb --timeout=600s
    ```
 
 6. **Decommission properly** — never just delete a StatefulSet pod and its PVC:
