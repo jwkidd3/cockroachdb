@@ -112,7 +112,8 @@ wait_for "protected record released" 30 \
 PEAK=${SIZE1%.*}
 RECOVERED=0
 for i in $(seq 1 16); do
-  sql_quiet "SELECT crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true) FROM [SHOW RANGES FROM TABLE oncall.sessions];"
+  LH=$(sql_value "SELECT lease_holder FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS] LIMIT 1;")
+  crdb sql-on "${LH:-1}" -e "SELECT crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true) FROM [SHOW RANGES FROM TABLE oncall.sessions];" >/dev/null 2>&1 || true
   sleep 20
   S=$(sql_value "SELECT round(range_size_mb) FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS];"); S=${S%.*}
   [ "$S" -gt "$PEAK" ] && PEAK=$S

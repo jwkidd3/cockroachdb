@@ -314,13 +314,15 @@ scripts/incident start 4
    everything older than 60 s:
    ```sql
    SELECT count(*) AS protected_records FROM crdb_internal.kv_protected_ts_records;
-   -- ask the GC queue to look at the range now rather than on its own schedule
-   -- (the function acts on this node's replica, hence the filter on node 1 — your gateway)
-   SELECT crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true)
-   FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS] WHERE 1 = ANY(replicas);
-   SELECT round(range_size_mb) FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS];
    ```
-   Repeat the last two statements a few times over the next three minutes. Before the fix the
+   Then nudge the GC queue rather than waiting for its own schedule. The function has to run
+   on the range's *leaseholder*, so the first line looks that node up:
+   ```bash
+   LH=$(scripts/crdb sql --format=tsv -e "SELECT lease_holder FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS] LIMIT 1;" | tail -1)
+   scripts/crdb sql-on $LH -e "SELECT crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true) FROM [SHOW RANGES FROM TABLE oncall.sessions];"
+   scripts/crdb sql -e "SELECT round(range_size_mb) AS size_mb FROM [SHOW RANGES FROM TABLE oncall.sessions WITH DETAILS];"
+   ```
+   Repeat those three lines a few times over the next three minutes. Before the fix the
    size only went up; after it, it falls back toward the live size each time GC runs and
    saw-tooths there while the application keeps writing. Console → **Storage** shows the same
    curve.
@@ -438,5 +440,5 @@ Your incident log:
 | Placement unmet? | `system.replication_constraint_stats`, `system.replication_critical_localities` |
 | What does a node advertise? | `crdb_internal.gossip_nodes` (`locality`) |
 | What pins history? | `crdb_internal.kv_protected_ts_records` → `SHOW JOBS` |
-| Force a GC pass | `crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true)` |
+| Force a GC pass | `crdb_internal.kv_enqueue_replica(range_id, 'mvccGC', true)` — on the range's leaseholder node |
 | Rolling restart | `scripts/crdb upgrade N <version>` (one node, `docker compose up -d --no-deps`) |
