@@ -227,6 +227,7 @@ docker run -d --name lab9-load --network crdb-labs_default \
 1. **Run Grafana:**
    ```bash
    docker run -d --name lab9-grafana -p 3000:3000 --network crdb-labs_default grafana/grafana
+   until curl -s http://localhost:3000/api/health | grep -q '"database": "ok"'; do sleep 2; done; echo "Grafana is up"
    ```
    Log in at <http://localhost:3000> with `admin` / `admin`.
 
