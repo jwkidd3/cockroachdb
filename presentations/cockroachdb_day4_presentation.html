@@ -322,11 +322,11 @@
                 </div>
 
                 <div class="agenda-item">1. Change Data Capture in Depth</div>
-                <div class="agenda-item">🧪 <strong>Lab 13</strong> — CDC → Kafka → consumer with a resolved-timestamp frontier <em>(75 min)</em></div>
+                <div class="agenda-item">🧪 <strong>Lab 13</strong> — CDC → Kafka → consumer with a resolved-timestamp frontier <em>(55 min)</em></div>
                 <div class="agenda-item">2. Application Integration: outbox, idempotency, pooling, ORMs</div>
-                <div class="agenda-item">🧪 <strong>Lab 14</strong> — Outbox pattern + idempotent retry loop <em>(75 min)</em></div>
+                <div class="agenda-item">🧪 <strong>Lab 14</strong> — Outbox pattern + idempotent retry loop <em>(55 min)</em></div>
                 <div class="agenda-item">3. Schema Migrations, CI/CD &amp; Migrating from PostgreSQL</div>
-                <div class="agenda-item">🧪 <strong>Lab 15</strong> — Migrate a PostgreSQL schema and live data with MOLT <em>(90 min)</em></div>
+                <div class="agenda-item">🧪 <strong>Lab 15</strong> — Migrate a PostgreSQL schema and live data with MOLT <em>(55 min)</em></div>
                 <div class="agenda-item">4. On Call — Working an Incident</div>
                 <div class="agenda-item">🧪 <strong>Lab 16</strong> — Four incidents, one cluster <em>(70 min)</em></div>
                 <div class="agenda-item">5. Advanced Features Survey · Cost &amp; Deployment Models · Course Wrap</div>
@@ -479,7 +479,8 @@
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">docker compose up -d   # single-broker Kafka
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">scripts/crdb up                                       # cluster FIRST — Kafka joins its network
+docker compose -f /tmp/lab13/docker-compose.yml up -d   # single-broker Kafka
 scripts/crdb sql -e "SET CLUSTER SETTING kv.rangefeed.enabled = true;"</code></pre>
                     </div>
 
@@ -488,7 +489,7 @@ scripts/crdb sql -e "SET CLUSTER SETTING kv.rangefeed.enabled = true;"</code></p
                         <p style="font-size:0.8em; margin:0.2em 0;">A working frontier consumer plus a failure drill:
                         broker killed, feed recovered, <strong>zero events lost</strong>, lag measured.</p>
                     </div>
-                <aside class="notes"><p><strong>Setup order matters:</strong> <code>scripts/crdb up</code> <em>first</em>, then the Kafka compose file — it joins <code>crdb-labs_default</code>, which only exists once the cluster is up. Kafka takes 20–30 seconds; the <code>logs | grep -m1</code> line waits for it. <code>kv.rangefeed.enabled</code> is set in the lab's SQL setup. The class licence is applied by the wrapper, so the Kafka sink works. <strong>Core: Parts A–E, 55 min.</strong> Part F (lag, failure and recovery) is optional.</p><p><strong>Where students get stuck:</strong> the sink URI is <code>kafka://kafka:9092</code> — the container name, not localhost. The console consumer runs <em>inside</em> the Kafka container via <code>docker compose exec kafka /opt/kafka/bin/…</code>; it prints nothing until a row changes, which looks like a hang. Resolved messages arrive every 10 s by default (<code>min_checkpoint_frequency</code>); the Python consumer is run with <code>python3 -u</code> so output is not buffered. Part D: students must see the duplicate on replay before they write the dedupe — do not let them skip to the fix.</p><p><strong>Debrief:</strong> what would break downstream if the consumer ignored resolved timestamps? Cleanup: <code>docker compose down</code> for Kafka before Lab 14.</p><p><strong>Acronyms:</strong> <strong>CDC</strong> — change data capture</p></aside>
+                <aside class="notes"><p><strong>Setup order matters:</strong> <code>scripts/crdb up</code> <em>first</em>, then the Kafka compose file — it joins <code>crdb-labs_default</code>, which only exists once the cluster is up. Kafka takes 20–30 seconds; the lab polls its log until <em>Kafka Server started</em>. Every compose command in the lab is <code>docker compose -f /tmp/lab13/docker-compose.yml …</code> — students stay in the repository root. <code>kv.rangefeed.enabled</code> is set in the lab's SQL setup. The class licence is applied by the wrapper, so the Kafka sink works. <strong>Core: Parts A–E, 55 min.</strong> Part F (lag, failure and recovery) is optional.</p><p><strong>Where students get stuck:</strong> the sink URI is <code>kafka://kafka:9092</code> — the container name, not localhost. The console consumer runs <em>inside</em> the Kafka container via <code>docker compose exec kafka /opt/kafka/bin/…</code>; it prints nothing until a row changes, which looks like a hang. Resolved messages arrive every 10 s by default (<code>min_checkpoint_frequency</code>); the Python consumer is run with <code>python3 -u</code> so output is not buffered. Part D: students must see the duplicate on replay before they write the dedupe — do not let them skip to the fix.</p><p><strong>Debrief:</strong> what would break downstream if the consumer ignored resolved timestamps? Cleanup: <code>docker compose -f /tmp/lab13/docker-compose.yml down -v</code> for Kafka before Lab 14.</p><p><strong>Acronyms:</strong> <strong>CDC</strong> — change data capture</p></aside>
                 </section>
             </section>
 
@@ -870,12 +871,14 @@ Phase 6  Stop writing PG, decommission              ← rollback: restore from b
 
                     <div class="highlight-box">
                         <h4>📊 Setup</h4>
-                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">docker run -d --name lab15-pg -p 5432:5432 \
+                        <pre style="font-size: 0.7em; margin: 0.2em 0;"><code class="language-bash">docker run -d --name lab15-pg --network crdb-labs_default -p 5432:5432 \
   -e POSTGRES_PASSWORD=pg -e POSTGRES_DB=legacy postgres:16
-molt fetch --source "$PG" --target "$CRDB" --direct-copy
-molt verify --source "$PG" --target "$CRDB"</code></pre>
+molt fetch  --source "$PG_NET" --target "$STAGE_NET" --direct-copy \
+  --table-handling drop-on-target-and-recreate --allow-tls-mode-disable   # land as-is
+molt verify --source "$PG_NET" --target "$STAGE_NET" --allow-tls-mode-disable
+-- then transform stage → target in SQL (new keys)</code></pre>
                     </div>
-                <aside class="notes"><p><strong>Setup:</strong> a PostgreSQL container <code>lab15-pg</code> on port 5432 loaded with a deliberately bad legacy schema, <code>scripts/crdb up</code>, then <code>scripts/crdb sql -e "CREATE DATABASE target;"</code> — MOLT will not create it. MOLT runs as a container via the <code>molt</code> alias in the lab, on the cluster network. <strong>Core: Parts B, C and D, 55 min.</strong> Parts A (dialect differences), E (zero-downtime cutover) and F (when not to migrate) are optional.</p><p><strong>Where students get stuck:</strong> Part B — the legacy schema has a SERIAL primary key and a wide index set; the deliverable is a redesigned DDL with a justification for each PK change, and students who skip to Part C move the hotspot along with the data. Part C: MOLT Fetch connection strings use container names (<code>lab15-pg</code>, <code>crdb1</code>); <code>localhost</code> fails from inside the container. If the alias is not defined in a new terminal, re-run the alias line. Part D compares <code>EXPLAIN</code> output between PostgreSQL and CockroachDB for the same query; a full scan on the CockroachDB side usually means an index did not migrate.</p><p><strong>Debrief:</strong> which query regressed, and would it have been caught before cutover in their organisation? Cleanup: <code>docker rm -f lab15-pg</code>, then <code>scripts/crdb down</code> before Lab 16.</p><p><strong>Acronyms:</strong> <strong>MOLT</strong> — Migrate Off Legacy Things — Cockroach Labs’ migration toolkit · <strong>PG</strong> — PostgreSQL · <strong>CRDB</strong> — CockroachDB</p></aside>
+                <aside class="notes"><p><strong>Setup:</strong> <code>scripts/crdb up</code> first, then a PostgreSQL container <code>lab15-pg</code> on the cluster network with a deliberately bad legacy schema, then <code>CREATE DATABASE target</code>. MOLT runs as a container via the <code>molt</code> alias defined in Setup (re-run it in any new terminal). MOLT Fetch lands the legacy tables <em>as they are</em> in a <code>stage</code> database it creates itself; the redesigned <code>target</code> schema is filled by SQL from there — MOLT cannot copy into tables whose keys changed. <strong>Core: Parts B, C and D, 55 min.</strong> Parts A (dialect differences), E (zero-downtime cutover) and F (when not to migrate) are optional.</p><p><strong>Where students get stuck:</strong> Part B — the legacy schema has a SERIAL primary key and a wide index set; the deliverable is a redesigned DDL with a justification for each PK change, and students who skip to Part C move the hotspot along with the data. Part C: MOLT Fetch connection strings use container names (<code>lab15-pg</code>, <code>crdb1</code>); <code>localhost</code> fails from inside the container. If the alias is not defined in a new terminal, re-run the alias line. Part D compares <code>EXPLAIN</code> output between PostgreSQL and CockroachDB for the same query; a full scan on the CockroachDB side usually means an index did not migrate.</p><p><strong>Debrief:</strong> which query regressed, and would it have been caught before cutover in their organisation? Cleanup: <code>docker rm -f lab15-pg</code>, then <code>scripts/crdb down</code> before Lab 16.</p><p><strong>Acronyms:</strong> <strong>MOLT</strong> — Migrate Off Legacy Things — Cockroach Labs’ migration toolkit · <strong>PG</strong> — PostgreSQL · <strong>CRDB</strong> — CockroachDB</p></aside>
                 </section>
             </section>
 
