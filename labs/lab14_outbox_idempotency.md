@@ -18,7 +18,15 @@ By the end of this lab you will be able to:
 ## Prerequisites
 
 - **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
-- `python3` with `psycopg2` (`pip install psycopg2-binary`)
+- `python3` with `psycopg2` — already installed on the class VMs. If `import psycopg2` fails,
+  do **not** `pip install` into the system Python (Ubuntu refuses with
+  *externally-managed-environment*); use one of:
+  ```bash
+  sudo apt-get install -y python3-psycopg2                        # packaged module
+  # or, without root:
+  python3 -m venv ~/venv && source ~/venv/bin/activate && pip install psycopg2-binary
+  ```
+  and run the lab's `python3` commands from that same terminal.
 - Optional: Go 1.21+ for the Go variants
 
 ## Setup
