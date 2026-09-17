@@ -16,12 +16,17 @@ section "Setup"
 start_cluster 3
 export DSN="postgresql://root@localhost:${BASE_SQL_PORT}/shop?sslmode=disable"
 
-python3 -c "import psycopg2" 2>/dev/null || {
-    warn "psycopg2 not installed; skipping Lab 14 (pip install psycopg2-binary)"
-    echo "Lab 14: skipped"
-    exit 0
-}
-pass "psycopg2 available"
+# Build the Python environment exactly as the lab's Setup step 1 has the student do it,
+# and FAIL if it cannot be built — a skipped test is not a passed test.
+VENV="${LAB14_VENV:-/tmp/lab14-venv}"
+rm -rf "$VENV"
+python3 -m venv "$VENV" || fail "python3 -m venv failed (on Ubuntu: sudo apt-get install -y python3-venv)"
+"$VENV/bin/pip" install --quiet psycopg2-binary sqlalchemy sqlalchemy-cockroachdb \
+    || fail "pip install into the venv failed — the lab's Setup step 1 would fail the same way"
+"$VENV/bin/python3" -c "import psycopg2, sqlalchemy, sqlalchemy_cockroachdb" \
+    || fail "venv built but the lab's imports fail"
+export PATH="$VENV/bin:$PATH"
+pass "Lab 14 Setup step 1: venv with psycopg2, sqlalchemy, sqlalchemy-cockroachdb builds and imports"
 
 cat <<'SQL' | sql_script >/dev/null
 CREATE DATABASE shop;
