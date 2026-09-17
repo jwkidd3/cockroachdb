@@ -69,7 +69,10 @@ SET sql_safe_updates = off;        -- lets us TRUNCATE without WHERE
    SELECT count(*) AS range_count, sum(range_size_mb) AS size_mb
    FROM [SHOW RANGES FROM TABLE events_serial WITH DETAILS];
    ```
-   On a small enough payload you may see only 1–2 ranges. Crucially, *all recent writes hit the rightmost range*.
+   One range — and its `start_key`/`end_key` read like `<before:/Table/113>` / `<after:/Max>`.
+   That is not markup: it says the range's boundaries lie *outside* this table, i.e. the table
+   shares its range with its neighbours until it grows to 512 MiB or is split. Crucially,
+   *all writes hit that one range's leaseholder*.
 
 4. **Look at the IDs:**
    ```sql
@@ -96,12 +99,32 @@ SET sql_safe_updates = off;        -- lets us TRUNCATE without WHERE
    FROM generate_series(1, 10000);
    ```
 
-2. **Compare the range distribution:**
+2. **Compare the range distribution.** First, what you get for free:
    ```sql
    SELECT count(*) AS range_count FROM [SHOW RANGES FROM TABLE events_uuid];
-   SHOW RANGES FROM TABLE events_uuid WITH DETAILS;
    ```
-   Multiple ranges, each holding a slice of the random UUID keyspace. The Hot Ranges page shows traffic spread across them.
+   **Still one range** — 50,000 rows of 400 bytes is ~24 MB, and a range does not split on
+   size until 512 MiB (the smallest allowed `range_max_bytes` is 64 MiB). Random keys spread
+   writes *within* that range, but one range has one leaseholder, so at this data volume the
+   UUID table is served by one node too. To see the distribution the key design makes
+   possible, give the table the ranges a large one would have grown into:
+   ```sql
+   ALTER TABLE events_uuid SPLIT AT SELECT gen_random_uuid() FROM generate_series(1, 7);
+   SELECT count(*) AS range_count FROM [SHOW RANGES FROM TABLE events_uuid];   -- 8
+   SELECT lease_holder, count(*) FROM [SHOW RANGES FROM TABLE events_uuid WITH DETAILS] GROUP BY 1;
+
+   INSERT INTO events_uuid (payload) SELECT repeat('x', 400) FROM generate_series(1, 10000);
+   ```
+   Eight ranges — the leases start on one node and the allocator spreads them over the next
+   minute or two (re-run the second query) — and on **Hot Ranges** the new writes land across
+   all eight. Do the same split to `events_serial` and the writes *still* all hit the last
+   range — random boundaries do nothing for a key that only ever grows:
+   ```sql
+   ALTER TABLE events_serial SPLIT AT SELECT unique_rowid() FROM generate_series(1, 7);
+   INSERT INTO events_serial (payload) SELECT repeat('x', 400) FROM generate_series(1, 10000);
+   ```
+   That contrast — same row count, same split count, spread versus one hot range — is the
+   whole lab in one picture. (Part E covers `SPLIT AT` as a deliberate technique.)
 
 3. **Time the inserts head to head:**
    ```sql
