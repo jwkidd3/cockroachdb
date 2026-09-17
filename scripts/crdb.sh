@@ -110,13 +110,13 @@ case "$CMD" in
             # -T (no TTY) when stdin is a pipe, so `... | scripts/crdb sql` works;
             # a TTY when it is interactive, so the shell behaves normally.
             if [ -t 0 ]; then TTY=(); else TTY=(-T); fi
-            "${COMPOSE[@]}" exec "${TTY[@]}" ${NODE}1 ./cockroach sql "${AUTH[@]}" "$@" ;;
+            "${COMPOSE[@]}" exec ${TTY[@]+"${TTY[@]}"} ${NODE}1 ./cockroach sql "${AUTH[@]}" "$@" ;;
   sql-on)   need_docker; n="${1:-1}"; shift || true
             if [ -t 0 ]; then TTY=(); else TTY=(-T); fi
-            "${COMPOSE[@]}" exec "${TTY[@]}" "${NODE}${n}" ./cockroach sql "${AUTH[@]}" "$@" ;;
+            "${COMPOSE[@]}" exec ${TTY[@]+"${TTY[@]}"} "${NODE}${n}" ./cockroach sql "${AUTH[@]}" "$@" ;;
   run)      need_docker
             if [ -t 0 ]; then TTY=(); else TTY=(-T); fi
-            "${COMPOSE[@]}" exec "${TTY[@]}" ${NODE}1 ./cockroach "$@" ;;
+            "${COMPOSE[@]}" exec ${TTY[@]+"${TTY[@]}"} ${NODE}1 ./cockroach "$@" ;;
   status)   need_docker; "${COMPOSE[@]}" exec ${NODE}1 ./cockroach node status "${AUTH[@]}" ;;
   stop)     need_docker; "${COMPOSE[@]}" stop "${NODE}${1:?usage: stop <node-number>}" ;;
   start)    need_docker; "${COMPOSE[@]}" start "${NODE}${1:?usage: start <node-number>}" ;;
