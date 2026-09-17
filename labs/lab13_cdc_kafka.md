@@ -22,8 +22,15 @@ By the end of this lab you will be able to:
 
 ### 1. Cluster
 
+The **default** lab cluster — not Lab 12's secure stack. If `CRDB_COMPOSE` is still exported
+from yesterday, every `scripts/crdb` command goes to the wrong cluster; the first line clears
+it. Start the cluster *before* Kafka: the Kafka container joins the cluster's network, which
+does not exist until the cluster is up.
+
 ```bash
+unset CRDB_COMPOSE
 scripts/crdb up
+scripts/crdb ps          # crdb1 crdb2 crdb3 — not crdbs1
 export C='postgresql://root@localhost:26257?sslmode=disable'
 ```
 
