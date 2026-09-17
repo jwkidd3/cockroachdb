@@ -18,19 +18,31 @@ By the end of this lab you will be able to:
 ## Prerequisites
 
 - **Docker Desktop** (or Docker Engine) running — there is no `cockroach` binary to install
-- `python3` with `psycopg2` — already installed on the class VMs. If `import psycopg2` fails,
-  do **not** `pip install` into the system Python (Ubuntu refuses with
-  *externally-managed-environment*); use one of:
-  ```bash
-  sudo apt-get install -y python3-psycopg2                        # simplest: the packaged module
-  # or a virtual environment (Ubuntu ships python3 without the venv module — install it first):
-  sudo apt-get install -y python3-venv
-  python3 -m venv ~/venv && source ~/venv/bin/activate && pip install psycopg2-binary
-  ```
-  and run the lab's `python3` commands from that same terminal.
+- `python3` — the Python environment is built in Setup step 1 below
 - Optional: Go 1.21+ for the Go variants
 
 ## Setup
+
+### 1. Python environment
+
+Every script in this lab is Python. Build one virtual environment with everything the lab
+imports — `psycopg2` (driver), `sqlalchemy` + `sqlalchemy-cockroachdb` (the ORM retry helper in
+Part A step 5) — and use it from every terminal you open for this lab:
+
+```bash
+sudo apt-get install -y python3-venv            # Ubuntu ships python3 without the venv module
+python3 -m venv ~/lab14-venv
+source ~/lab14-venv/bin/activate                # repeat this line in each new terminal
+pip install --quiet psycopg2-binary sqlalchemy sqlalchemy-cockroachdb
+python3 -c "import psycopg2, sqlalchemy, sqlalchemy_cockroachdb; print('python environment OK')"
+```
+
+> **Why a venv and not `pip install`?** Ubuntu marks the system Python as
+> *externally-managed* (PEP 668) and refuses `pip install` into it. The venv is the clean
+> answer; `sudo apt-get install python3-psycopg2` is the packaged alternative if you only need
+> the driver. `deactivate` leaves the venv.
+
+### 2. Cluster and schema
 
 ```bash
 scripts/crdb up
@@ -207,7 +219,7 @@ condition — it is the concurrency-control protocol.
 
 5. **Use the library instead of your own loop.** For SQLAlchemy:
    ```python
-   # pip install sqlalchemy-cockroachdb
+   # already installed in the Setup venv
    from sqlalchemy import create_engine
    from sqlalchemy.orm import sessionmaker
    from cockroachdb.sqlalchemy import run_transaction
