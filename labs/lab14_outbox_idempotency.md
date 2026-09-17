@@ -22,8 +22,9 @@ By the end of this lab you will be able to:
   do **not** `pip install` into the system Python (Ubuntu refuses with
   *externally-managed-environment*); use one of:
   ```bash
-  sudo apt-get install -y python3-psycopg2                        # packaged module
-  # or, without root:
+  sudo apt-get install -y python3-psycopg2                        # simplest: the packaged module
+  # or a virtual environment (Ubuntu ships python3 without the venv module — install it first):
+  sudo apt-get install -y python3-venv
   python3 -m venv ~/venv && source ~/venv/bin/activate && pip install psycopg2-binary
   ```
   and run the lab's `python3` commands from that same terminal.

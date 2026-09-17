@@ -69,7 +69,7 @@ apt-get install -y -qq --no-install-recommends \
     ca-certificates curl git jq bc unzip \
     netcat-openbsd lsof procps openssl \
     postgresql-client \
-    python3 python3-pip
+    python3 python3-pip python3-venv python3-psycopg2
 
 # ------------------------------------------------------------------ docker check
 if ! command -v docker >/dev/null 2>&1; then
